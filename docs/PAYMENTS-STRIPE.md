@@ -110,7 +110,9 @@ Handoff token properties:
 - TTL 10 minutes; single use. A second use in the same browser session redirects to checkout
   without rebuilding; from another session it is rejected.
 - Validation, performed twice (quote and handoff) using WooCommerce's own logic:
-  product exists and is purchasable; variation matches the parent and attributes; quantity
+  product exists and is purchasable; the variation matches the parent, and for "Any" attributes the shopper's chosen
+  options are present and offered (these are passed to WooCommerce exactly as its own add-to-cart expects, and are
+  saved on the order line); quantity
   limits; stock if stock-managed; coupon validity and usage limits; every personalization value
   re-validated against the product's schema (§5).
 - **Prices are never accepted from the client.** Any price field in a request body is rejected.

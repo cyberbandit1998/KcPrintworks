@@ -14,6 +14,13 @@ credentials, `wp-config.php`, or customer personal data. Redact names, emails, a
 examples. Raw dumps go under `docs/discovery/raw/` (gitignored); only a reviewed, redacted summary is committed
 to `docs/discovery/INVENTORY.md`.
 
+## Progress
+
+- **2026-10-13: product export received and analyzed** (section 1.2). Findings, with the questions they raise:
+  [discovery/INVENTORY.md](discovery/INVENTORY.md). Re-run the analysis on any newer export with
+  `node scripts/discovery/analyze-wc-export.mjs docs/discovery/raw/products.csv`.
+- Still outstanding: everything in 1.1, 1.3, 1.5, 1.6, 1.7, plus the **Variations-tab check** below.
+
 ## 1. Checklist
 
 ### 1.1 Plugins, theme, and platform (5 minutes)
@@ -27,9 +34,13 @@ to `docs/discovery/INVENTORY.md`.
 
 ### 1.2 Products and variations (10 minutes)
 
-- [ ] **Products → Export**, all columns, **"Export custom meta" ticked**, all products. This is the
+- [x] **Products → Export**, all columns, **"Export custom meta" ticked**, all products (received 2026-10-13). This is the
       single most useful file: it shows attributes, variations, SKUs, prices, stock settings, and
       the meta keys any personalization plugin writes. Contains no customer data.
+- [ ] **Variations tab check (new, from the export analysis):** open products **#124 (Skip-Bo)** and **#889 (bag tag)**,
+      go to Product data → Variations, and screenshot a few variations with their dropdowns open. In the export, 256 of 259
+      variations had blank attribute values, which WooCommerce treats as "Any"; this shows whether that is real or an
+      export quirk.
 - [ ] Open **one personalized product** in the editor and screenshot the personalization settings (the
       plugin's tab or meta box). Do the same for any global add-on groups.
 - [ ] Share the **public URL** of that product and one variable product.

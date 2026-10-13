@@ -19,6 +19,7 @@ Etsy shop at <https://kcprintworks.etsy.com> via the Etsy Open API v3.
 | [docs/IMPLEMENTATION-PLAN.md](docs/IMPLEMENTATION-PLAN.md) | The 10-step build order with exit criteria, approval gates, risks, and launch checklist |
 | [docs/MIGRATION-SHOP-DOMAIN.md](docs/MIGRATION-SHOP-DOMAIN.md) | Moving WordPress/WooCommerce to `shop.kcprintworks.com`: SSL, redirects, API connections, webhooks, checkout/session behavior, cutover and rollback |
 | [docs/LIVE-SITE-DISCOVERY.md](docs/LIVE-SITE-DISCOVERY.md) | Read-only procedure to inventory the live site's plugins, products, and personalization before choosing a solution |
+| [docs/discovery/INVENTORY.md](docs/discovery/INVENTORY.md) | What the owner's product export shows about the live catalog (duplicates, "Any" variations, stock defaults, personalization) and the questions it raises |
 | [docs/DECISIONS.md](docs/DECISIONS.md) | Decision log (ADRs), their status, and the inputs still missing |
 | [PROJECT_STATUS.md](PROJECT_STATUS.md) | Living status: done, in progress, next, known issues |
 | [CLAUDE.md](CLAUDE.md) | Rules and commands for future Claude Code sessions |

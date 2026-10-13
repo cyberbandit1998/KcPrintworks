@@ -56,6 +56,7 @@ Nothing below happens without your explicit go-ahead.
 | Scaffold the monorepo (layout in ARCHITECTURE §9), TypeScript, lint, formatting, commit hooks | Repo skeleton |
 | CI: lint, typecheck, unit tests, PHPUnit, Playwright, axe, Lighthouse CI, secret scanning, dependency audit, and the guard "no Etsy hostname or credential in `apps/storefront`" | Green pipeline on an empty app |
 | Local environment: Docker Compose with WordPress, WooCommerce, MariaDB, Mailpit, seeded fixture catalog (simple, variable, personalized, made-to-order, stock-limited) | `make up` works |
+| **Catalog cleanup decisions (owner)** from [discovery/INVENTORY.md](discovery/INVENTORY.md): variation check (Q1), which duplicate to keep (Q2), stock policy per item (Q4), weight units (Q7), category plan (Q8). Each live-data change is made on staging first and needs approval | Decisions recorded; nothing changed on the live site |
 | Staging: **clone** of the current WooCommerce site (MIGRATION §3 M1) on a separate host with scrubbed customer data, neutralized outbound side effects, test-mode Stripe only. The live site is not modified | G0 |
 | Secrets management and environment variable inventory | Documented, no secrets in git |
 
@@ -92,6 +93,19 @@ Exit (**G1**): you approve the design at mobile, tablet, and desktop widths.
   output (variation counts, attributes, SKUs, prices, stock settings, images, status). Every existing
   variation must be preserved; any mismatch fails CI.
 - Build the URL inventory and data-driven redirect map (MIGRATION §5).
+- **Data-shape rules learned from the owner's export** (INVENTORY.md F1 to F11), each with a test:
+  - Variation attributes may be **"Any"** (empty string). The DTO emits `''` for them and the cart line carries the
+    shopper's chosen options (already implemented in `packages/contracts`). The PHP builder must reproduce
+    `findVariation` (prefer the most specific variation) with shared test vectors.
+  - Descriptions are rendered through WordPress formatting (`wpautop`/`the_content`), because many are plain text
+    with line breaks; names are HTML-entity decoded (`&amp;`).
+  - Marketplace-style attributes (`Condition`, `Condition Description`, `MPN`, `Primary color`, `Secondary color`,
+    `Material multi`, `Occasion`, `Holiday`) are not shown to shoppers by default; `Condition = made_to_order` maps to
+    the made-to-order flag. Trailing backslashes in values (`PLA\`) are cleaned in the DTO, not in the database.
+  - Draft and private products never reach the public DTO; "Uncategorized" is never shown in navigation.
+  - Made-to-order products ignore stock counts in the storefront. The WooCommerce stock setting itself is changed only
+    on staging, with approval, per the owner's Q4 answer.
+  - 169-variation products (the 13 x 13 bag-tag matrix) must be served and rendered efficiently.
 - Draft/preview mode for unpublished products. Sitemap and redirects generated from WooCommerce data.
 - Performance and resilience tests: serve with WooCommerce stopped; latency from save to
   visible update; Lighthouse budgets.
@@ -259,6 +273,8 @@ Exit: all items in your brief's admin list are present and operable by keyboard.
 | R17 | Existing personalization plugin cannot be driven from a server-side cart build | Medium / High | Decision criteria in LIVE-SITE-DISCOVERY §2.1; adapter tests; migration option B |
 | R18 | Etsy webhook deliveries missing or unverifiable | Medium / Low | Polling recovery, daily reconciliation, miss-rate alerts (ETSY §10.5) |
 | R19 | Etsy details differ from this plan because docs were not readable here | High / Medium | Step 5 verification with the official spec and MCP; "Owner-stated"/"To verify" rows tracked in ETSY §16 |
+| R20 | Existing catalog problems are carried into the new site or the Etsy sync: duplicate published products (12 groups), "Any" variations (256 of 259), default stock counts, marketplace attributes shown to shoppers | High / High | INVENTORY.md findings F1 to F5; owner decisions in Phase 0; variation parity against the live database; matcher reports many-to-one candidates and never auto-picks; changes made on staging first |
+| R21 | Made-to-order products go out of stock at checkout because WooCommerce counts a default quantity of 15 or 20 down to 0 | Medium / High | Owner stock decision per item (Q4); staging change then approved live change; reconciliation alert on made-to-order items reaching 0 |
 
 ## 17. Definition of done for the whole project
 

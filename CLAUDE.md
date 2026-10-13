@@ -28,8 +28,10 @@ Open API v3. The owner approved the architecture on 2026-10-13.
    so a `price` field is rejected. WooCommerce is the authority for prices, tax, shipping, discounts.
 6. **WooCommerce is master for the website.** Etsy data enters only under the per-field policy in
    [docs/ETSY-INTEGRATION.md](docs/ETSY-INTEGRATION.md) §7. Match by IDs/SKUs, never by title alone.
-7. **Do not invent facts about the owner's catalog, plugins, hosting, or Etsy shop.** None of it has been
-   inspected (see "Environment limits"). Fixture data is placeholder and says so. Personalization plugin choice
+7. **Do not invent facts about the owner's catalog, plugins, hosting, or Etsy shop.** Only the product export
+   (2026-10-13) has been seen, summarized in `docs/discovery/INVENTORY.md`; plugins, hosting, DNS, orders, and the
+   Etsy shop are unknown (see "Environment limits"). Fixture data is synthetic placeholder and says so; it does not
+   describe real products. Personalization plugin choice
    (ADR-007) is **undecided** until the discovery in [docs/LIVE-SITE-DISCOVERY.md](docs/LIVE-SITE-DISCOVERY.md)
    is done. Do not assume customers upload images.
 8. **No secrets in the repo.** `.env*` (except `.env.example`) is gitignored; secrets live in host env or
@@ -48,6 +50,7 @@ apps/storefront/            Next.js 16 App Router storefront (TypeScript)
   tests/unit/               Vitest;  tests/e2e/  Playwright + axe
 packages/contracts/         shared zod schemas + reference validation/pricing (the oracle for the PHP side)
 scripts/guards.mjs          repo guards (Etsy isolation, secret-shaped strings, public env names)
+scripts/discovery/          analyze-wc-export.mjs: read-only analysis of a WooCommerce product CSV export (+ tests)
 docs/                       architecture, payments, Etsy, plan, migration, discovery, decisions
 wordpress/                  (planned) plugins kcpw-core, kcpw-etsy and the checkout theme: NOT created yet
 ```
@@ -67,7 +70,9 @@ Node 22 (`.nvmrc`), npm workspaces. Run from the repo root.
 | `npm run typecheck`                     | `next typegen` + `tsc --noEmit` in each workspace                                    |
 | `npm test`                              | Vitest in `packages/contracts` and `apps/storefront`                                 |
 | `npm run test:e2e`                      | Playwright + axe (builds, serves on :3100, uses `/opt/pw-browsers/chromium` if present; override with `PW_CHROMIUM_PATH`) |
-| `npm run check`                         | guard, format, lint, typecheck, test, build (e2e is separate)                        |
+| `npm run test:scripts`                  | `node --test` for `scripts/**` (the export analyzer)                                 |
+| `npm run check`                         | guard, format, lint, typecheck, test, test:scripts, build (e2e is separate)          |
+| `node scripts/discovery/analyze-wc-export.mjs <csv>` | Markdown report on a product export (`--json` for machine output). Raw exports live in `docs/discovery/raw/` (gitignored) |
 
 **Definition of done for a change:** guard, format:check, lint, typecheck, unit tests, and e2e all pass; new
 behavior has tests; for anything visual, take screenshots with Playwright and actually look at them; docs and
@@ -82,6 +87,9 @@ ADRs updated if a decision changed.
 - **Accessibility:** target WCAG 2.2 AA. Forms use an error summary that takes focus, errors linked with
   `aria-describedby`, `aria-disabled` (not `disabled`) for sold-out buttons so they stay focusable, and focus
   moves deliberately after destructive actions. Status text is never color-only.
+- **Variations:** an empty attribute value means WooCommerce's **"Any"**. Never assume one variation per option
+  combination; the cart line carries the shopper's chosen `attributes` and `lineKey` includes them. The real
+  catalog is mostly "Any" (see `docs/discovery/INVENTORY.md`).
 - **Money** is integer minor units everywhere (`Money`); no floats. Percent effects use `percentOf`.
 - **Personalization:** each personalization is its own line (line key includes the options); server-side
   validation is mandatory; the storefront renders from the plugin-agnostic option schema in the DTO.
@@ -119,6 +127,10 @@ registry work. Consequences:
   derive the rest during render (see `CartView.tsx`).
 - After removing the last cart item, focus must be moved **after** the re-render (a ref flag plus an effect),
   not on the heading that is about to unmount.
+- WooCommerce product exports are written in batches of 50 and gain columns as they go, so early rows are
+  **shorter** than the header (pad with blanks). In variation rows the `Parent` column holds the parent's **SKU or
+  `id:<n>`**, not necessarily its ID.
+- Node 22 `node --test scripts/` fails on a directory; use a glob (`"scripts/**/*.test.mjs"`).
 - Axe passing does not prove the CSS loaded. Look at a screenshot.
 - Use absolute paths in shell commands; the working directory can shift between calls.
 

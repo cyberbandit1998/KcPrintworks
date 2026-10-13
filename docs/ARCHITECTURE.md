@@ -139,6 +139,17 @@ attribute values, price, stock status, image), personalization option schema, av
 (`purchasable`, `stockStatus`, `madeToOrder`, lead time), SEO block (title, meta description,
 canonical, Open Graph, robots, optional structured-data overrides), `updatedAt`.
 
+**Normalization rules** (so WooCommerce data quirks never reach the page; details and evidence in
+[discovery/INVENTORY.md](discovery/INVENTORY.md)):
+
+- Variation attribute values may be empty, which is WooCommerce's **"Any"**; the cart line carries the shopper's
+  chosen options so an "Any" variation still records what was picked.
+- Names are entity-decoded; descriptions are the output of WordPress formatting (not raw post content) and are
+  sanitized again on the storefront.
+- Marketplace-style attributes (Condition, MPN, Primary/Secondary color, Occasion, Holiday, Material) are not exposed
+  as shopper-facing details; `made_to_order` sets `availability.madeToOrder`.
+- Drafts, private, and hidden products are never emitted; stock counts are ignored for made-to-order items.
+
 **Excluded by construction:** cost, Etsy IDs, Etsy prices, internal notes, any customer data.
 The DTO is validated by a shared schema (zod) on both the contract test and the Next.js side.
 This is how separate Etsy and website prices stay separate: the Etsy price never leaves

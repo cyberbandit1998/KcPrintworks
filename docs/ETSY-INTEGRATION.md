@@ -179,6 +179,26 @@ WooCommerce product only if you choose "Create" for it in the preview, and it is
 the storefront without your action. Duplicate SKUs on either side block auto-linking and raise a
 warning.
 
+### 6.2.1 What the existing WooCommerce catalog tells us
+
+From the owner's product export ([discovery/INVENTORY.md](discovery/INVENTORY.md)), observed 2026-10-13:
+
+- The catalog appears to be derived from Etsy (attribute values use Etsy's `made_to_order` and `i_did` vocabulary, and
+  Etsy-style fields such as Primary color, Occasion, Holiday), but **no Etsy listing IDs or URLs are stored**. There is
+  nothing to read an existing link from; every link is created by matching.
+- SKUs are present on every variation and unique. 181 rows use a `<9 to 12 digit number>_<suffix>` pattern (12 distinct
+  numbers; all 169 variations of one product share one). These may be marketplace IDs (**unverified**). Step 5 compares
+  them with Etsy listing IDs, product IDs, and SKUs. A SKU match is only trusted when it is unique on both sides.
+- **WooCommerce already contains duplicates:** 15 groups (32 products) share a title; 12 groups have two or more
+  published copies. Because one Etsy listing maps to at most one product, the matcher must report these explicitly
+  ("one Etsy listing, several candidate products") and never pick a winner. The owner chooses; the loser is later
+  redirected, not deleted by us.
+- Variation attribute values are blank for 256 of 259 variations ("Any"), so a variation does not say which option it
+  represents. The Etsy variation mapping grid must therefore use the chosen option values, SKUs, and the live database
+  rather than assuming one WooCommerce variation per option combination.
+- Stock quantities are mostly defaults (15 or 20). Etsy quantities are likewise not trusted as inventory for
+  made-to-order items; the inventory rule defaults to `made_to_order` (section 12).
+
 ### 6.3 Variation mapping
 
 Etsy variations are a list of products, each with up to two property dimensions (for example
@@ -491,7 +511,8 @@ regions; respects reduced motion; tested with axe-core and manual screen-reader 
 | Draft-listing required fields; image and tag limits | **To verify** | Sources disagree |
 | No Etsy sandbox exists | **To verify** | My recollection only |
 | Buyer-data usage and attribution terms | **To verify** (legal review) | Current terms not retrievable here |
-| Shop contents (listing count, variations, personalization use) | **Unknown** | Shop not reachable from here |
+| Shop contents (listing count, variations, personalization use) | **Unknown** | Shop not reachable from here. The WooCommerce catalog (71 products, 259 variations) is known from the owner's export, not the Etsy shop |
+| Whether the 9 to 12 digit numbers in WooCommerce SKUs are Etsy IDs | **To verify** | Inferred from their shape only; compare with listing/product IDs once connected |
 
 Sources reached (none of Etsy's own pages could be opened directly): Etsy's `open-api` repository ([README](https://github.com/etsy/open-api),
 [#1509](https://github.com/etsy/open-api/discussions/1509),

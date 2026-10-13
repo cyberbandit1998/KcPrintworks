@@ -12,7 +12,7 @@ Last updated 2026-10-13, after the owner's approval of the overall architecture.
 | ADR-004 | Etsy orders imported as WooCommerce orders marked "Paid on Etsy" | Proposed (not yet explicitly approved; implicit in the approved plan) |
 | ADR-005 | WooCommerce owns the website; per-field ownership; import-once defaults; Woo-owned SEO | Proposed (implicit in the approved plan) |
 | ADR-006 | Etsy access class: **Seller App / Seller API Access**, read-only scopes first | **Revised 2026-10-13** (was "personal access") |
-| ADR-007 | Personalization solution | **Pending discovery**: no solution is chosen until the installed plugins are inspected |
+| ADR-007 | Personalization solution | **Pending discovery**: the 2026-10-13 product export contains no add-on plugin data; an order sample is still needed |
 | ADR-008 | Catalog delivery via cached DTO endpoints with tag-based revalidation | Proposed (implicit in the approved plan) |
 | ADR-009 | Migration strategy: clone then cut over; live site stays operational | **New, proposed** |
 | ADR-010 | Etsy `order.paid` webhook as fast path with polling as recovery | **New, proposed** |
@@ -24,7 +24,10 @@ Answering these unlocks the corresponding work. Most are covered by the read-onl
 [LIVE-SITE-DISCOVERY.md](LIVE-SITE-DISCOVERY.md).
 
 1. **Live-site inventory** (plugins, versions, theme, WooCommerce settings, HPOS). Blocks ADR-007 and the
-   migration plan. I could not inspect the live site from my environment.
+   migration plan. I could not inspect the live site from my environment. **Partly done:** the product export was
+   received and analyzed ([discovery/INVENTORY.md](discovery/INVENTORY.md)); it raised nine owner questions (Q1 to Q9
+   there), the most important being whether the catalog's variations really are "Any" and how buyers enter
+   personalization text today.
 2. **Catalog and personalization facts:** how personalization works today, whether it is per line item or per
    unit, and whether any product uses file upload (I assume none until discovery shows otherwise).
 3. **Hosting facts:** provider, PHP version, WP-CLI/cron availability, DNS provider, email hosting
@@ -111,6 +114,11 @@ Format: context, decision, consequences.
 
 - **Context.** The first draft proposed a first-party option schema. The owner asked that the installed plugins be
   inspected first and that uploads not be assumed.
+- **Evidence so far (2026-10-13).** The product export has no add-on or product-field plugin meta (only Facebook for
+  WooCommerce). Product text describes personalization as a text box (#889 bag tag, #698 keychain) or as "message us"
+  (#89, #553, #863). This does not prove the website has no personalization (plugins can keep data outside product
+  meta) and the wording may be copied from Etsy. No customer image uploads are indicated. An order sample is the
+  deciding input.
 - **Decision.** **None yet.** The storefront DTO uses a plugin-agnostic option schema so design and the product
   page can proceed. Choose between (A) keep the existing plugin with adapters, (B) migrate to a first-party
   schema, or (C) hybrid, using the criteria in LIVE-SITE-DISCOVERY §2.1.
