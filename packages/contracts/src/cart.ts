@@ -16,6 +16,13 @@ export const CartLineIntentSchema = z
   .object({
     productId: z.number().int().positive(),
     variationId: z.number().int().positive().optional(),
+    /**
+     * The shopper's chosen variation attributes (attribute slug -> option slug). WooCommerce variations can
+     * be "Any", in which case the variation alone does not record what was picked, so the choice travels
+     * with the line (as it does in WooCommerce's own add-to-cart). Optional: a fixed variation fills in its
+     * own values.
+     */
+    attributes: z.record(z.string(), z.string().max(100)).optional(),
     quantity: z.number().int().min(1).max(MAX_LINE_QUANTITY),
     options: z.record(z.string(), z.union([z.string().max(1000), z.boolean()])).default({}),
   })
@@ -80,12 +87,19 @@ export const QuoteResponseSchema = z.object({
 });
 export type QuoteResponse = z.infer<typeof QuoteResponseSchema>;
 
-/** Deterministic key so identical product + variation + options merge, and different options never do. */
+/** Deterministic key so identical product + variation + choices merge, and different choices never do. */
 export function lineKey(
-  line: Pick<CartLineIntent, 'productId' | 'variationId' | 'options'>,
+  line: Pick<CartLineIntent, 'productId' | 'variationId' | 'options'> &
+    Partial<Pick<CartLineIntent, 'attributes'>>,
 ): string {
-  const entries = Object.entries(line.options ?? {})
-    .filter(([, v]) => v !== '' && v !== false)
-    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
-  return JSON.stringify([line.productId, line.variationId ?? 0, entries]);
+  const sortedEntries = (record: Record<string, string | boolean>) =>
+    Object.entries(record)
+      .filter(([, v]) => v !== '' && v !== false)
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+  return JSON.stringify([
+    line.productId,
+    line.variationId ?? 0,
+    sortedEntries(line.attributes ?? {}),
+    sortedEntries(line.options ?? {}),
+  ]);
 }

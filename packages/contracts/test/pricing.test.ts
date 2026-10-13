@@ -254,3 +254,174 @@ describe('product schema', () => {
     expect(ProductSchema.safeParse(bad).success).toBe(false);
   });
 });
+
+describe('"Any" variations (WooCommerce empty attribute value)', () => {
+  // Mirrors the owner's catalog shape: one priced variation whose attributes are all "Any".
+  function anyProduct(): Product {
+    return ProductSchema.parse({
+      ...baseProduct(),
+      id: 30,
+      slug: 'sample-tag',
+      type: 'variable',
+      attributes: [
+        {
+          slug: 'tag-color',
+          name: 'Tag Color',
+          usedForVariations: true,
+          options: [
+            { slug: 'black', name: 'Black' },
+            { slug: 'red', name: 'Red' },
+          ],
+        },
+        {
+          slug: 'text-color',
+          name: 'Text Color',
+          usedForVariations: true,
+          options: [
+            { slug: 'white', name: 'White' },
+            { slug: 'gray', name: 'Gray' },
+          ],
+        },
+      ],
+      variations: [
+        {
+          id: 301,
+          attributes: { 'tag-color': '', 'text-color': '' },
+          price: money(899),
+          stockStatus: 'instock',
+        },
+      ],
+      price: money(899),
+      optionSchema: { version: 1, fields: [] },
+    });
+  }
+
+  const intent = (attributes?: Record<string, string>) => ({
+    productId: 30,
+    variationId: 301,
+    attributes,
+    quantity: 1,
+    options: {},
+  });
+
+  it('accepts "Any" in the schema but still rejects unknown or missing attribute keys', () => {
+    expect(() => anyProduct()).not.toThrow();
+    const bad = {
+      ...anyProduct(),
+      variations: [
+        { ...anyProduct().variations[0]!, attributes: { 'tag-color': 'green', 'text-color': '' } },
+      ],
+    };
+    expect(ProductSchema.safeParse(bad).success).toBe(false);
+    const missing = {
+      ...anyProduct(),
+      variations: [{ ...anyProduct().variations[0]!, attributes: { 'tag-color': '' } }],
+    };
+    expect(ProductSchema.safeParse(missing).success).toBe(false);
+  });
+
+  it("prices the line and labels it from the shopper's choices, not from the variation", () => {
+    const q = priceLine(anyProduct(), intent({ 'tag-color': 'red', 'text-color': 'white' }));
+    expect(q.issues).toEqual([]);
+    expect(q.unitPrice.amount).toBe(899);
+    expect(q.variationLabel).toBe('Tag Color: Red, Text Color: White');
+  });
+
+  it('requires every "Any" attribute to be chosen', () => {
+    const none = priceLine(anyProduct(), intent());
+    expect(none.issues.map((i) => i.message)).toEqual([
+      'Choose a tag color.',
+      'Choose a text color.',
+    ]);
+    const partial = priceLine(anyProduct(), intent({ 'tag-color': 'red' }));
+    expect(partial.issues.map((i) => i.message)).toEqual(['Choose a text color.']);
+  });
+
+  it('rejects choices that are not offered and attributes that do not exist', () => {
+    expect(
+      priceLine(anyProduct(), intent({ 'tag-color': 'green', 'text-color': 'white' })).issues[0]
+        ?.code,
+    ).toBe('invalid_variation');
+    expect(
+      priceLine(
+        anyProduct(),
+        intent({ 'tag-color': 'red', 'text-color': 'white', size: 'xl' }),
+      ).issues.map((i) => i.message),
+    ).toContain('Unknown variation option.');
+  });
+
+  it('keeps different choices on separate cart lines and identical choices together', () => {
+    const red = lineKey(intent({ 'tag-color': 'red', 'text-color': 'white' }));
+    const black = lineKey(intent({ 'tag-color': 'black', 'text-color': 'white' }));
+    const redAgain = lineKey(intent({ 'text-color': 'white', 'tag-color': 'red' }));
+    expect(red).not.toBe(black);
+    expect(red).toBe(redAgain);
+  });
+
+  it('rejects a choice that conflicts with a fixed variation value', () => {
+    const p = anyProduct();
+    const fixed = ProductSchema.parse({
+      ...p,
+      variations: [
+        {
+          id: 302,
+          attributes: { 'tag-color': 'black', 'text-color': '' },
+          price: money(899),
+          stockStatus: 'instock',
+        },
+      ],
+    });
+    const ok = priceLine(fixed, {
+      productId: 30,
+      variationId: 302,
+      attributes: { 'text-color': 'gray' },
+      quantity: 1,
+      options: {},
+    });
+    expect(ok.issues).toEqual([]);
+    expect(ok.variationLabel).toBe('Tag Color: Black, Text Color: Gray'); // fixed value filled in
+    const clash = priceLine(fixed, {
+      productId: 30,
+      variationId: 302,
+      attributes: { 'tag-color': 'red', 'text-color': 'gray' },
+      quantity: 1,
+      options: {},
+    });
+    expect(clash.issues.map((i) => i.message)).toContain(
+      'The chosen tag color does not match this variation.',
+    );
+  });
+
+  it('findVariation prefers the more specific variation over an "Any" one', () => {
+    const p = ProductSchema.parse({
+      ...anyProduct(),
+      variations: [
+        {
+          id: 1,
+          attributes: { 'tag-color': '', 'text-color': '' },
+          price: money(899),
+          stockStatus: 'instock',
+        },
+        {
+          id: 2,
+          attributes: { 'tag-color': 'red', 'text-color': '' },
+          price: money(999),
+          stockStatus: 'instock',
+        },
+      ],
+    });
+    expect(findVariation(p, { 'tag-color': 'red', 'text-color': 'white' })?.id).toBe(2);
+    expect(findVariation(p, { 'tag-color': 'black', 'text-color': 'white' })?.id).toBe(1);
+    expect(findVariation(p, { 'tag-color': 'black' })).toBeUndefined(); // incomplete selection
+  });
+
+  it('rejects attributes sent for a simple product', () => {
+    const q = priceLine(baseProduct(), {
+      productId: 10,
+      quantity: 1,
+      options: { name: 'Ada' },
+      attributes: { size: 's' },
+    });
+    expect(q.issues.map((i) => i.code)).toContain('invalid_variation');
+  });
+});

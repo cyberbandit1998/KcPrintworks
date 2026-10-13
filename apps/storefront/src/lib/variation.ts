@@ -13,11 +13,13 @@ export function optionAvailability(
   optionSlug: string,
   selection: Record<string, string>,
 ): OptionAvailability {
+  // An empty value is WooCommerce's "Any": that variation fits whatever option is chosen.
+  const fits = (value: string | undefined, option: string) => value === '' || value === option;
   const others = Object.entries(selection).filter(([slug]) => slug !== attributeSlug);
   const matches = product.variations.filter(
     (v) =>
-      v.attributes[attributeSlug] === optionSlug &&
-      others.every(([slug, option]) => v.attributes[slug] === option),
+      fits(v.attributes[attributeSlug], optionSlug) &&
+      others.every(([slug, option]) => fits(v.attributes[slug], option)),
   );
   if (matches.length === 0) return 'unavailable';
   if (matches.every((v) => v.stockStatus === 'outofstock')) return 'soldout';

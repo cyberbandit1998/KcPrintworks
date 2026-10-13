@@ -45,7 +45,10 @@ export const VariationSchema = z
   .object({
     id: z.number().int(),
     sku: z.string().optional(),
-    /** attribute slug -> option slug. Every variation sets every variation attribute. */
+    /**
+     * attribute slug -> option slug. Every variation lists every variation attribute. An EMPTY string means
+     * "Any" (WooCommerce semantics): the variation matches whatever option the shopper chooses for it.
+     */
     attributes: z.record(z.string(), z.string()),
     price: MoneySchema,
     regularPrice: MoneySchema.optional(),
@@ -112,7 +115,8 @@ export const ProductSchema = z
       for (const variation of product.variations) {
         for (const attr of variationAttrs) {
           const chosen = variation.attributes[attr.slug];
-          if (!chosen || !attr.options.some((o) => o.slug === chosen)) {
+          const valid = chosen === '' || attr.options.some((o) => o.slug === chosen);
+          if (chosen === undefined || !valid) {
             ctx.addIssue({
               code: 'custom',
               message: `Variation ${variation.id} has an invalid or missing "${attr.slug}"`,

@@ -73,3 +73,17 @@ describe('variation availability', () => {
     expect(optionAvailability(poster, 'size', 'huge', {})).toBe('unavailable');
   });
 });
+
+describe('"Any" variations in the fixture catalog', () => {
+  const tag = products.find((p) => p.slug === 'sample-name-tag')!;
+
+  it('has a single priced variation whose attributes are all "Any"', () => {
+    expect(tag.variations).toHaveLength(1);
+    expect(Object.values(tag.variations[0]!.attributes)).toEqual(['', '']);
+  });
+
+  it('keeps every offered option selectable because an "Any" variation fits all of them', () => {
+    expect(optionAvailability(tag, 'tag-color', 'red', {})).toBe('ok');
+    expect(optionAvailability(tag, 'tag-color', 'blue', { 'text-color': 'gray' })).toBe('ok');
+  });
+});

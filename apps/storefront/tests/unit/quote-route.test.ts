@@ -65,6 +65,47 @@ describe('POST /api/cart/quote', () => {
     expect(quote.checkoutReady).toBe(false);
   });
 
+  it('prices an "Any" variation from the shopper\'s choices and requires them', async () => {
+    const ok = QuoteResponseSchema.parse(
+      await (
+        await call({
+          lines: [
+            {
+              productId: 107,
+              variationId: 1071,
+              attributes: { 'tag-color': 'red', 'text-color': 'white' },
+              quantity: 2,
+              options: { personalization: 'Robin / Dog' },
+            },
+          ],
+        })
+      ).json(),
+    );
+    expect(ok.lines[0]?.issues).toEqual([]);
+    expect(ok.lines[0]?.variationLabel).toBe('Tag Color: Red, Text Color: White');
+    expect(ok.subtotal.amount).toBe(1798);
+
+    const missing = QuoteResponseSchema.parse(
+      await (
+        await call({
+          lines: [
+            {
+              productId: 107,
+              variationId: 1071,
+              quantity: 1,
+              options: { personalization: 'Robin' },
+            },
+          ],
+        })
+      ).json(),
+    );
+    expect(missing.lines[0]?.issues.map((i) => i.code)).toEqual([
+      'invalid_variation',
+      'invalid_variation',
+    ]);
+    expect(missing.checkoutReady).toBe(false);
+  });
+
   it('does not accept coupons in the preview', async () => {
     const res = await call({
       lines: [{ productId: 103, quantity: 1, options: {} }],

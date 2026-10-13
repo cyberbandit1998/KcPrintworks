@@ -87,6 +87,36 @@ test.describe('personalized purchase flow (design preview)', () => {
     await expect(page.getByRole('status').getByText(/added to your cart/)).toBeVisible();
   });
 
+  test('"Any" variation: choices travel with the line, so different colors never merge', async ({
+    page,
+  }) => {
+    const add = async (tagColor: string, name: string) => {
+      await page.goto('/product/sample-name-tag/');
+      await page.getByLabel(tagColor, { exact: true }).first().check();
+      await page.getByLabel('White').check();
+      await page.getByLabel(/Name and icon/).fill(name);
+      await page.getByRole('button', { name: 'Add to cart' }).click();
+      await expect(page.getByRole('status').getByText(/added to your cart/)).toBeVisible();
+    };
+
+    // The only variation is "Any", yet nothing may be bought without choosing both colors.
+    await page.goto('/product/sample-name-tag/');
+    await page.getByRole('button', { name: 'Add to cart' }).click();
+    const summary = page.getByRole('alert').filter({ hasText: 'Please fix' });
+    await expect(summary).toContainText('Choose a tag color');
+    await expect(summary).toContainText('Choose a text color');
+
+    await add('Red', 'Robin / Dog');
+    await add('Blue', 'Robin / Dog');
+    await add('Red', 'Robin / Dog');
+
+    await page.goto('/cart/');
+    await expect(page.getByText('Tag Color: Red, Text Color: White')).toHaveCount(1);
+    await expect(page.getByText('Tag Color: Blue, Text Color: White')).toHaveCount(1);
+    await expect(page.getByLabel(/^Quantity/).first()).toHaveValue('2');
+    await expect(page.getByRole('complementary')).toContainText('$26.97'); // 3 x $8.99
+  });
+
   test('sold-out simple product cannot be added', async ({ page }) => {
     await page.goto('/product/sample-mug/');
     const button = page.getByRole('button', { name: 'Sold out' });

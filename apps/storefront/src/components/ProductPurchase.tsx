@@ -151,6 +151,7 @@ export function ProductPurchase({ product }: { product: Product }) {
     cartActions.add({
       productId: product.id,
       variationId: chosen?.id,
+      attributes: product.type === 'variable' ? selection : undefined,
       quantity: qty,
       options: validation.values,
     });

@@ -12,24 +12,48 @@ import type { Product, Variation } from './product';
  * authoritative numbers come from WooCommerce, never from this module.
  */
 
+/** WooCommerce stores "Any" as an empty attribute value. */
+const ANY = '';
+
+const variationAttributes = (product: Product) =>
+  product.attributes.filter((a) => a.usedForVariations);
+
+/**
+ * The variation WooCommerce would use for a complete selection: every variation attribute must match
+ * exactly or be "Any". A variation with fewer "Any" attributes (more specific) wins; ties keep list order.
+ * (Mirrors WooCommerce's behavior; confirmed against its PHP implementation with shared vectors in Step 2.)
+ */
 export function findVariation(
   product: Product,
   selection: Record<string, string>,
 ): Variation | undefined {
-  const varAttrs = product.attributes.filter((a) => a.usedForVariations);
+  const varAttrs = variationAttributes(product);
   if (varAttrs.length === 0) return undefined;
   if (varAttrs.some((a) => !selection[a.slug])) return undefined;
-  return product.variations.find((v) =>
-    varAttrs.every((a) => v.attributes[a.slug] === selection[a.slug]),
-  );
+  let best: Variation | undefined;
+  let bestSpecificity = -1;
+  for (const v of product.variations) {
+    const matches = varAttrs.every((a) => {
+      const value = v.attributes[a.slug];
+      return value === ANY || value === selection[a.slug];
+    });
+    if (!matches) continue;
+    const specificity = varAttrs.filter((a) => v.attributes[a.slug] !== ANY).length;
+    if (specificity > bestSpecificity) {
+      best = v;
+      bestSpecificity = specificity;
+    }
+  }
+  return best;
 }
 
-export function variationLabel(product: Product, variation: Variation): string {
-  return product.attributes
-    .filter((a) => a.usedForVariations)
+/** "Size: Small, Color: Red" from the shopper's selection, using option display names. */
+export function selectionLabel(product: Product, selection: Record<string, string>): string {
+  return variationAttributes(product)
+    .filter((a) => selection[a.slug])
     .map((a) => {
-      const option = a.options.find((o) => o.slug === variation.attributes[a.slug]);
-      return `${a.name}: ${option?.name ?? variation.attributes[a.slug]}`;
+      const option = a.options.find((o) => o.slug === selection[a.slug]);
+      return `${a.name}: ${option?.name ?? selection[a.slug]}`;
     })
     .join(', ');
 }
@@ -75,7 +99,9 @@ export function priceLine(product: Product | undefined, intent: CartLineIntent):
     issues.push({ code: 'unavailable', message: `${product.name} is not available to purchase.` });
   }
 
+  let selection: Record<string, string> = {};
   if (product.type === 'variable') {
+    const varAttrs = variationAttributes(product);
     variation = product.variations.find((v) => v.id === intent.variationId);
     if (!variation) {
       issues.push({ code: 'invalid_variation', message: 'Choose a valid option for this item.' });
@@ -83,8 +109,39 @@ export function priceLine(product: Product | undefined, intent: CartLineIntent):
       base = variation.price;
       stockStatus = variation.stockStatus;
       stockQuantity = variation.stockQuantity;
+
+      // A fixed variation supplies its own value; an "Any" attribute must be chosen explicitly.
+      selection = { ...intent.attributes };
+      for (const attr of varAttrs) {
+        const fixed = variation.attributes[attr.slug] ?? ANY;
+        const chosen = selection[attr.slug];
+        if (fixed !== ANY) {
+          if (chosen !== undefined && chosen !== fixed) {
+            issues.push({
+              code: 'invalid_variation',
+              message: `The chosen ${attr.name.toLowerCase()} does not match this variation.`,
+            });
+          }
+          selection[attr.slug] = fixed;
+        } else if (!chosen) {
+          issues.push({
+            code: 'invalid_variation',
+            message: `Choose a ${attr.name.toLowerCase()}.`,
+          });
+        } else if (!attr.options.some((o) => o.slug === chosen)) {
+          issues.push({
+            code: 'invalid_variation',
+            message: `That ${attr.name.toLowerCase()} is not available.`,
+          });
+        }
+      }
+      for (const slug of Object.keys(selection)) {
+        if (!varAttrs.some((a) => a.slug === slug)) {
+          issues.push({ code: 'invalid_variation', message: 'Unknown variation option.' });
+        }
+      }
     }
-  } else if (intent.variationId !== undefined) {
+  } else if (intent.variationId !== undefined || Object.keys(intent.attributes ?? {}).length > 0) {
     issues.push({ code: 'invalid_variation', message: 'This item has no variations.' });
   }
 
@@ -114,7 +171,7 @@ export function priceLine(product: Product | undefined, intent: CartLineIntent):
     variationId: variation?.id,
     slug: product.slug,
     name: product.name,
-    variationLabel: variation ? variationLabel(product, variation) : undefined,
+    variationLabel: variation ? selectionLabel(product, selection) || undefined : undefined,
     image: variation?.image ?? product.images[0],
     quantity: intent.quantity,
     unitPrice,

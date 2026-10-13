@@ -382,6 +382,70 @@ const rawProducts = [
     },
     updatedAt: UPDATED,
   },
+  {
+    id: 107,
+    slug: 'sample-name-tag',
+    type: 'variable',
+    name: 'Sample Name Tag',
+    descriptionHtml: PLACEHOLDER_DESCRIPTION,
+    shortDescription: 'Placeholder: one price, colors chosen from dropdowns, name typed in.',
+    price: money(899),
+    images: [
+      image('stickers.svg', 'Placeholder artwork: orange circle, blue square, and a triangle'),
+    ],
+    categories: [cat('extras')],
+    attributes: [
+      {
+        slug: 'tag-color',
+        name: 'Tag Color',
+        usedForVariations: true,
+        options: [
+          { slug: 'black', name: 'Black' },
+          { slug: 'red', name: 'Red' },
+          { slug: 'blue', name: 'Blue' },
+        ],
+      },
+      {
+        slug: 'text-color',
+        name: 'Text Color',
+        usedForVariations: true,
+        options: [
+          { slug: 'white', name: 'White' },
+          { slug: 'gray', name: 'Gray' },
+        ],
+      },
+    ],
+    // Same shape as a real WooCommerce catalog pattern: one variation, every attribute "Any" (empty string).
+    variations: [
+      {
+        id: 1071,
+        attributes: { 'tag-color': '', 'text-color': '' },
+        price: money(899),
+        stockStatus: 'instock',
+      },
+    ],
+    optionSchema: {
+      version: 1,
+      fields: [
+        {
+          id: 'personalization',
+          type: 'text',
+          label: 'Name and icon',
+          helpText: 'Example: Robin / Dog. Please double-check the spelling.',
+          required: true,
+          minLength: 1,
+          maxLength: 40,
+        },
+      ],
+    },
+    availability: { purchasable: true, stockStatus: 'instock', madeToOrder: true, leadTimeDays: 4 },
+    seo: {
+      title: 'Sample Name Tag',
+      description: 'Placeholder SEO description for the sample name tag.',
+      noindex: false,
+    },
+    updatedAt: UPDATED,
+  },
 ];
 
 /** Parsed through the same schema that WooCommerce data must satisfy, so fixtures cannot drift from it. */

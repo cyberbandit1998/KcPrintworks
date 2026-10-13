@@ -34,6 +34,8 @@ jobs:
         run: npm run typecheck
       - name: Unit tests
         run: npm test
+      - name: Script tests
+        run: npm run test:scripts
       - name: Install Playwright browser
         run: npx playwright install --with-deps chromium
         working-directory: apps/storefront
