@@ -6,9 +6,8 @@ import {
   MAX_LINE_QUANTITY,
   formatMoney,
   lineKey,
-  QuoteResponseSchema,
   type QuoteResponse,
-} from '@kcpw/contracts';
+} from '@kcpw/contracts/client';
 import { cartActions, useCartLines } from '@/lib/cart/store';
 import { checkoutAvailable } from '@/lib/checkout';
 import { useIsClient } from '@/lib/use-is-client';
@@ -48,10 +47,13 @@ export function CartView() {
       .then((response) =>
         response.ok ? response.json() : Promise.reject(new Error(`HTTP ${response.status}`)),
       )
-      .then((data) => {
+      .then(async (data) => {
+        // The validation library is loaded here, after the cart has rendered, so it never weighs on
+        // the first paint of the cart page or on any other page.
+        const { QuoteResponseSchema } = await import('@kcpw/contracts');
         const parsed = QuoteResponseSchema.safeParse(data);
         if (!parsed.success) throw new Error('Unexpected quote response');
-        setResult({ requestKey, quote: parsed.data });
+        if (!controller.signal.aborted) setResult({ requestKey, quote: parsed.data });
       })
       .catch(() => {
         if (!controller.signal.aborted)

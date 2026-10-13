@@ -1,14 +1,13 @@
-import { z } from 'zod';
-
 /**
  * Money is always an integer count of the currency's minor unit (cents for USD).
  * No floating point is used for arithmetic anywhere in the project.
  */
-export const MoneySchema = z.object({
-  amount: z.number().int(),
-  currency: z.string().length(3),
-});
-export type Money = z.infer<typeof MoneySchema>;
+export interface Money {
+  /** Integer minor units. */
+  amount: number;
+  /** ISO 4217 code, three letters. */
+  currency: string;
+}
 
 export const DEFAULT_CURRENCY = 'USD';
 

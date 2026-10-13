@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { ProductSchema, priceLine, toSummary } from '@kcpw/contracts';
+import {
+  ProductSchema,
+  expandVariations,
+  priceLine,
+  toPurchaseModel,
+  toSummary,
+} from '@kcpw/contracts';
 import { categories, products } from '@/lib/catalog/fixtures';
 import { fixtureCatalog } from '@/lib/catalog/fixture-source';
 import { optionAvailability } from '@/lib/variation';
@@ -85,5 +91,100 @@ describe('"Any" variations in the fixture catalog', () => {
   it('keeps every offered option selectable because an "Any" variation fits all of them', () => {
     expect(optionAvailability(tag, 'tag-color', 'red', {})).toBe('ok');
     expect(optionAvailability(tag, 'tag-color', 'blue', { 'text-color': 'gray' })).toBe('ok');
+  });
+});
+
+type Selection = Record<string, string>;
+
+describe('bag tag: the same product two ways', () => {
+  const asImported = products.find((p) => p.slug === 'sample-bag-tag-as-imported')!;
+  const asOptions = products.find((p) => p.slug === 'sample-bag-tag')!;
+  const poster = products.find((p) => p.slug === 'sample-custom-poster')!;
+
+  it('as imported: 169 "Any" variations reach the browser as one row', () => {
+    expect(asImported.variations).toHaveLength(169);
+    const model = toPurchaseModel(asImported);
+    expect(model.variations.rows).toHaveLength(1);
+    expect(JSON.stringify(model).length).toBeLessThan(JSON.stringify(asImported).length / 10);
+  });
+
+  it('as imported: shows exactly the same availability for every option as the full product', () => {
+    const model = toPurchaseModel(asImported);
+    const lookup = { variations: expandVariations(model) };
+    for (const attr of asImported.attributes) {
+      for (const option of attr.options) {
+        for (const selection of [
+          {},
+          { 'text-color': 'red' },
+          { 'tag-color': 'navy' },
+        ] as Selection[]) {
+          expect(optionAvailability(lookup, attr.slug, option.slug, selection)).toBe(
+            optionAvailability(asImported, attr.slug, option.slug, selection),
+          );
+        }
+      }
+    }
+  });
+
+  it('every availability answer survives compaction on the sold-out poster too', () => {
+    const lookup = { variations: expandVariations(toPurchaseModel(poster)) };
+    for (const attr of poster.attributes) {
+      for (const option of attr.options) {
+        for (const selection of [
+          {},
+          { size: 'large' },
+          { finish: 'gloss' },
+          { size: 'small' },
+        ] as Selection[]) {
+          expect(optionAvailability(lookup, attr.slug, option.slug, selection)).toBe(
+            optionAvailability(poster, attr.slug, option.slug, selection),
+          );
+        }
+      }
+    }
+  });
+
+  it('as options: no variations, and every choice is kept with the order line', () => {
+    expect(asOptions.type).toBe('simple');
+    expect(asOptions.variations).toEqual([]);
+    const quote = priceLine(asOptions, {
+      productId: asOptions.id,
+      quantity: 1,
+      options: {
+        tag_color: 'navy',
+        text_color: 'white',
+        cable_color: 'silver',
+        icon: 'paw',
+        name: 'Robin',
+      },
+    });
+    expect(quote.issues).toEqual([]);
+    expect(quote.optionSummary).toEqual([
+      { fieldId: 'tag_color', label: 'Tag color', value: 'Navy' },
+      { fieldId: 'text_color', label: 'Text color', value: 'White' },
+      { fieldId: 'cable_color', label: 'Cable color', value: 'Silver' },
+      { fieldId: 'icon', label: 'Icon', value: 'Paw' },
+      { fieldId: 'name', label: 'Name or short text', value: 'Robin' },
+    ]);
+  });
+
+  it('as options: rejects a color that is not offered and a missing required choice', () => {
+    const quote = priceLine(asOptions, {
+      productId: asOptions.id,
+      quantity: 1,
+      options: {
+        tag_color: 'chartreuse',
+        text_color: 'white',
+        cable_color: 'silver',
+        name: 'Robin',
+      },
+    });
+    expect(quote.issues.length).toBeGreaterThan(0);
+    const missing = priceLine(asOptions, {
+      productId: asOptions.id,
+      quantity: 1,
+      options: { tag_color: 'navy', text_color: 'white', name: 'Robin' },
+    });
+    expect(missing.issues.length).toBeGreaterThan(0);
   });
 });

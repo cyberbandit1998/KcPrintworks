@@ -1,4 +1,4 @@
-import { formatMoney, type Money } from '@kcpw/contracts';
+import { formatMoney, type Money } from '@kcpw/contracts/client';
 
 interface Props {
   price: Money;

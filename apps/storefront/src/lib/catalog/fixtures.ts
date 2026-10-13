@@ -77,6 +77,25 @@ const nameField = {
   placeholder: 'e.g. Ada',
 };
 
+/** Thirteen placeholder colors, the size of each color set on the real bag tag (names are synthetic). */
+const TAG_COLORS = [
+  ['black', 'Black'],
+  ['white', 'White'],
+  ['red', 'Red'],
+  ['orange', 'Orange'],
+  ['yellow', 'Yellow'],
+  ['green', 'Green'],
+  ['teal', 'Teal'],
+  ['blue', 'Blue'],
+  ['navy', 'Navy'],
+  ['purple', 'Purple'],
+  ['pink', 'Pink'],
+  ['gray', 'Gray'],
+  ['brown', 'Brown'],
+] as const;
+
+const colorChoices = TAG_COLORS.map(([value, label]) => ({ value, label }));
+
 const rawProducts = [
   {
     id: 101,
@@ -442,6 +461,123 @@ const rawProducts = [
     seo: {
       title: 'Sample Name Tag',
       description: 'Placeholder SEO description for the sample name tag.',
+      noindex: false,
+    },
+    updatedAt: UPDATED,
+  },
+  {
+    id: 108,
+    slug: 'sample-bag-tag',
+    type: 'simple',
+    name: 'Sample Bag Tag',
+    descriptionHtml: PLACEHOLDER_DESCRIPTION,
+    shortDescription:
+      'Placeholder: the recommended shape for a tag with two color sets. No variations; every choice is saved with the order.',
+    price: money(899),
+    images: [
+      image('stickers.svg', 'Placeholder artwork: orange circle, blue square, and a triangle'),
+    ],
+    categories: [cat('extras')],
+    attributes: [],
+    variations: [],
+    optionSchema: {
+      version: 1,
+      fields: [
+        {
+          id: 'tag_color',
+          type: 'select',
+          label: 'Tag color',
+          required: true,
+          choices: colorChoices,
+        },
+        {
+          id: 'text_color',
+          type: 'select',
+          label: 'Text color',
+          required: true,
+          choices: colorChoices,
+        },
+        {
+          id: 'cable_color',
+          type: 'select',
+          label: 'Cable color',
+          required: true,
+          choices: [
+            { value: 'black', label: 'Black' },
+            { value: 'silver', label: 'Silver' },
+            { value: 'red', label: 'Red' },
+            { value: 'blue', label: 'Blue' },
+          ],
+        },
+        {
+          id: 'icon',
+          type: 'select',
+          label: 'Icon',
+          helpText: 'Placeholder icon list.',
+          required: false,
+          choices: [
+            { value: 'none', label: 'No icon' },
+            { value: 'star', label: 'Star' },
+            { value: 'paw', label: 'Paw' },
+            { value: 'plane', label: 'Plane' },
+          ],
+        },
+        { ...nameField, id: 'name', maxLength: 20 },
+      ],
+    },
+    availability: { purchasable: true, stockStatus: 'instock', madeToOrder: true, leadTimeDays: 4 },
+    seo: {
+      title: 'Sample Bag Tag',
+      description: 'Placeholder SEO description for the sample bag tag.',
+      noindex: false,
+    },
+    updatedAt: UPDATED,
+  },
+  {
+    id: 109,
+    slug: 'sample-bag-tag-as-imported',
+    type: 'variable',
+    name: 'Sample Bag Tag (as imported)',
+    descriptionHtml: PLACEHOLDER_DESCRIPTION,
+    shortDescription:
+      'Placeholder: the shape found in the real export, 169 variations whose attributes are all "Any". Used to prove the page stays light.',
+    price: money(899),
+    images: [
+      image('stickers.svg', 'Placeholder artwork: orange circle, blue square, and a triangle'),
+    ],
+    categories: [cat('extras')],
+    attributes: [
+      {
+        slug: 'tag-color',
+        name: 'Tag Color',
+        usedForVariations: true,
+        options: TAG_COLORS.map(([slug, name]) => ({ slug, name })),
+      },
+      {
+        slug: 'text-color',
+        name: 'Text Color',
+        usedForVariations: true,
+        options: TAG_COLORS.map(([slug, name]) => ({ slug, name })),
+      },
+    ],
+    variations: TAG_COLORS.flatMap((_, tagIndex) =>
+      TAG_COLORS.map((__, textIndex) => ({
+        id: 2000 + tagIndex * TAG_COLORS.length + textIndex,
+        sku: `SAMPLE-BAGTAG-${tagIndex * TAG_COLORS.length + textIndex + 1}`,
+        attributes: { 'tag-color': '', 'text-color': '' },
+        price: money(899),
+        stockStatus: 'instock',
+        stockQuantity: 15,
+      })),
+    ),
+    optionSchema: {
+      version: 1,
+      fields: [{ ...nameField, id: 'name', maxLength: 20 }],
+    },
+    availability: { purchasable: true, stockStatus: 'instock', madeToOrder: true, leadTimeDays: 4 },
+    seo: {
+      title: 'Sample Bag Tag (as imported)',
+      description: 'Placeholder SEO description for the as-imported bag tag.',
       noindex: false,
     },
     updatedAt: UPDATED,

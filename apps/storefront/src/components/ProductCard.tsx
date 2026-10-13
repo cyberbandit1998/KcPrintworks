@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import type { ProductSummary } from '@kcpw/contracts';
+import type { ProductSummary } from '@kcpw/contracts/client';
 import { Price } from './Price';
 import { ProductImage } from './ProductImage';
 

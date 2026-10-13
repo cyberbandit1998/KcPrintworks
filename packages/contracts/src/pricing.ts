@@ -1,7 +1,8 @@
 import { addMoney, multiplyMoney, zero, type Money } from './money';
-import { lineKey, type CartLineIntent, type QuoteIssue, type QuoteLine } from './cart';
-import { optionPriceAdders, optionSummary, validateOptions } from './options';
-import type { Product, Variation } from './product';
+import { lineKey } from './cart-logic';
+import type { CartLineIntent, QuoteIssue, QuoteLine } from './cart';
+import { optionPriceAdders, optionSummary, validateOptions } from './option-logic';
+import type { Product, ProductAttribute, Variation } from './product';
 
 /**
  * Reference implementation of what the server does with one cart line:
@@ -15,7 +16,7 @@ import type { Product, Variation } from './product';
 /** WooCommerce stores "Any" as an empty attribute value. */
 const ANY = '';
 
-const variationAttributes = (product: Product) =>
+const variationAttributes = (product: { attributes: readonly ProductAttribute[] }) =>
   product.attributes.filter((a) => a.usedForVariations);
 
 /**
@@ -23,14 +24,14 @@ const variationAttributes = (product: Product) =>
  * exactly or be "Any". A variation with fewer "Any" attributes (more specific) wins; ties keep list order.
  * (Mirrors WooCommerce's behavior; confirmed against its PHP implementation with shared vectors in Step 2.)
  */
-export function findVariation(
-  product: Product,
+export function findVariation<V extends Pick<Variation, 'id' | 'attributes'>>(
+  product: { attributes: readonly ProductAttribute[]; variations: readonly V[] },
   selection: Record<string, string>,
-): Variation | undefined {
+): V | undefined {
   const varAttrs = variationAttributes(product);
   if (varAttrs.length === 0) return undefined;
   if (varAttrs.some((a) => !selection[a.slug])) return undefined;
-  let best: Variation | undefined;
+  let best: V | undefined;
   let bestSpecificity = -1;
   for (const v of product.variations) {
     const matches = varAttrs.every((a) => {
@@ -48,7 +49,10 @@ export function findVariation(
 }
 
 /** "Size: Small, Color: Red" from the shopper's selection, using option display names. */
-export function selectionLabel(product: Product, selection: Record<string, string>): string {
+export function selectionLabel(
+  product: { attributes: readonly ProductAttribute[] },
+  selection: Record<string, string>,
+): string {
   return variationAttributes(product)
     .filter((a) => selection[a.slug])
     .map((a) => {

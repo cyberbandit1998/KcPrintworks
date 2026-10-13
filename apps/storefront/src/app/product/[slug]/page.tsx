@@ -7,6 +7,7 @@ import { ProductPurchase } from '@/components/ProductPurchase';
 import { RichText } from '@/components/RichText';
 import { getCatalog } from '@/lib/catalog';
 import { breadcrumbJsonLd, productJsonLd } from '@/lib/seo';
+import { toPurchaseModel } from '@kcpw/contracts';
 
 type Params = { slug: string };
 
@@ -68,7 +69,7 @@ export default async function ProductPage({ params }: { params: Promise<Params> 
         <div>
           <h1>{product.name}</h1>
           <p>{product.shortDescription}</p>
-          <ProductPurchase product={product} />
+          <ProductPurchase product={toPurchaseModel(product)} />
           <section aria-labelledby="details-heading" style={{ marginTop: 'var(--space-6)' }}>
             <h2 id="details-heading">Details</h2>
             <RichText html={product.descriptionHtml} />

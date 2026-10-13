@@ -28,6 +28,30 @@ export default [
     settings: { next: { rootDir: 'apps/storefront/' } },
   },
   {
+    // Code that can run in the browser must use the zod-free entry (about 115 KB of JavaScript saved on
+    // every page). Types are erased at build time, so `import type` from the full entry is fine anywhere.
+    files: [
+      'apps/storefront/src/components/**/*.{ts,tsx}',
+      'apps/storefront/src/lib/cart/**/*.{ts,tsx}',
+      'apps/storefront/src/lib/variation.ts',
+    ],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            {
+              name: '@kcpw/contracts',
+              message:
+                "Import runtime code from '@kcpw/contracts/client' (no zod). Use `import type` for types. Load schemas lazily with import().",
+              allowTypeImports: true,
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
     rules: {
       '@typescript-eslint/no-unused-vars': [
         'error',

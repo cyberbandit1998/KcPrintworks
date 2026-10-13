@@ -1,5 +1,5 @@
 import Image from 'next/image';
-import type { ProductImage as ProductImageData } from '@kcpw/contracts';
+import type { ProductImage as ProductImageData } from '@kcpw/contracts/client';
 
 interface Props {
   image: ProductImageData;

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import type { ProductImage as ProductImageData } from '@kcpw/contracts';
+import type { ProductImage as ProductImageData } from '@kcpw/contracts/client';
 import { ProductImage } from './ProductImage';
 
 export function Gallery({ images }: { images: ProductImageData[] }) {

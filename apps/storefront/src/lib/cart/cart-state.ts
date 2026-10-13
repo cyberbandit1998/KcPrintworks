@@ -1,10 +1,10 @@
 import {
-  CartLineIntentSchema,
   MAX_CART_LINES,
   MAX_LINE_QUANTITY,
   lineKey,
+  readCartLineIntent,
   type CartLineIntent,
-} from '@kcpw/contracts';
+} from '@kcpw/contracts/client';
 
 /**
  * Pure cart operations on LINE INTENTS. The cart never holds prices; the server re-quotes every time.
@@ -58,8 +58,8 @@ export function parseStoredCart(raw: string | null): CartLineIntent[] {
   if (!Array.isArray(data)) return [];
   const lines: CartLineIntent[] = [];
   for (const item of data.slice(0, MAX_CART_LINES)) {
-    const parsed = CartLineIntentSchema.safeParse(item);
-    if (parsed.success) lines.push(parsed.data);
+    const line = readCartLineIntent(item);
+    if (line) lines.push(line);
   }
   return lines;
 }

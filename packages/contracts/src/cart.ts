@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import { MoneySchema } from './money';
+import { MoneySchema } from './money-schema';
+import { ISSUE_CODES, MAX_CART_LINES, MAX_LINE_QUANTITY } from './cart-logic';
 
 /**
  * Cart contracts.
@@ -8,9 +9,6 @@ import { MoneySchema } from './money';
  * that includes a `price`, `total`, or any other unexpected field is rejected outright rather than ignored,
  * which is how "prices are never accepted from the client" is enforced and tested.
  */
-
-export const MAX_LINE_QUANTITY = 99;
-export const MAX_CART_LINES = 50;
 
 export const CartLineIntentSchema = z
   .object({
@@ -36,17 +34,6 @@ export const QuoteRequestSchema = z
   })
   .strict();
 export type QuoteRequest = z.infer<typeof QuoteRequestSchema>;
-
-export const ISSUE_CODES = [
-  'unknown_product',
-  'unavailable',
-  'invalid_variation',
-  'out_of_stock',
-  'quantity_limit',
-  'invalid_option',
-  'coupon_invalid',
-] as const;
-export type IssueCode = (typeof ISSUE_CODES)[number];
 
 export const QuoteIssueSchema = z.object({
   code: z.enum(ISSUE_CODES),
@@ -86,20 +73,3 @@ export const QuoteResponseSchema = z.object({
   note: z.string(),
 });
 export type QuoteResponse = z.infer<typeof QuoteResponseSchema>;
-
-/** Deterministic key so identical product + variation + choices merge, and different choices never do. */
-export function lineKey(
-  line: Pick<CartLineIntent, 'productId' | 'variationId' | 'options'> &
-    Partial<Pick<CartLineIntent, 'attributes'>>,
-): string {
-  const sortedEntries = (record: Record<string, string | boolean>) =>
-    Object.entries(record)
-      .filter(([, v]) => v !== '' && v !== false)
-      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
-  return JSON.stringify([
-    line.productId,
-    line.variationId ?? 0,
-    sortedEntries(line.attributes ?? {}),
-    sortedEntries(line.options ?? {}),
-  ]);
-}

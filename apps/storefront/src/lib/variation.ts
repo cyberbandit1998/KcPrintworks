@@ -1,4 +1,4 @@
-import type { Product } from '@kcpw/contracts';
+import type { Variation } from '@kcpw/contracts/client';
 
 export type OptionAvailability = 'ok' | 'soldout' | 'unavailable';
 
@@ -8,7 +8,7 @@ export type OptionAvailability = 'ok' | 'soldout' | 'unavailable';
  * - `soldout`: it exists but every matching variation is out of stock
  */
 export function optionAvailability(
-  product: Product,
+  product: { variations: readonly Pick<Variation, 'attributes' | 'stockStatus'>[] },
   attributeSlug: string,
   optionSlug: string,
   selection: Record<string, string>,

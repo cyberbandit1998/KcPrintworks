@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { MoneySchema } from './money';
+import { MoneySchema } from './money-schema';
 import { OptionSchemaSchema } from './options';
 
 /**

@@ -1,0 +1,80 @@
+plugin,kind,version,status,update_available,group,migration_note
+Akismet Anti-spam,third-party,5.7,inactive,5.7.2,spam,Inactive. Decide keep/remove.
+Connect Matomo,third-party,1.1.12,active,,analytics,Adds Matomo tracking code. Must be re-added to the Next.js storefront (consent applies).
+Contact Form 7,third-party,6.2.2,active,,forms,Contact form. Needs a Next.js equivalent or a link to the shop host.
+Google for WooCommerce,third-party,3.9.5,active,3.9.6,feeds,Merchant Center feed uses product URLs: keep URLs stable; reconnect on the shop host.
+Klaviyo,third-party,3.8.0,active,3.8.3,marketing,Syncs customers/orders/products and abandoned carts; tied to the site URL.
+Mailgun,third-party,2.2.3,active,,email,Transactional email transport. Check domain authentication; reuse on the shop host.
+Matomo Analytics,third-party,5.10.1,inactive,5.13.1,analytics,Inactive (self-hosted Matomo not in use).
+Matomo Marketplace for WordPress,third-party,1.1.1,active,1.2.2,analytics,Update notifier for Matomo plugins.
+Meta for WooCommerce,third-party,3.7.6,active,3.7.8,feeds,Facebook/Instagram catalog (fb_* product meta). Reconnect at domain move.
+Pinterest for WooCommerce,third-party,1.5.0,inactive,1.5.3,feeds,Inactive.
+Site Kit by Google,third-party,1.189.0,active,,analytics,Google Analytics / Search Console wiring.
+Stripe Tax - Sales tax automation,third-party,2.1.0,active,,tax,Automated sales tax via Stripe. Active together with WooCommerce Tax (see PLUGINS.md).
+WooCommerce,third-party,11.1.0,active,11.2.1,commerce,Core. Production is one minor version behind.
+WooCommerce PayPal Payments,third-party,4.1.3,active,,payments,PayPal is a live payment method today. Keep or retire is an owner decision.
+WooCommerce Shipping,third-party,2.3.16,active,2.4.2,shipping,Discounted labels; needs WooCommerce.com connection (tied to site URL).
+WooCommerce Stripe Gateway,third-party,11.0.0,active,11.0.1,payments,Already installed and active on the live site; staging clone must not inherit live keys or webhooks.
+WooCommerce Tax,third-party,3.6.15,active,3.7.2,tax,Automated tax via WooCommerce.com. Active together with Stripe Tax (see PLUGINS.md).
+WooPayments,third-party,11.1.0,inactive,11.2.0,payments,Inactive.
+KcPrintWorks Blog SEO Meta Fixes,custom,1.0.0,active,,seo,SEO/social meta overrides for specific Print Talk posts.
+KcPrintWorks Google Index Cleanup,custom,1.0.0,active,,seo,Redirects author/uncategorized archives; noindexes private/tag archives; trims core sitemaps. Rules must be reproduced.
+KcPrintWorks Product Tag Sitemap Off,custom,1.0.0,active,,seo,Tag archives out of sitemaps and noindex.
+KCPW Category SEO Titles,custom,1.0.0,active,,seo,Category page title tags.
+KCPW Google Site Verification,custom,1.0.0,active,,seo,Serves the Search Console verification file.
+KCPW June 22 Product SEO Polish,custom,1.0.0,active,,seo,"Per-product SEO for products added June 22, 2026 (may be keyed by product ID)."
+KCPW New Products SEO Polish,custom,1.0.0,active,,seo,SEO descriptions for current New Arrivals; replaces truncated imported meta text.
+KCPW PLA vs PETG vs ASA Post SEO Meta,custom,1.0.0,active,,seo,SEO meta for one blog post.
+KCPW Product SEO Details,custom,1.0.0,active,,seo,Product meta descriptions and social metadata. Source of truth for product SEO.
+KCPW Ranking Content,custom,1.0.0,active,,seo,"Homepage/shop SEO content, FAQ schema, shop heading."
+KCPW SEO Basics,custom,1.0.3,active,,seo,"Baseline meta, Open Graph, store schema ""until a full SEO plugin is configured"". No SEO plugin is installed."
+KCPW SEO Internal Links,custom,1.0.0,active,,seo,Internal-link section on key pages.
+KCPW Unique Page Meta Descriptions,custom,1.0.0,active,,seo,"Meta descriptions for policy, Print Talk, category, paginated pages."
+KcPrintWorks Hello World Redirect,custom,1.0.0,active,,redirects,301 for default Hello World URLs.
+KcPrintWorks Page ID 2 Redirect,custom,1.0.0,active,,redirects,301 for ?page_id=2.
+KCPW Blog Link Injector,custom,1.0.0,active,,links,Adds Blog link to header/footer.
+KCPW Blog Link Static Injector,custom,1.0.0,active,,links,Server-side Blog link injection (overlaps the previous one).
+KCPW Broken Internal Link Cleanup,custom,1.0.1,active,,links,Removes 404 header/footer links; crawler-safe mailto.
+KCPW Cloudflare Email Crawler Fix,custom,1.0.0,active,,links,"Indicates Cloudflare email obfuscation is on, so Cloudflare is probably in front of the site."
+KCPW Contact Link Injector,custom,1.0.0,active,,links,Adds Contact link to header/footer.
+KcPrintWorks Returns Policy Footer Link,custom,1.0.0,active,,links,Reveals Returns & Exchanges footer link.
+KcPrintWorks Shipping Policy Footer Link,custom,1.0.0,active,,links,Reveals Shipping Policy footer link.
+KcPrintWorks Custom Footer,custom,1.0,active,,theme,Custom footer.
+KcPrintWorks Custom Header,custom,1.0,active,,theme,Custom header.
+KCPW Header Banner Refresh,custom,1.0.3,active,,theme,Banner-led header.
+KCPW Warm Paper Maker Theme,custom,1.0.9,active,,theme,Visual layer (warm paper look).
+KcPrintWorks Storefront Conversion Polish,custom,1.0.0,active,,theme,"Hero CTA, trust strip, browsing polish."
+KcPrintWorks Tile Spacing Fix,custom,1.0.0,active,,theme,CSS fix.
+KCPW Search Icon Fix,custom,1.0.0,active,,theme,Header search icon.
+KcPrintWorks Product Image Load Fix,custom,1.0.0,active,,theme,Eager thumbnails.
+KcPW Footer Contact Updater,custom,1.0,active,,theme,Footer contact details.
+KCPW Footer Social Display Fix,custom,1.0.0,active,,theme,Social icons.
+KCPW Footer Social Links,custom,1.1.0,active,,theme,Social links v1 (three generations are all active).
+KCPW Footer Social Links v2,custom,1.2.0,active,,theme,Social links v2.
+KCPW Footer Social Links v3,custom,1.3.0,active,,theme,Social links v3.
+KCPW Hide Footer Newsletter,custom,1.0.0,active,,theme,Hides footer newsletter in favor of the Klaviyo popup.
+KCPW Hide Author Line CSS,custom,1.0.0,active,,theme,Hides author/date line on posts.
+KCPW Hide Post Author Meta,custom,1.0.0,inactive,,theme,Inactive (Astra theme author/date meta).
+KCPW Print Talk Final Labels,custom,1.0.0,active,,theme,"Output buffer renames blog labels to ""Print Talk""; URL stays /blog/."
+KCPW Print Talk Labels,custom,1.0.0,inactive,,theme,Inactive predecessor.
+KCPW Print Talk Visible Labels,custom,1.0.0,inactive,,theme,Inactive predecessor.
+KcPrintWorks Back to School Sale,custom,1.0.1,active,,merchandising,"Storewide 25% sale and banner ""through September 30, 2026"". Still active on 2026-10-13: confirm it no longer affects prices."
+KcPrintWorks New Arrivals Merchandising,custom,1.0.1,active,,merchandising,Assigns the latest 8 imported products to Game Night / New Arrivals; badges; strip.
+KCPW Auto New Arrivals Rotator,custom,1.0.0,active,,merchandising,"Automatically moves products in and out of New Arrivals and back to ""regular categories"" (explains many Uncategorized products)."
+KCPW Featured Shop Product Order,custom,1.1.0,active,,merchandising,"Custom shop ordering: card games first, battery/ammo lower. Reproduce as a sort rule."
+KCPW Home Free Shipping Flag,custom,1.0.0,active,,merchandising,Free-shipping flag on home page.
+KCPW Shipping Promo Placement,custom,1.0.0,active,,merchandising,Free-shipping flag and checkout note.
+KCPW Mini Cart Free Shipping Drawer,custom,1.0.0,active,,merchandising,Mini cart with free-shipping progress bar. Needs the threshold.
+KCPW Etsy Review Carousel,custom,1.1.0,active,,content,Etsy reviews carousel on home/shop.
+KCPW Etsy Latest Reviews Refresh,custom,1.0.1,active,,content,"""Latest API-verified Etsy review text"". Ask whether an Etsy API key already exists."
+KCPW FAQ After Reviews,custom,1.0.0,active,,content,Moves SEO/FAQ box below reviews.
+KcPrintWorks Klaviyo Email Popup,custom,1.0.5,active,,marketing,Branded signup popup submitting consent to Klaviyo.
+KCPW 3D Print Focus Cleanup,custom,1.0.0,active,,content,Removes old apparel wording from public output (render time).
+KCPW Public Output Domain and 3D Focus,custom,1.0.0,active,,content,Public-output cleanup for domain launch (render time).
+KCPW Retired Apparel Link Hider,custom,1.0.0,active,,content,Hides empty apparel category links.
+KCPW Cart Quantity Controls,custom,1.0.0,active,,cart,Touch-friendly quantity controls.
+KcPrintWorks Mini Cart Mobile Button Fix,custom,1.0.0,active,,cart,Mini-cart buttons on mobile.
+KCPW Mobile Checkout Centering Fix,custom,1.0.0,active,,cart,Mobile checkout layout (checkout blocks).
+KCPW Non-Checkout Payment CSS Remover,custom,1.0.0,active,,cart,Confirms the Checkout block with Stripe and PayPal is in use.
+KCPW Safe Speed Asset Cleanup,custom,1.0.0,active,,performance,Removes CF7/payment assets from unrelated pages; defers scripts.
+KCPW Variable Parent Stock Guard,custom,1.0.0,active,,stock,Stops variable parents showing out of stock while a variation is in stock (a workaround for stock/variation problems).

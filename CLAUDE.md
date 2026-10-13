@@ -48,7 +48,8 @@ apps/storefront/            Next.js 16 App Router storefront (TypeScript)
   src/lib/cart/             pure cart logic (cart-state.ts) + localStorage store (store.ts)
   src/styles/               tokens.css (brand + semantic tokens), base.css, components.css
   tests/unit/               Vitest;  tests/e2e/  Playwright + axe
-packages/contracts/         shared zod schemas + reference validation/pricing (the oracle for the PHP side)
+packages/contracts/         shared zod schemas + reference validation/pricing (the oracle for the PHP side).
+                            `@kcpw/contracts` = everything (server); `@kcpw/contracts/client` = zod-free (browser)
 scripts/guards.mjs          repo guards (Etsy isolation, secret-shaped strings, public env names)
 scripts/discovery/          analyze-wc-export.mjs: read-only analysis of a WooCommerce product CSV export (+ tests)
 docs/                       architecture, payments, Etsy, plan, migration, discovery, decisions
@@ -94,6 +95,11 @@ ADRs updated if a decision changed.
 - **Personalization:** each personalization is its own line (line key includes the options); server-side
   validation is mandatory; the storefront renders from the plugin-agnostic option schema in the DTO.
 - **Schemas** that cross a trust boundary use zod `.strict()`.
+- **Browser JavaScript budget:** client components, `src/lib/cart/` and `src/lib/variation.ts` import runtime code
+  only from `@kcpw/contracts/client` (zod is ~115 KB of JS; ESLint enforces this, and `test/client-entry.test.ts` walks the
+  entry's import graph). Logic that the browser needs lives in zod-free `*-logic.ts` modules, schemas in the others. The
+  product page sends the form a `PurchaseModel` (compact variation rows, interchangeable ones collapsed), never the product.
+  `tests/e2e/bag-tag.spec.ts` holds the payload and script-size budgets.
 - **Invisible/special characters:** never put literal zero-width or bidi characters in source. Build them from
   code points (see `FORBIDDEN_RANGES` in `packages/contracts/src/options.ts`).
 - **Next.js 16 specifics:** route `params` are Promises (`await params`); `trailingSlash: true` is set to match

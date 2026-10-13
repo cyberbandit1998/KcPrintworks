@@ -6,6 +6,7 @@ import {
   MAX_LINE_QUANTITY,
   addMoney,
   characterCount,
+  expandVariations,
   findVariation,
   formatMoney,
   optionPriceAdders,
@@ -13,8 +14,8 @@ import {
   type OptionField,
   type OptionValues,
   type PriceEffect,
-  type Product,
-} from '@kcpw/contracts';
+  type PurchaseModel,
+} from '@kcpw/contracts/client';
 import { cartActions } from '@/lib/cart/store';
 import { optionAvailability } from '@/lib/variation';
 import { Price } from './Price';
@@ -61,7 +62,11 @@ function focusField(id: string) {
   (target ?? el).focus();
 }
 
-export function ProductPurchase({ product }: { product: Product }) {
+/**
+ * The only client component on the product page. It receives a `PurchaseModel` (compact numeric
+ * variation rows, no descriptions, images, SEO, or SKUs), never the whole product.
+ */
+export function ProductPurchase({ product }: { product: PurchaseModel }) {
   const uid = useId();
   const currency = product.price.currency;
   const [selection, setSelection] = useState<Record<string, string>>({});
@@ -71,8 +76,13 @@ export function ProductPurchase({ product }: { product: Product }) {
   const [added, setAdded] = useState<string | null>(null);
   const summaryRef = useRef<HTMLDivElement>(null);
 
-  const variationAttributes = product.attributes.filter((a) => a.usedForVariations);
-  const variation = useMemo(() => findVariation(product, selection), [product, selection]);
+  const variationAttributes = product.attributes;
+  const variations = useMemo(() => expandVariations(product), [product]);
+  const lookup = useMemo(
+    () => ({ attributes: product.attributes, variations }),
+    [product, variations],
+  );
+  const variation = useMemo(() => findVariation(lookup, selection), [lookup, selection]);
   const base = variation?.price ?? product.price;
   const adders = optionPriceAdders(
     product.optionSchema,
@@ -209,7 +219,7 @@ export function ProductPurchase({ product }: { product: Product }) {
           </legend>
           <div className="choice-group" id={fid(`attr-${attr.slug}`)} tabIndex={-1}>
             {attr.options.map((option) => {
-              const availability = optionAvailability(product, attr.slug, option.slug, selection);
+              const availability = optionAvailability(lookup, attr.slug, option.slug, selection);
               return (
                 <label key={option.slug} className="choice">
                   <input

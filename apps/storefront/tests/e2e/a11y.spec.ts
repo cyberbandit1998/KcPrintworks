@@ -9,6 +9,8 @@ const routes = [
   '/product/sample-custom-poster/',
   '/product/sample-mug/',
   '/product/sample-name-tag/',
+  '/product/sample-bag-tag/',
+  '/product/sample-bag-tag-as-imported/',
   '/cart/',
   '/this-page-does-not-exist/',
 ];

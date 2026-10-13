@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react';
-import type { CartLineIntent } from '@kcpw/contracts';
+import type { CartLineIntent } from '@kcpw/contracts/client';
 import { addLine, parseStoredCart, removeLine, setQuantity } from './cart-state';
 
 /**
