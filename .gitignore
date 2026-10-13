@@ -1,0 +1,30 @@
+# Secrets and local configuration: never commit
+.env
+.env.*
+!.env.example
+wp-config.php
+wp-config-local.php
+*.pem
+*.key
+
+# Dependencies and build output
+node_modules/
+.next/
+out/
+dist/
+build/
+vendor/
+coverage/
+playwright-report/
+test-results/
+
+# Local environment data
+environments/**/data/
+*.sql
+*.sql.gz
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+*.log
