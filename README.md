@@ -25,6 +25,19 @@ Etsy shop at <https://kcprintworks.etsy.com> via the Etsy Open API v3.
 
 Start with **PROJECT_STATUS.md** for where things stand and **DECISIONS.md** for what is still needed.
 
+## Quick start
+
+```bash
+nvm use                 # Node 22
+npm ci                  # PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 in sandboxes that already have a browser
+npm run dev             # storefront on http://localhost:3000 with placeholder fixture products
+npm run check           # guard, format, lint, typecheck, unit tests, build
+npm run test:e2e        # Playwright + axe accessibility tests
+```
+
+The storefront currently shows a **design preview** with invented placeholder products. Checkout is not
+connected yet (Step 3). See [PROJECT_STATUS.md](PROJECT_STATUS.md) for what is real and what is pending.
+
 ## Guardrails (apply to every phase)
 
 1. **No changes to the live website, live Etsy listings, DNS, or payment configuration
