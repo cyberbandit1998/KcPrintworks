@@ -1,0 +1,35 @@
+{
+  "name": "kcprintworks",
+  "private": true,
+  "version": "0.0.0",
+  "description": "KCPrintWorks: Next.js storefront, WordPress plugins, and docs",
+  "packageManager": "npm@10.9.4",
+  "engines": {
+    "node": ">=22"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev -w @kcpw/storefront",
+    "build": "npm run build -w @kcpw/storefront",
+    "start": "npm run start -w @kcpw/storefront",
+    "lint": "eslint .",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "test:e2e": "npm run test:e2e -w @kcpw/storefront",
+    "guard": "node scripts/guards.mjs",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "check": "npm run guard && npm run format:check && npm run lint && npm run typecheck && npm run test && npm run build"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.0.0",
+    "eslint": "^9.0.0",
+    "eslint-config-next": "16.4.0",
+    "prettier": "^3.9.10",
+    "typescript": "~5.9.3",
+    "typescript-eslint": "^8.71.2"
+  }
+}

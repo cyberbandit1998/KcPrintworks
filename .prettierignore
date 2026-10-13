@@ -1,0 +1,12 @@
+node_modules
+.next
+coverage
+playwright-report
+test-results
+package-lock.json
+docs
+README.md
+CLAUDE.md
+PROJECT_STATUS.md
+apps/storefront/public/fixtures
+next-env.d.ts

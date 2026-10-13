@@ -1,0 +1,84 @@
+/*
+ * Design tokens.
+ *
+ * RULES (enforced by tests/unit/contrast.test.ts):
+ *  1. The four official brand values below never change.
+ *  2. Components use ONLY the semantic tokens (--color-*, --button-*, --footer-*, --badge-*), never --kc-*.
+ *     Every foreground/background pairing is listed in the test and must meet WCAG 2.2 AA
+ *     (4.5:1 for text, 3:1 for UI boundaries and focus indicators).
+ *  3. Orange (#FF4A24) is never used as text or as the only boundary of a control on the cream background
+ *     (2.83:1). Buttons use dark ink text on orange (5.58:1); white on orange is 3.36:1 and is not used.
+ *  4. Blue links (#2B59E6) are 4.83:1 on cream. On the dark footer they are 3.27:1, so footer links use cream.
+ */
+:root {
+  /* Official brand palette. Do not change. */
+  --kc-bg: #f3ebdd;
+  --kc-ink: #111216;
+  --kc-accent: #ff4a24;
+  --kc-link: #2b59e6;
+
+  /* Derived colors (contrast verified in tests). */
+  --kc-surface: #fbf7ef;
+  --kc-muted: #44454c;
+  --kc-link-strong: #1e3fa8;
+  --kc-error: #b3261e;
+  --kc-success: #1f6b3a;
+  --kc-rule: #d8cbb5;
+  --kc-footer-muted: #cfc6b6;
+
+  /* Semantic color tokens: the only colors components may use. */
+  --color-bg: var(--kc-bg);
+  --color-surface: var(--kc-surface);
+  --color-text: var(--kc-ink);
+  --color-text-muted: var(--kc-muted);
+  --color-link: var(--kc-link);
+  --color-link-hover: var(--kc-link-strong);
+  --color-border-strong: var(--kc-ink);
+  --color-rule: var(--kc-rule); /* decorative dividers only, never a control boundary */
+  --color-focus: var(--kc-ink);
+  --color-error: var(--kc-error);
+  --color-success: var(--kc-success);
+  --accent-decor: var(--kc-accent); /* decorative fills only: no text, no control boundaries */
+  --link-decor: var(--kc-link); /* decorative fills only */
+
+  --button-bg: var(--kc-accent);
+  --button-fg: var(--kc-ink);
+  --button-border: var(--kc-ink);
+  --button-hover-bg: var(--kc-ink);
+  --button-hover-fg: var(--kc-bg);
+
+  --badge-bg: var(--kc-ink);
+  --badge-fg: var(--kc-bg);
+
+  --footer-bg: var(--kc-ink);
+  --footer-fg: var(--kc-bg);
+  --footer-muted: var(--kc-footer-muted);
+  --footer-link: var(--kc-bg);
+  --footer-accent: var(--kc-accent);
+  --footer-focus: var(--kc-bg);
+
+  /* Typography. System fonts only: no third-party font requests, no layout shift. */
+  --font-sans:
+    ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+
+  /* Spacing, radius, layout. */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+  --space-7: 3rem;
+  --space-8: 4.5rem;
+  --radius: 0.5rem;
+  --radius-lg: 1rem;
+  --container: 74rem;
+  --gutter: 1rem; /* 16px side gutter on small screens */
+  --tap-min: 2.75rem; /* 44px minimum target size */
+}
+
+@media (min-width: 48em) {
+  :root {
+    --gutter: 2rem;
+  }
+}
