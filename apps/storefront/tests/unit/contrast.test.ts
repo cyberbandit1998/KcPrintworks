@@ -53,6 +53,8 @@ describe('text pairings meet WCAG AA (4.5:1)', () => {
     ['button-hover-fg', 'button-hover-bg'],
     ['badge-fg', 'badge-bg'],
     ['color-text', 'accent-decor'], // brand mark and step numbers sit on orange
+    ['hero-fg', 'hero-bg'],
+    ['hero-accent', 'hero-bg'],
     ['footer-fg', 'footer-bg'],
     ['footer-link', 'footer-bg'],
     ['footer-muted', 'footer-bg'],
@@ -75,10 +77,40 @@ describe('non-text pairings meet 3:1', () => {
     ['color-focus', 'color-bg'],
     ['color-focus', 'color-surface'],
     ['footer-focus', 'footer-bg'],
+    ['hero-focus', 'hero-bg'],
+    ['hero-fg', 'hero-bg'], // the secondary button's border
     ['color-error', 'color-bg'],
   ];
   it.each(pairs)('%s against %s', (fg, bg) => {
     expect(contrastRatio(hex(fg), hex(bg))).toBeGreaterThanOrEqual(3);
+  });
+});
+
+describe('photo banner text stays readable over any photograph', () => {
+  // The scrim sits between the photo and the text. The worst photo pixel is white; mix it with the scrim.
+  const strength = Number(/^(\d+(?:\.\d+)?)%$/.exec(resolve('hero-scrim'))?.[1]) / 100;
+  const channels = (color: string) =>
+    [1, 3, 5].map((i) => parseInt(color.slice(i, i + 2), 16)) as [number, number, number];
+  const mix = (scrim: string) =>
+    '#' +
+    channels(scrim)
+      .map((c) =>
+        Math.round(c * strength + 255 * (1 - strength))
+          .toString(16)
+          .padStart(2, '0'),
+      )
+      .join('');
+  const worstCase = mix(hex('hero-bg'));
+
+  it('has a scrim strong enough to be meaningful', () => {
+    expect(strength).toBeGreaterThanOrEqual(0.75);
+    expect(strength).toBeLessThanOrEqual(1);
+  });
+  it('body text (cream) is 4.5:1 or better even over a white pixel', () => {
+    expect(contrastRatio(hex('hero-fg'), worstCase)).toBeGreaterThanOrEqual(4.5);
+  });
+  it('the orange headline word is 3:1 or better (large text) even over a white pixel', () => {
+    expect(contrastRatio(hex('hero-accent'), worstCase)).toBeGreaterThanOrEqual(3);
   });
 });
 

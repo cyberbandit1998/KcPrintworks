@@ -1,0 +1,18 @@
+# Keep the build context small and free of anything private. Nothing here is needed to build the storefront.
+.git
+.github
+**/node_modules
+**/.next
+**/out
+**/coverage
+**/test-results
+**/playwright-report
+.env
+.env.*
+!.env.example
+docs
+wordpress
+*.md
+!**/public/**/*.md
+Dockerfile
+.dockerignore

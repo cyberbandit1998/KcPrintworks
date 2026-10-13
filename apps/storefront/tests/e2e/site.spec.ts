@@ -76,3 +76,26 @@ test.describe('indexing and headers (non-production build)', () => {
     expect(res.status()).toBe(400);
   });
 });
+
+test.describe('home page photo banner', () => {
+  test('headline, copy, and both buttons are real, reachable text over the photo', async ({
+    page,
+  }) => {
+    await page.goto('/');
+    const hero = page.getByRole('region', { name: /Michigan Made/ });
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText(
+      'Michigan Made. Printed to Last.',
+    );
+    await expect(hero).toContainText('designed and 3D printed with care in Michigan');
+    await expect(hero.getByRole('link', { name: /Shop now/ })).toHaveAttribute('href', '/shop/');
+    await expect(hero.getByRole('link', { name: 'Our Story' })).toHaveAttribute('href', '/about/');
+    // The photograph is decorative because all of its message is in the text.
+    await expect(hero.getByRole('img')).toHaveCount(0);
+  });
+
+  test('"Our Story" opens a page rather than a 404', async ({ page }) => {
+    await page.goto('/');
+    await page.getByRole('link', { name: 'Our Story' }).first().click();
+    await expect(page.getByRole('heading', { level: 1, name: 'Our Story' })).toBeVisible();
+  });
+});

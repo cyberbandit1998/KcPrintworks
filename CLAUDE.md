@@ -53,6 +53,8 @@ packages/contracts/         shared zod schemas + reference validation/pricing (t
 scripts/guards.mjs          repo guards (Etsy isolation, secret-shaped strings, public env names)
 scripts/discovery/          analyze-wc-export.mjs: read-only analysis of a WooCommerce product CSV export (+ tests)
 docs/                       architecture, payments, Etsy, plan, migration, discovery, decisions
+Dockerfile, deploy/         Docker image (Next.js standalone, multi-stage) and the VPS compose + deploy.sh; see docs/DEPLOYMENT-VPS.md
+.github/workflows/          ci.yml (checks) and docker-publish.yml (build, smoke-test, publish to GHCR)
 wordpress/                  (planned) plugins kcpw-core, kcpw-etsy and the checkout theme: NOT created yet
 ```
 
@@ -106,6 +108,18 @@ ADRs updated if a decision changed.
   WooCommerce URLs, so call internal API routes with a trailing slash (`/api/cart/quote/`).
 - **No Etsy in the storefront**, not even in comments with hostnames or env names (the guard will fail it).
 - Keep comments to what the code cannot say (why, constraints). Match surrounding style (Prettier is enforced).
+
+## Deployment (Docker, InterServer VPS)
+
+- Image: `ghcr.io/cyberbandit1998/kcprintworks-nextjs:sha-<7>`, built and smoke-tested by `docker-publish.yml`, then pushed
+  (the tested image is the pushed image). Runs on the VPS via `deploy/docker-compose.yml` on the existing external `proxy`
+  network, `expose: 3000` only (never `ports:`), container `kcprintworks-nextjs`. Install, update, rollback: `docs/DEPLOYMENT-VPS.md`.
+- `SITE_ENV` and `NEXT_PUBLIC_SITE_URL` are **build-time** (prerendered pages): default `staging` = noindex. A production image is a
+  deliberate manual workflow run and needs the owner's approval. Checkout is the constant `checkoutAvailable = false`, not a setting.
+- Never touch WordPress, MariaDB, Nginx Proxy Manager, DNS, or Stripe from these files. `deploy.sh` only runs `docker compose` for this
+  project; its test fails if it ever issues another kind of docker command.
+- No Docker daemon in this sandbox: the Dockerfile itself is verified by the GitHub Actions run, not locally. Everything around it
+  (standalone build, `scripts/docker-smoke.sh`, read-only + unprivileged run, `docker compose config`) can be checked here.
 
 ## Environment limits (important)
 

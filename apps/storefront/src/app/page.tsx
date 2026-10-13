@@ -1,9 +1,13 @@
+import Image from 'next/image';
 import Link from 'next/link';
 import { toSummary } from '@kcpw/contracts';
 import { JsonLd } from '@/components/JsonLd';
 import { ProductCard } from '@/components/ProductCard';
 import { getCatalog } from '@/lib/catalog';
 import { organizationJsonLd } from '@/lib/seo';
+
+/** The owner's banner photograph. Replace the file, keep the path. */
+const HERO_IMAGE = '/images/hero-banner.jpg';
 
 // Placeholder marketing copy for design review. Real copy comes from the owner.
 const steps = [
@@ -18,27 +22,33 @@ export default async function HomePage() {
     <>
       <JsonLd data={organizationJsonLd()} />
       <section className="hero" aria-labelledby="hero-heading">
-        <div className="container hero__grid">
-          <div>
-            <span className="hero__eyebrow">Made to order</span>
-            <h1 id="hero-heading">Prints and goods made personal.</h1>
+        {/* Decorative: the headline and buttons are real text, so the photo needs no description. */}
+        <Image
+          className="hero__photo"
+          src={HERO_IMAGE}
+          alt=""
+          fill
+          priority
+          sizes="100vw"
+          unoptimized={HERO_IMAGE.endsWith('.svg')}
+        />
+        <div className="container hero__content">
+          <div className="hero__text">
+            <h1 id="hero-heading">
+              Michigan Made. <span className="hero__accent">Printed</span> to Last.
+            </h1>
             <p className="hero__lead">
-              Choose what you love, add your own details, and we make it for you. (Placeholder
-              headline for design review.)
+              Game cases, gifts, desk gear &amp; more — designed and 3D printed with care in
+              Michigan.
             </p>
             <div className="hero__actions">
               <Link href="/shop/" className="button">
-                Shop all products
+                Shop now <span aria-hidden="true">→</span>
               </Link>
-              <Link href="#how-it-works" className="button button--secondary">
-                How it works
+              <Link href="/about/" className="button button--on-photo">
+                Our Story
               </Link>
             </div>
-          </div>
-          <div className="hero__art" aria-hidden="true">
-            <span />
-            <span />
-            <span />
           </div>
         </div>
       </section>

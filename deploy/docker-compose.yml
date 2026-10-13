@@ -1,0 +1,78 @@
+# KCPrintWorks storefront on the VPS: /opt/kcprintworks-nextjs
+#
+# - Pulls a published image from GHCR; nothing is built on the server.
+# - Joins the EXISTING external Docker network "proxy" so Nginx Proxy Manager can reach it by container name.
+# - Port 3000 is only `expose`d to that network. There is no `ports:` entry, so nothing is published on the VPS.
+# - It does not create, modify, or depend on WordPress, MariaDB, or Nginx Proxy Manager.
+#
+# Settings come from the .env file next to this one (see .env.example). IMAGE_TAG is required on purpose: the
+# server always runs an explicit, known image, never "whatever latest is today".
+name: kcprintworks-nextjs
+
+services:
+  kcprintworks-nextjs:
+    image: ghcr.io/${GHCR_OWNER:-cyberbandit1998}/kcprintworks-nextjs:${IMAGE_TAG:?Set IMAGE_TAG in .env, for example sha-1a2b3c4}
+    container_name: kcprintworks-nextjs
+    restart: unless-stopped
+    init: true
+    stop_grace_period: 20s
+
+    environment:
+      NODE_ENV: production
+      PORT: '3000'
+      HOSTNAME: 0.0.0.0
+      NEXT_TELEMETRY_DISABLED: '1'
+      # The staging/production behavior (noindex, canonical URLs) was fixed when the image was built. These
+      # two only label the environment; they cannot make a staging image indexable.
+      SITE_ENV: ${SITE_ENV:-staging}
+      NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-http://localhost:3000}
+      # Placeholder catalog until the WooCommerce connection is built and approved.
+      CATALOG_SOURCE: fixtures
+      # Keep V8's heap below the container's memory limit so it collects garbage instead of being OOM-killed.
+      NODE_OPTIONS: --max-old-space-size=320
+
+    expose:
+      - '3000'
+    networks:
+      - proxy
+
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3000/api/health/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+
+    # Sized for a 1 CPU / 4 GB host that also runs WordPress, MariaDB, and Nginx Proxy Manager.
+    deploy:
+      resources:
+        limits:
+          cpus: '0.75'
+          memory: 512M
+          pids: 200
+        reservations:
+          memory: 128M
+
+    # Hardening: nothing in the container needs to write outside these paths or hold extra privileges.
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+      - /app/apps/storefront/.next/cache:size=128m,uid=1000,gid=1000
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+
+networks:
+  proxy:
+    external: true

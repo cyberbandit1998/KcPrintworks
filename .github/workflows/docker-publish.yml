@@ -1,0 +1,146 @@
+name: Publish Docker image
+
+# Builds the storefront image, smoke-tests it, and publishes it to GitHub Container Registry (GHCR):
+#   ghcr.io/<owner>/kcprintworks-nextjs:<tag>
+#
+# Tags:  sha-<7 chars>   every build (the one to deploy and to roll back to; immutable in practice)
+#        <branch>        moving pointer per branch
+#        latest          default branch only
+#        <version>       when a v* git tag is pushed
+# A production build (manual run only) appends "-production" to every tag and never gets "latest".
+#
+# The image that is smoke-tested is the exact image that is pushed (it is tagged and pushed from the local
+# daemon, not rebuilt), so a failing smoke test publishes nothing.
+
+on:
+  push:
+    branches: [main, claude/hopeful-hamilton-lq8pw6]
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      site_env:
+        description: 'staging = noindex (default, safe). production = indexable; use only when approved.'
+        type: choice
+        options: [staging, production]
+        default: staging
+
+# Least privilege by default. The publish job below asks for `packages: write` explicitly, which is the
+# only extra permission needed to push to GHCR with the built-in GITHUB_TOKEN (no personal token stored).
+permissions:
+  contents: read
+
+concurrency:
+  group: docker-publish-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    name: Build, smoke-test, and publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    env:
+      SITE_ENV: ${{ inputs.site_env || 'staging' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve image name and settings
+        id: vars
+        env:
+          # Optional repository variable (Settings > Secrets and variables > Actions > Variables).
+          SITE_URL_VAR: ${{ vars.SITE_URL }}
+        run: |
+          owner="${GITHUB_REPOSITORY_OWNER,,}"            # GHCR requires lowercase
+          echo "image=ghcr.io/${owner}/kcprintworks-nextjs" >> "$GITHUB_OUTPUT"
+          echo "site_url=${SITE_URL_VAR:-http://localhost:3000}" >> "$GITHUB_OUTPUT"
+          if [ "$SITE_ENV" = "production" ]; then echo "suffix=-production" >> "$GITHUB_OUTPUT"; else echo "suffix=" >> "$GITHUB_OUTPUT"; fi
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Image tags and labels
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ steps.vars.outputs.image }}
+          flavor: |
+            latest=false
+            suffix=${{ steps.vars.outputs.suffix }}
+          tags: |
+            type=sha,format=short,prefix=sha-
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=raw,value=latest,enable=${{ github.ref_name == github.event.repository.default_branch && env.SITE_ENV == 'staging' }}
+          labels: |
+            org.opencontainers.image.title=kcprintworks-nextjs
+            org.opencontainers.image.description=KCPrintWorks storefront (${{ env.SITE_ENV }} build)
+
+      - name: Build image (not pushed yet)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          load: true
+          push: false
+          tags: kcprintworks-nextjs:smoke
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            SITE_ENV=${{ env.SITE_ENV }}
+            NEXT_PUBLIC_SITE_URL=${{ steps.vars.outputs.site_url }}
+            GIT_SHA=${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Smoke-test the built image
+        run: |
+          # Faster health probes than production, same command (it comes from the Dockerfile).
+          docker run -d --name smoke -p 127.0.0.1:3000:3000 \
+            --health-interval=3s --health-start-period=5s --health-retries=3 \
+            kcprintworks-nextjs:smoke
+          ./scripts/docker-smoke.sh http://127.0.0.1:3000 "$SITE_ENV" smoke || { docker logs smoke; exit 1; }
+          for _ in $(seq 1 40); do
+            status=$(docker inspect --format '{{.State.Health.Status}}' smoke)
+            [ "$status" = "healthy" ] && break
+            sleep 2
+          done
+          echo "container health: $status"
+          [ "$status" = "healthy" ] || { docker logs smoke; exit 1; }
+          docker rm -f smoke
+
+      - name: Publish the tested image to GHCR
+        id: push
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          for tag in $TAGS; do
+            docker tag kcprintworks-nextjs:smoke "$tag"
+            docker push "$tag"
+          done
+          first=$(echo "$TAGS" | head -n1)
+          digest=$(docker inspect --format '{{index .RepoDigests 0}}' "$first")
+          echo "digest=${digest}" >> "$GITHUB_OUTPUT"
+
+      - name: Summary
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: |
+          {
+            echo "### Published to GHCR"
+            echo
+            echo "Environment: \`$SITE_ENV\`"
+            echo
+            echo "Tags:"
+            for tag in $TAGS; do echo "- \`$tag\`"; done
+            echo
+            echo "Digest: \`$DIGEST\`"
+            echo
+            echo "Deploy on the VPS: \`./deploy.sh sha-${GITHUB_SHA::7}${{ steps.vars.outputs.suffix }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -50,6 +50,13 @@
   --badge-bg: var(--kc-ink);
   --badge-fg: var(--kc-bg);
 
+  /* Photo banner: text sits on a dark scrim over the photograph. */
+  --hero-bg: var(--kc-ink);
+  --hero-fg: var(--kc-bg);
+  --hero-accent: var(--kc-accent); /* large headline text on dark only: 5.58:1 on ink */
+  --hero-focus: var(--kc-bg);
+  --hero-scrim: 80%; /* opacity of the scrim behind the text column */
+
   --footer-bg: var(--kc-ink);
   --footer-fg: var(--kc-bg);
   --footer-muted: var(--kc-footer-muted);
