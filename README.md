@@ -20,6 +20,9 @@ Etsy shop at <https://kcprintworks.etsy.com> via the Etsy Open API v3.
 | [docs/MIGRATION-SHOP-DOMAIN.md](docs/MIGRATION-SHOP-DOMAIN.md) | Moving WordPress/WooCommerce to `shop.kcprintworks.com`: SSL, redirects, API connections, webhooks, checkout/session behavior, cutover and rollback |
 | [docs/LIVE-SITE-DISCOVERY.md](docs/LIVE-SITE-DISCOVERY.md) | Read-only procedure to inventory the live site's plugins, products, and personalization before choosing a solution |
 | [docs/discovery/INVENTORY.md](docs/discovery/INVENTORY.md) | What the owner's product export shows about the live catalog (duplicates, "Any" variations, stock defaults, personalization) and the questions it raises |
+| [docs/CATALOG-CLEANUP.md](docs/CATALOG-CLEANUP.md) | Prioritized catalog cleanup: fixes, risks, rollbacks, and exactly which changes need the owner's approval |
+| [docs/PERSONALIZATION.md](docs/PERSONALIZATION.md) | How personalization is saved per order item, the options compared, and the decisions needed |
+| [docs/DEPLOYMENT-VPS.md](docs/DEPLOYMENT-VPS.md) | Docker image on GHCR, install and update commands for the VPS, Nginx Proxy Manager steps, rollback |
 | [docs/DECISIONS.md](docs/DECISIONS.md) | Decision log (ADRs), their status, and the inputs still missing |
 | [PROJECT_STATUS.md](PROJECT_STATUS.md) | Living status: done, in progress, next, known issues |
 | [CLAUDE.md](CLAUDE.md) | Rules and commands for future Claude Code sessions |

@@ -55,6 +55,12 @@ the environment. A staging image can never be made indexable by editing `.env`; 
 | `1.2.3`                     | When a `v1.2.3` git tag is pushed.                                                       |
 | `...-production` suffix     | Only from a manual run with `site_env = production`. Never tagged `latest`. Not used yet. |
 
+Today the repository's only branch is `claude/hopeful-hamilton-lq8pw6`, and it is also the default branch, so every push to it publishes
+`sha-<7>`, the branch tag, **and** `latest`. Once a `main` branch exists and becomes the default, `latest` follows `main` instead.
+
+First verified build: **`sha-fe36462`** (digest `sha256:2a0959c0a5e76429bd6d4ba13ab447b00a7fcafc418cbd76de4c2d2500a39265`), built, smoke-tested, and pushed by
+[run 38485962263](https://github.com/cyberbandit1998/KcPrintworks/actions/runs/38485962263).
+
 Find the tag for a build in the run's **Summary** page (it lists every tag and the digest), or on the repository's **Packages** page.
 
 ## 2. One-time VPS setup (`/opt/kcprintworks-nextjs`)

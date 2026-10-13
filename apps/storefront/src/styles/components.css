@@ -115,7 +115,7 @@
 .site-nav ul {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-1) var(--space-5);
+  gap: 0 var(--space-5);
   margin: 0;
   padding: 0;
   list-style: none;
@@ -350,6 +350,11 @@
   flex: 1;
 }
 .card__title {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3; /* long listing-style titles; the full title is on the product page */
+  line-clamp: 3;
+  overflow: hidden;
   margin: 0;
   font-size: 1.125rem;
 }
@@ -456,6 +461,10 @@
 }
 
 /* ---------- Product page ---------- */
+.pdp__title--long {
+  font-size: clamp(1.5rem, 1.1rem + 1.4vw, 2.1rem);
+  line-height: 1.2;
+}
 .pdp {
   display: grid;
   gap: var(--space-6);

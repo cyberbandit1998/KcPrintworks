@@ -12,11 +12,12 @@ Last updated 2026-10-13, after the owner's approval of the overall architecture.
 | ADR-004 | Etsy orders imported as WooCommerce orders marked "Paid on Etsy" | Proposed (not yet explicitly approved; implicit in the approved plan) |
 | ADR-005 | WooCommerce owns the website; per-field ownership; import-once defaults; Woo-owned SEO | Proposed (implicit in the approved plan) |
 | ADR-006 | Etsy access class: **Seller App / Seller API Access**, read-only scopes first | **Revised 2026-10-13** (was "personal access") |
-| ADR-007 | Personalization solution | **Pending discovery**: the 2026-10-13 product export contains no add-on plugin data; an order sample is still needed |
+| ADR-007 | Personalization solution | **Recommended: first-party `kcpw-core` module** (no plugin exists to adapt; see [PERSONALIZATION.md](PERSONALIZATION.md)). Awaiting owner approval, icons decision, and an order sample |
 | ADR-008 | Catalog delivery via cached DTO endpoints with tag-based revalidation | Proposed (implicit in the approved plan) |
 | ADR-009 | Migration strategy: clone then cut over; live site stays operational | **New, proposed** |
 | ADR-010 | Etsy `order.paid` webhook as fast path with polling as recovery | **New, proposed** |
 | ADR-011 | Accessible foreground colors on the unchanged brand palette | **Approved** 2026-10-13 |
+| ADR-012 | Storefront runs as a Docker image published to GHCR; staging by default; rollback by image tag | **Implemented**, owner requested 2026-10-13 |
 
 ## 2. Inputs still needed
 
@@ -125,6 +126,25 @@ Format: context, decision, consequences.
 - **Invariants regardless of the choice.** Server-side validation and pricing; each personalization becomes its
   own order line item; readable item meta plus a normalized `_kcpw_personalization` record; all existing
   variations preserved and proven by a parity report; no upload feature unless existing products already use it.
+
+**Update 2026-10-13 (plugin list received).** No add-on plugin is installed and none of the 61 custom plugins handles personalization,
+so option (A) would add a new dependency rather than adapt an existing one. Recommendation: (B) a first-party module that stores each
+cart line's options on the order item, validated by the same rules the storefront uses (33 shared vectors in
+`packages/contracts/test/vectors/options.json`). Open: curated icon list versus free emoji, cable colors, order sample.
+
+### ADR-012 — Docker deployment of the storefront (Implemented)
+
+- **Decision.** Multi-stage `Dockerfile` (Next.js standalone output, node:22-bookworm-slim, non-root). GitHub Actions builds the image, runs
+  `scripts/docker-smoke.sh` against it, and pushes **that same image** to `ghcr.io/<owner>/kcprintworks-nextjs` with `sha-<7>`, branch, `latest`
+  (default branch), and version tags. The workflow has `contents: read` and, for the publish job only, `packages: write`, using the built-in token.
+  The VPS runs `deploy/docker-compose.yml`: container `kcprintworks-nextjs`, external network `proxy`, `expose: 3000` and no `ports:`.
+- **Staging by default.** `SITE_ENV` and `NEXT_PUBLIC_SITE_URL` are build-time (prerendered pages), so an image is either staging (noindex) or production;
+  a production image is a manual workflow run. Checkout is a compile-time constant, not an environment setting.
+- **Rollback.** Pin an explicit `IMAGE_TAG`; `deploy.sh` waits for the health check and restores the previous tag automatically if the new one is unhealthy;
+  `--rollback` or a named tag restores an earlier version without a rebuild.
+- **Alternatives.** Build on the VPS (1 CPU, 4 GB: slow and risky), Vercel (the owner chose the VPS), a runtime-selectable noindex via middleware
+  (more moving parts; the build-time default fails safe).
+- **Consequences.** Needs a GHCR login on the VPS (or a public package), an amd64 host, and a separate production build when going live.
 
 ### ADR-008 — Catalog delivery to Next.js (Proposed)
 

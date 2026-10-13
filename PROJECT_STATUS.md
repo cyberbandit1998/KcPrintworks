@@ -2,9 +2,11 @@
 
 Living document. Update it at the end of every session (see [CLAUDE.md](CLAUDE.md)).
 
-- **Last updated:** 2026-10-13 (session 1, after the owner supplied the product export)
+- **Last updated:** 2026-10-13 (session 1, after the product export, plugin list, banner photo, and Docker/VPS request)
 - **Branch:** `claude/hopeful-hamilton-lq8pw6` (no pull request opened; owner has not asked for one)
-- **Environment:** local/design preview only. Nothing is deployed. The live WooCommerce site, Etsy listings,
+- **Environment:** design preview only. A **staging** Docker image (noindex, placeholder catalog, checkout disabled) is
+  published to GHCR and ready to run on the owner's VPS (`docs/DEPLOYMENT-VPS.md`); first verified tag `sha-fe36462`.
+  The owner has not yet run it. The live WooCommerce site, WordPress, MariaDB, Nginx Proxy Manager, Etsy listings,
   Stripe configuration, and DNS have **not** been touched.
 
 ## Where we are
@@ -14,8 +16,9 @@ Living document. Update it at the end of every session (see [CLAUDE.md](CLAUDE.m
 | Architecture and plan                                       | **Approved by the owner 2026-10-13** (see below)                                                          |
 | Phase 0: foundations (monorepo, CI, guards)                 | **Done** except staging and local WordPress environments (blocked on discovery/hosting facts)             |
 | Live-site discovery (plugins, products, personalization)    | **Partly done.** Product export analyzed (`docs/discovery/INVENTORY.md`); plugins, orders, hosting, DNS still unknown |
-| Step 1: Next.js storefront design                           | **First slice built, awaiting owner design review (gate G1).** Uses synthetic placeholder products; real catalog is card-game cases (not yet reflected in the preview) |
-| Step 2: WooCommerce products and variations                 | Not started (needs staging + discovery inputs)                                                            |
+| Step 1: Next.js storefront design                           | **Built, awaiting owner design review (gate G1).** Default data is synthetic; `CATALOG_SOURCE=export` previews the owner's real 66 products (titles, prices, options). Photo hero is in; the owner's photo file is still needed |
+| Step 2: WooCommerce products and variations                 | Not started (needs staging + discovery inputs). Read-only snapshot and comparison tools exist and are untested against the live site |
+| Deployment of the storefront (staging container, VPS)       | **Image published; owner installs it** (`docs/DEPLOYMENT-VPS.md`). Needs the owner's DNS and Nginx Proxy Manager steps |
 | Step 3: cart handoff and Stripe checkout (test mode)        | Not started. Checkout button is intentionally disabled                                                    |
 | Step 4: personalized order + payment testing                | Not started                                                                                               |
 | Steps 5 to 9: Etsy app, preview/mapping, sync, orders, admin | Not started (design documented; Etsy docs could not be read, see Known issues)                            |
@@ -39,10 +42,12 @@ owner performs these), any Etsy write scope, any change to the live WooCommerce 
 
 ## What exists in the code
 
-Verified on 2026-10-13: `npm run guard`, `format:check`, `lint`, `typecheck` clean; **48** contracts tests,
-**65** storefront unit tests, and **4** script tests pass; **41** Playwright e2e tests pass (including axe WCAG 2.2 AA
-on every route, no horizontal scroll at 320/375/768/1280 px, keyboard and focus flows). CI run #1 (commit
-`d03b756`) passed on GitHub's runners; later commits are checked by the same workflow.
+Verified on 2026-10-13: `npm run check` and `npm run test:e2e` pass: **103** contracts tests (incl. 33 shared
+personalization vectors and a graph test that keeps zod out of the browser entry), **99** storefront unit tests,
+**37** script tests (analyzer, duplicate/category/stock recommenders, read-only fetcher, variation comparison, deploy
+script), **51** Playwright e2e tests (axe WCAG 2.2 AA on every route, no horizontal scroll 320 to 1280 px,
+keyboard and focus flows, payload and script-size budgets). GitHub Actions: CI and **Publish Docker image** both
+green on `fe36462`.
 
 - **`packages/contracts`:** integer money; plugin-agnostic personalization option schema and `validateOptions`;
   strict product DTO (rejects Etsy fields); strict cart line intents (rejects client prices); `priceLine`
@@ -60,7 +65,24 @@ on every route, no horizontal scroll at 320/375/768/1280 px, keyboard and focus 
 - **`scripts/discovery/analyze-wc-export.mjs`:** read-only analyzer for WooCommerce product CSV exports (own RFC 4180
   parser, entity decoding, duplicate/Any/SKU/stock/plugin-fingerprint checks) with tests; its numbers were
   cross-checked against an independent analysis.
-- **Docs:** architecture, payments, Etsy, plan, migration, discovery, inventory, decisions (all in `docs/`).
+- **Performance:** the product form receives a compact `PurchaseModel` (interchangeable variation rows merged: the real
+  bag tag's 169 become 1; 169 distinct are 4.5 KB instead of 31 KB), and browser code imports the zod-free
+  `@kcpw/contracts/client` (page scripts 645 KB to 532 KB decoded; the quote schema loads lazily on the cart).
+- **Home page:** photo hero with the owner's headline and buttons as real text over a scrim whose worst-case contrast
+  is tested; `public/images/hero-banner.jpg` is a neutral placeholder (see `public/images/README.md`); placeholder
+  `/about/` page.
+- **Real-catalog preview:** `apps/storefront/src/lib/catalog/export/` converts the owner's export into DTOs
+  (`CATALOG_SOURCE=export`, refused in production builds). Derived URLs and proposed personalization fields are flagged
+  in a banner. Display-only cleanup of marketplace attributes, import footers, plain-text descriptions, long titles.
+- **Docker/VPS:** `Dockerfile` (standalone output, non-root), `/api/health/`, `.github/workflows/docker-publish.yml`
+  (build, smoke-test, push the tested image to GHCR with `packages: write` on that job only), `deploy/` (compose on the
+  external `proxy` network with `expose` only, limits, health check, read-only filesystem; `deploy.sh` with automatic
+  and manual rollback), `scripts/docker-smoke.sh`.
+- **Discovery tooling (read-only):** `fetch-wc-catalog.mjs`, `compare-variations.mjs`, `duplicate-report.mjs`,
+  `propose-categories.mjs`, `inventory-recommendations.mjs`; outputs in `docs/discovery/`.
+- **Docs:** architecture, payments, Etsy, plan, migration, discovery, inventory, plugins, decisions, **catalog cleanup
+  report** (`docs/CATALOG-CLEANUP.md`), **personalization** (`docs/PERSONALIZATION.md`), **VPS deployment**
+  (`docs/DEPLOYMENT-VPS.md`).
 
 ## Decisions
 
@@ -123,8 +145,16 @@ Full text in [docs/DECISIONS.md](docs/DECISIONS.md).
   is 3D-printed card-game, battery, and ammo storage cases plus personalized tags and keychains, so the design
   preview, categories, and copy do not yet look like the real store. The wordmark is text; there is no logo or
   favicon.
-- Real product titles run up to 127 characters (median 68) and descriptions are plain text with line breaks or
-  HTML; cards currently do not clamp long titles.
+- The home hero needs the owner's photograph (the pasted image was not available as a file); the committed
+  `hero-banner.jpg` is a neutral placeholder. The pasted banner has its headline and buttons baked in; the page needs the
+  photo **without** the text. "Our Story" links to a placeholder page.
+- In the real-catalog preview the product URLs are derived from titles (the export has no permalinks), image alt text
+  and sizes are guesses, and the personalization fields are proposed.
+- The container image is a **staging** build: `SITE_ENV` and `NEXT_PUBLIC_SITE_URL` are build-time. Set the repository
+  variable `SITE_URL` to the staging address, or canonical URLs say `http://localhost:3000` (harmless while noindex).
+- The Dockerfile cannot be built in this sandbox (no Docker daemon); CI verifies it. Only the amd64 architecture is built.
+- Open decisions that block personalization work: icons (curated list vs free emoji, because the validator rejects the
+  zero-width joiner that many emoji contain), cable colors, the order sample (Q3).
 - Checkout is disabled (`lib/checkout.ts`); `/api/cart/handoff` does not exist yet. Coupons are rejected in the
   preview quote.
 - `/api/cart/quote/` has a body-size check but **no rate limiting** yet. No strict CSP with nonces yet (planned
@@ -150,8 +180,10 @@ Full text in [docs/DECISIONS.md](docs/DECISIONS.md).
 1. Owner: answers to INVENTORY.md Q1 to Q9, the rest of the discovery checklist, and G1 design feedback.
 2. Update `docs/discovery/INVENTORY.md` with the answers; decide ADR-007; finalize the migration plan inputs
    (`docs/MIGRATION-SHOP-DOMAIN.md` §11).
-2a. Optional, once Q1 is answered: rebase the design preview on the real catalog (real titles, categories, price and
-   variation shapes; card titles clamped) so the G1 review reflects the actual store.
+1a. Owner: install the container (`docs/DEPLOYMENT-VPS.md`), add the staging DNS record and Nginx Proxy Manager host
+   (each needs the owner), supply the banner photo without text, answer the P0 items in `docs/CATALOG-CLEANUP.md`.
+1b. Run `fetch-wc-catalog.mjs --public` and `compare-variations.mjs` (or send the Variations screenshot) to resolve
+   whether the blank attributes are a real "Any"; then re-run `duplicate-report.mjs --rest`.
 3. Phase 0 leftovers: local Docker environment for WordPress + WooCommerce + Mailpit with a fixture catalog;
    staging clone (needs owner approval and hosting facts).
 4. **Step 2:** `kcpw-core` read API and DTO contract tests; `WooCatalogSource` in the storefront (tag-based
@@ -170,6 +202,12 @@ Full text in [docs/DECISIONS.md](docs/DECISIONS.md).
 3. Ask which blockers the owner has cleared before starting Step 2; do not guess at their site.
 
 ## Session log
+
+- **2026-10-13, session 1 (continued, third part):** variation performance (compact purchase model, zod-free browser
+  entry, budgets); photo hero; Docker image and GHCR workflow (built, smoke-tested, and published `sha-fe36462`),
+  compose, `deploy.sh` with rollback, VPS guide; read-only snapshot and comparison tools; real-catalog preview source;
+  shared personalization vectors (and a fix: non-object input is rejected whole); `docs/CATALOG-CLEANUP.md` and
+  `docs/PERSONALIZATION.md`. Nothing on the live site, VPS, Nginx Proxy Manager, DNS, Etsy, or Stripe was touched.
 
 - **2026-10-13, session 1 (continued):** received the product export (`cfec3d8c-kcproducts.csv`, 330 rows) and
   analyzed it; found duplicates, "Any" variations, default stock, Etsy-style attributes, and no add-on plugin data;

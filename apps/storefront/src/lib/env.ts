@@ -13,4 +13,12 @@ export const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:30
   '',
 );
 
-export const catalogSourceName = process.env.CATALOG_SOURCE === 'woo' ? 'woo' : 'fixtures';
+export type CatalogSourceName = 'fixtures' | 'woo' | 'export';
+
+/** `export` (design preview from a local WooCommerce export) is refused in production builds. */
+export const catalogSourceName: CatalogSourceName =
+  process.env.CATALOG_SOURCE === 'woo'
+    ? 'woo'
+    : process.env.CATALOG_SOURCE === 'export' && !isProduction
+      ? 'export'
+      : 'fixtures';

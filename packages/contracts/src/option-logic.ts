@@ -53,6 +53,22 @@ export function validateOptions(
   const values: OptionValues = {};
   const known = new Set(schema.fields.map((f) => f.id));
 
+  // Callers hold untrusted JSON. Anything but a plain object (a string, array, or null) is rejected as a
+  // whole instead of being read key by key (a string's "keys" are its character positions).
+  if (typeof input !== 'object' || input === null || Array.isArray(input)) {
+    return {
+      ok: false,
+      values: {},
+      issues: [
+        {
+          fieldId: '',
+          code: 'invalid_type',
+          message: 'Personalization must be a set of named fields.',
+        },
+      ],
+    };
+  }
+
   for (const key of Object.keys(input)) {
     if (!known.has(key)) {
       issues.push({ fieldId: key, code: 'unknown_field', message: `Unknown option "${key}".` });

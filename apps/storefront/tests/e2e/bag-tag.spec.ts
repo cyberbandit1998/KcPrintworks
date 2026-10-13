@@ -128,13 +128,20 @@ test.describe('bag tag with two color sets (placeholder data)', () => {
     await expect(page.getByRole('status').getByText(/added to your cart/)).toBeVisible();
 
     const loadedZod: string[] = [];
-    page.on('response', async (response) => {
+    const checks: Promise<void>[] = [];
+    page.on('response', (response) => {
       if ((response.headers()['content-type'] ?? '').includes('javascript')) {
-        if ((await response.text()).includes('ZodError')) loadedZod.push(response.url());
+        checks.push(
+          response.text().then((text) => {
+            if (text.includes('ZodError')) loadedZod.push(response.url());
+          }),
+        );
       }
     });
     await page.goto('/cart/');
     await expect(page.getByRole('complementary')).toContainText('$8.99'); // the quote arrived and validated
+    await page.waitForLoadState('networkidle');
+    await Promise.all(checks); // every script body has been read before counting
     expect(loadedZod.length).toBe(1);
   });
 });

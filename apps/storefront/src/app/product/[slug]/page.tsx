@@ -67,7 +67,9 @@ export default async function ProductPage({ params }: { params: Promise<Params> 
       <div className="container pdp">
         <Gallery images={product.images} />
         <div>
-          <h1>{product.name}</h1>
+          <h1 className={product.name.length > 60 ? 'pdp__title pdp__title--long' : 'pdp__title'}>
+            {product.name}
+          </h1>
           <p>{product.shortDescription}</p>
           <ProductPurchase product={toPurchaseModel(product)} />
           <section aria-labelledby="details-heading" style={{ marginTop: 'var(--space-6)' }}>

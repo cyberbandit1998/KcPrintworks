@@ -5,7 +5,7 @@ import '@/styles/components.css';
 import { SiteHeader } from '@/components/SiteHeader';
 import { SiteFooter } from '@/components/SiteFooter';
 import { getCatalog } from '@/lib/catalog';
-import { isProduction, siteUrl } from '@/lib/env';
+import { catalogSourceName, isProduction, siteUrl } from '@/lib/env';
 import { SITE_NAME } from '@/lib/seo';
 
 export const metadata: Metadata = {
@@ -31,7 +31,14 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       <body>
         {!isProduction ? (
           <div className="env-banner" role="note">
-            <p>Design preview with placeholder products and content. Not a live store.</p>
+            {catalogSourceName === 'export' ? (
+              <p>
+                Design preview built from your product export: real titles, prices, and options. Web
+                addresses are derived, and personalization fields are proposed. Not a live store.
+              </p>
+            ) : (
+              <p>Design preview with placeholder products and content. Not a live store.</p>
+            )}
           </div>
         ) : null}
         <a className="skip-link" href="#main">
