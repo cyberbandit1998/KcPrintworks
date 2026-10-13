@@ -4,9 +4,10 @@ A Next.js storefront for **kcprintworks.com**, with WooCommerce as the catalog a
 order-management backend, Stripe for payments, and a read-first synchronization with the
 Etsy shop at <https://kcprintworks.etsy.com> via the Etsy Open API v3.
 
-> **Status: planning.** This repository currently holds the architecture and implementation
-> plan only. There is no application code, no credentials, and nothing deployed.
-> Last revised 2026-10-13.
+> **Status: architecture approved (2026-10-13); storefront build in progress.** Nothing is deployed, no
+> credentials are in this repository, and the live WooCommerce site, Etsy listings, payment configuration, and
+> DNS have not been touched. Current progress, decisions, and known issues: [PROJECT_STATUS.md](PROJECT_STATUS.md).
+> Instructions for AI coding sessions: [CLAUDE.md](CLAUDE.md).
 
 ## Documents
 
@@ -16,9 +17,13 @@ Etsy shop at <https://kcprintworks.etsy.com> via the Etsy Open API v3.
 | [docs/PAYMENTS-STRIPE.md](docs/PAYMENTS-STRIPE.md) | Stripe payment design, cart-to-checkout handoff, personalization, duplicate protection, test plan, contingency design |
 | [docs/ETSY-INTEGRATION.md](docs/ETSY-INTEGRATION.md) | Etsy OAuth, product/order/inventory sync, field ownership, import preview, admin UI, future publishing |
 | [docs/IMPLEMENTATION-PLAN.md](docs/IMPLEMENTATION-PLAN.md) | The 10-step build order with exit criteria, approval gates, risks, and launch checklist |
-| [docs/DECISIONS.md](docs/DECISIONS.md) | Decision log, including the decisions that need your sign-off and the inputs still missing |
+| [docs/MIGRATION-SHOP-DOMAIN.md](docs/MIGRATION-SHOP-DOMAIN.md) | Moving WordPress/WooCommerce to `shop.kcprintworks.com`: SSL, redirects, API connections, webhooks, checkout/session behavior, cutover and rollback |
+| [docs/LIVE-SITE-DISCOVERY.md](docs/LIVE-SITE-DISCOVERY.md) | Read-only procedure to inventory the live site's plugins, products, and personalization before choosing a solution |
+| [docs/DECISIONS.md](docs/DECISIONS.md) | Decision log (ADRs), their status, and the inputs still missing |
+| [PROJECT_STATUS.md](PROJECT_STATUS.md) | Living status: done, in progress, next, known issues |
+| [CLAUDE.md](CLAUDE.md) | Rules and commands for future Claude Code sessions |
 
-Start with **DECISIONS.md**: it lists what I need from you before Step 1 can finish.
+Start with **PROJECT_STATUS.md** for where things stand and **DECISIONS.md** for what is still needed.
 
 ## Guardrails (apply to every phase)
 

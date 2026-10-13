@@ -1,13 +1,17 @@
 # Etsy Integration (Open API v3)
 
-Status: **proposed**. Shop: <https://kcprintworks.etsy.com>.
+Status: **approved architecture** (2026-10-13); Etsy specifics still pending verification against
+Etsy's official documentation. Shop: <https://kcprintworks.etsy.com>.
 
-> **Verification note.** Etsy's developer site and API hosts are blocked in the environment this
-> plan was written in, so I could not read Etsy's current reference, terms, or the shop itself.
-> Etsy-specific facts below come from my own knowledge plus search results, and each is tagged
-> in §16 as **Confirmed**, **Reported** (third-party or community only), or **To verify**. Step 5
-> includes vendoring Etsy's OpenAPI spec into the repo and verifying every "To verify" item
-> before code depends on it.
+> **Verification note (updated 2026-10-13).** Etsy's developer site (`developers.etsy.com`,
+> `developer.etsy.com`), help center (`help.etsy.com`), API hosts, and the Etsy Dev MCP server
+> endpoint are all blocked by the network policy of the environment this plan was written in
+> (DNS fails or the proxy returns 403), and no Etsy MCP connector is attached to the session. I
+> therefore **could not read Etsy's current reference, terms, or specification**. Etsy-specific
+> facts below come from the owner's statements, search-result excerpts of Etsy's pages, and my own
+> knowledge. Each is tagged in §16 as **Confirmed**, **Owner-stated**, **Reported** (third-party or
+> community), or **To verify**. Step 5 verifies every non-confirmed item against the official
+> OpenAPI spec (via the Etsy Dev MCP server, §2.1) before code depends on it.
 
 ## 1. Principles and capability phases
 
@@ -38,12 +42,25 @@ Status: **proposed**. Shop: <https://kcprintworks.etsy.com>.
   not do this. Registration is the longest external lead time and is outside our control, so I
   recommend submitting it early (during Step 2) even though the build order in your brief puts the
   work at Step 5.
-- **Request personal access (own shop only).** Community reports describe personal access as
-  quickly approved while commercial access is hard to obtain, and describe apps being banned
-  after a commercial request. We are syncing one shop that you own, so commercial access is not
-  needed. Describe the use accurately and keep within the application form's length limit.
-- Etsy offers webhooks to commercial apps only *(Reported)*, so polling is the baseline and
-  webhooks are an optional later accelerator (§10.1).
+- **Access class: Seller App (Seller API Access).** You report that Etsy introduced Seller API
+  Access in July 2026 for sellers connecting their own shops. Etsy's help-center article "How to
+  Register a Seller App with Etsy's API" is consistent with this: in the excerpt I could see, a
+  Seller App has access to all public and OAuth-authenticated endpoints, scoped only to the
+  registered shop; it cannot be used to reach other sellers' shops or to build an application for
+  the broader seller community; eligibility is an active shop in good standing with no existing
+  registered app; and approval is typically quick. That is exactly our use case, so **we register a
+  Seller App and do not apply for Commercial Access.** This supersedes the earlier "personal access"
+  plan (ADR-006). Open points to confirm on the real page: current rate limits for Seller Apps, the
+  exact scope list, and what happens if you already have a registered app (the eligibility rule
+  above suggests an existing app must be dealt with first).
+- Keep the app description accurate and within the form's limits. The app may only ever be used with
+  the KCPrintWorks shop; the integration is never offered to other sellers.
+- **Webhooks:** you report that webhooks are available beyond commercial-only applications. The
+  official webhooks page, as excerpted in search results, lists `order.paid` and requires a valid
+  OAuth 2.0 token with suitable scopes plus a public HTTPS callback; it does not state which access
+  tiers qualify. Third-party summaries say subscriptions are managed in the Developer Portal's
+  webhook portal. We therefore design for **`order.paid` webhook as the fast path and polling as
+  the recovery mechanism** (§10.1, §10.5): correctness never depends on a webhook arriving.
 - Use `https://` redirect URIs registered exactly: one for staging, one for production
   (`https://shop.kcprintworks.com/wp-json/kcpw-etsy/v1/oauth/callback`, proposed).
 - Etsy's terms may require attribution and restrict data use. Review the current API Terms of Use
@@ -51,6 +68,27 @@ Status: **proposed**. Shop: <https://kcprintworks.etsy.com>.
 - **Fallback if API access is denied or delayed:** the same import-preview pipeline accepts Etsy
   Shop Manager CSV exports (listings and orders) through an adapter, so Steps 6 to 9 are not
   blocked on approval. CSV lacks inventory product IDs, so matching relies on listing ID and SKU.
+
+### 2.1 Using Etsy's official Dev MCP server for specifications
+
+Etsy publishes a Dev MCP server whose tools are derived from the Etsy OpenAPI specification. Search
+results give its endpoint as `https://mcp.api.etsycloud.com/mcp` (the sample config in the excerpt
+omitted the scheme, so check the page) and say it provides five tools; a third-party review
+describes it as a **documentation and schema server, not a data-access interface** (API calls still
+need OAuth). It is not attached to this session and the host is blocked here, so it has not been used
+yet.
+
+Plan for Step 5, in a development environment with network access:
+
+1. Add the server to Claude Code's MCP configuration (a command of the form
+   `claude mcp add --transport http etsy <url-from-Etsy-page>`; confirm syntax and URL on Etsy's
+   "Dev MCP Server" page first).
+2. Use it to answer every "To verify" row in §16 and record the answer, the date, and the tool used.
+3. Download the OpenAPI document it is derived from and **vendor it** into
+   `wordpress/plugins/kcpw-etsy/spec/` (dated filename). Contract tests and a weekly drift check
+   run against that file, so later sessions do not depend on the MCP server being reachable.
+4. The MCP server never receives our OAuth tokens or shop data, and no token is ever pasted into an
+   AI assistant session.
 
 ## 3. Authentication and token lifecycle
 
@@ -232,15 +270,51 @@ Etsy order. WooCommerce becomes the single fulfillment queue for both channels. 
 
 ### 10.1 Pipeline
 
-1. A job every 10 minutes lists receipts with a creation watermark and a 48-hour overlap, plus a
-   status refresh for open (unshipped) receipts so cancellations and shipments update.
-2. For each receipt, take a lock, then insert into `kcpw_etsy_order_map` with **UNIQUE
+Two triggers feed **one idempotent importer**:
+
+- **Fast path:** the `order.paid` webhook (§10.5) enqueues `import_receipt(receipt_id)`.
+- **Recovery path:** a polling job lists receipts with a creation watermark and an overlap window,
+  plus a status refresh for open (unshipped) receipts so cancellations and shipments update. Polling
+  runs whether or not webhooks work; only its cadence changes (§11.1).
+
+The importer:
+
+1. Takes a per-receipt lock, then inserts into `kcpw_etsy_order_map` with **UNIQUE
    (shop_id, receipt_id)**. If the insert fails, the receipt is already imported and only a
-   status update is applied. This makes imports safe against concurrency and re-runs.
-3. Create the WooCommerce order inside a database transaction; on failure, roll back the map row.
-4. Optional later accelerator: Etsy paid-order webhooks, which carry only an event type, resource
-   URL, and shop ID (so the follow-up read is still required). Polling stays as the correctness
-   backstop.
+   status update is applied. This makes imports safe against concurrency, webhook retries, webhook
+   plus poll races, and re-runs.
+2. Always fetches the receipt from the Etsy API itself (the webhook body is never trusted as data).
+3. Creates the WooCommerce order inside a database transaction; on failure, rolls back the map row.
+
+### 10.5 `order.paid` webhook handler
+
+Etsy's webhook payloads are thin: event type, a resource URL, and the shop ID, with no order data
+*(Reported; GitHub discussion #1509)*. Signature scheme as reported there (it follows the Standard
+Webhooks convention; confirm on Etsy's page in Step 5):
+
+| Item | Design |
+|---|---|
+| Route | `POST /wp-json/kcpw-etsy/v1/webhooks/etsy`; public route (no WordPress auth) protected only by signature verification; `Cache-Control: no-store`; excluded from page cache, bot challenges, and WAF challenge rules |
+| Headers | `webhook-id`, `webhook-timestamp`, `webhook-signature` (value like `v1,<base64>`, possibly several space-separated signatures during secret rotation) |
+| Verification | Over the **raw request body**: `HMAC-SHA256(key, "{webhook-id}.{webhook-timestamp}.{raw-body}")` where the key is the base64-decoded part of the `whsec_…` secret after the prefix; compare base64 output with `hash_equals`; accept if any listed `v1` signature matches |
+| Replay protection | Reject timestamps more than 5 minutes from server time; store `webhook-id` in `kcpw_webhook_event` (unique) and treat repeats as already handled |
+| Secret | `KCPW_ETSY_WEBHOOK_SECRET` constant in `wp-config.php`; never in the database, logs, or git |
+| SSRF guard | **Never fetch `resource_url` as given.** Parse it, require host `api.etsy.com`, a path matching our shop's receipt endpoint, and our `shop_id`; extract the receipt ID and fetch through our own API client |
+| Response | `401` bad signature or stale timestamp; `200` for valid events including duplicates; `5xx` only if we could not persist the event (so Etsy retries); response within a couple of seconds, with all real work done in the queued job |
+| Unknown events | Ignored with `200` and logged (future events such as shipped/canceled can be adopted later) |
+
+**Webhook health and recovery**
+
+- Every polled receipt that arrives without a prior webhook within 15 minutes of its creation
+  counts as a **webhook miss**. The dashboard shows the miss rate and last webhook received time.
+- Poll cadence is adaptive: 10 minutes by default, relaxed to 30 minutes while webhooks have been
+  healthy for 24 hours (no misses), and returned to 10 minutes immediately on a miss or a webhook
+  gap longer than the expected quiet period. The daily reconciliation (7-day lookback) always runs.
+- Early community reports describe missing deliveries and signature problems, so the system is
+  built to assume webhooks are an optimization. Alerts fire on repeated misses, not on a single one.
+- Subscribing the endpoint happens in Etsy's Developer Portal and is done by you; I give you the
+  exact URL and secret handling steps then.
+- Staging registers its own endpoint and secret; production's secret is never reused.
 
 ### 10.2 Mapping Etsy receipt to WooCommerce order
 
@@ -291,7 +365,9 @@ Pushing tracking from WooCommerce to Etsy is phase W1 and needs `transactions_w`
 
 | Job | Cadence | Notes |
 |---|---|---|
-| `orders_sync` | every 10 min | Watermark plus overlap; refreshes open receipts |
+| `import_receipt` | on `order.paid` webhook | Fast path (§10.5); idempotent |
+| `orders_sync` | every 10 min; 30 min while webhooks are healthy | Recovery path: watermark plus 48 h overlap; refreshes open receipts |
+| `orders_reconcile` | daily, 7-day lookback | Every Etsy receipt has exactly one Woo order; reports webhook misses |
 | `listings_snapshot` | every 6 h; full nightly | Plan generated, not applied (§8) |
 | `inventory_reconcile` | hourly, only for rule-bearing items | Reports drift |
 | `token_refresh` | every 30 min | See §3 |
@@ -401,9 +477,14 @@ regions; respects reduced motion; tested with axe-core and manual screen-reader 
 | OAuth 2.0 code flow with PKCE; endpoints above | **Reported** | Multiple third-party guides and my own knowledge |
 | Access token ≈ 1 h; refresh token ≈ 90 days; refresh rotation | Refresh 90 days: **Confirmed** (via a search excerpt of Etsy's docs); 1 h and rotation: **Reported** | Etsy docs excerpt plus third-party guides |
 | Scope names `shops_r`, `listings_r`, `listings_w`, `transactions_r`, `transactions_w`, `email_r` | **Reported** | Multiple guides; full list not read |
-| Personal access auto-approved for own shop; commercial access hard to get; apps banned after commercial requests | **Reported** (community) | GitHub discussion in `etsy/open-api` (#1663) |
-| Webhooks: `ORDER_PAID` announced for commercial apps; thin payloads; headers `webhook-id`, `webhook-timestamp`, `webhook-signature`; HMAC with `whsec_` secret; reliability complaints | **Reported** | GitHub discussion #1509 |
-| Webhook event list may include `order.canceled`, `order.shipped`, `order.delivered` | **Reported** | Secondary snippet; conflicts with #1509 |
+| **Seller API Access / Seller App** introduced July 2026 for sellers connecting their own shop | **Owner-stated** | Your message. Etsy help-center article "How to Register a Seller App with Etsy's API" exists (title seen in search results) |
+| Seller App: access to all public and OAuth endpoints, scoped to the registered shop only; cannot serve other sellers; eligibility is an active shop in good standing with no existing registered app; approval typically quick | **Reported** (excerpt of Etsy help center via search; not read in full) | Verify on the real page in Step 5 |
+| Commercial Access requires a Personal App first plus manual review; community reports of bans after commercial requests | **Reported** (community) | GitHub discussion #1663; irrelevant to us if the Seller App is used |
+| Webhooks available beyond commercial-only apps | **Owner-stated** | Your message; Etsy's page (excerpt) is silent on tiers; third-party summaries say commercial. Verify in the portal |
+| Webhook event `order.paid` exists; requires OAuth token with suitable scopes and a public HTTPS callback | **Confirmed** (excerpt of Etsy's webhooks page via search) | |
+| Thin payloads; headers `webhook-id`, `webhook-timestamp`, `webhook-signature`; `v1,` signature prefix; HMAC-SHA256 over `id.timestamp.body`; `whsec_` secret base64-decoded; exponential-backoff retries | **Reported** | GitHub discussion #1509 (commenters; docs inconsistencies noted there) |
+| Other events (`order.canceled`, `order.shipped`, `order.delivered`) | **Reported** | Search excerpt of the webhooks page; conflicts with #1509 which says `ORDER_PAID` only at launch |
+| Etsy Dev MCP server (`https://mcp.api.etsycloud.com/mcp`, five tools, derived from the OpenAPI spec) is a documentation/schema server | **Reported** | Search excerpt of Etsy's "Dev MCP Server" page plus a third-party review |
 | `x-api-key` format requiring `keystring:secret` | **To verify** | My recollection only |
 | Receipt, transaction, listing, and inventory field names; money object shape | **To verify** | From my own knowledge of the v3 schema; vendored spec decides |
 | Inventory `PUT` replaces the entire inventory | **Reported** | Third-party reference |
@@ -412,7 +493,7 @@ regions; respects reduced motion; tested with axe-core and manual screen-reader 
 | Buyer-data usage and attribution terms | **To verify** (legal review) | Current terms not retrievable here |
 | Shop contents (listing count, variations, personalization use) | **Unknown** | Shop not reachable from here |
 
-Sources reached: Etsy's `open-api` repository ([README](https://github.com/etsy/open-api),
+Sources reached (none of Etsy's own pages could be opened directly): Etsy's `open-api` repository ([README](https://github.com/etsy/open-api),
 [#1509](https://github.com/etsy/open-api/discussions/1509),
 [#1663](https://github.com/etsy/open-api/discussions/1663)) and web search results summarizing Etsy's
 developer documentation. Etsy's own pages were not reachable (see the note at the top).

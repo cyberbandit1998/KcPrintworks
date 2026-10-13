@@ -1,7 +1,8 @@
 # Implementation Plan
 
-Status: **proposed**. Follows the build order in your brief (Steps 1 to 10) and adds a Phase 0 for
-foundations and a post-launch track for Etsy write features. Effort is given as relative sizes
+Status: **architecture approved 2026-10-13; build in progress** (live progress is tracked in
+[../PROJECT_STATUS.md](../PROJECT_STATUS.md)). Follows the build order in your brief (Steps 1 to 10) and
+adds a Phase 0 for foundations and a post-launch track for Etsy write features. Effort is given as relative sizes
 (S ≈ days, M ≈ 1 to 2 weeks, L ≈ 2 to 4 weeks, for one developer); I deliberately give no calendar
 dates because the Etsy approval time and your review turnaround are outside my control.
 
@@ -24,9 +25,14 @@ flowchart TD
   E["Etsy app registration (you): start during Step 2"] -.-> S5
 ```
 
-**One recommended deviation from your order:** *submit* the Etsy developer-app registration early
-(during Step 2) because approval time is unknown. The *engineering* order is unchanged. Steps 5 and 6
-can also begin against recorded fixtures or CSV exports while approval is pending.
+**One recommended deviation from your order:** *submit* the Etsy **Seller App** registration early
+(during Step 2) because approval time is not guaranteed, even though Etsy describes it as typically quick.
+The *engineering* order is unchanged. Steps 5 and 6 can also begin against recorded fixtures or CSV
+exports while approval is pending.
+
+**Running in parallel from now:** the read-only live-site discovery
+([LIVE-SITE-DISCOVERY.md](LIVE-SITE-DISCOVERY.md)), which unblocks the personalization decision (ADR-007) and
+the final migration plan ([MIGRATION-SHOP-DOMAIN.md](MIGRATION-SHOP-DOMAIN.md)).
 
 ## 2. Approval gates
 
@@ -34,23 +40,23 @@ Nothing below happens without your explicit go-ahead.
 
 | Gate | Needed before | You approve |
 |---|---|---|
-| G0 | Any work against a real WordPress host | A staging clone exists; production is not touched |
+| G0 | Any work against a real WordPress host | Discovery inventory reviewed; a staging clone exists; production is not touched |
 | G1 | Step 2 | Storefront design |
 | G2 | Step 5 | Payment readiness report (test mode only) |
 | G3 | Step 6 against real data | Etsy app registered; you completed the read-only OAuth consent |
 | G4 | Any write to WooCommerce from Etsy data | The first import preview, item by item |
 | G5 | Any Etsy **write** scope or write call (post-launch) | Each write feature, then each listing it touches |
-| G6 | Any production change | Live Stripe keys and webhook, Apple Pay domain, DNS cutover, redirects, Etsy sync enabled in production, launch checklist signed |
+| G6 | Any production change | Live Stripe keys and webhook, Apple Pay domain, DNS (including creating `shop.`), SSL, cutover per MIGRATION §9, redirects, Etsy sync enabled in production, launch checklist signed |
 
 ## 3. Phase 0 — Foundations and decisions (size: S–M)
 
 | Task | Output |
 |---|---|
-| Resolve the open inputs and sign-offs in [DECISIONS.md](DECISIONS.md) | Decisions recorded |
+| Resolve the open inputs in [DECISIONS.md](DECISIONS.md) §2; run the read-only discovery in [LIVE-SITE-DISCOVERY.md](LIVE-SITE-DISCOVERY.md) | Redacted `docs/discovery/INVENTORY.md`; ADR-007 decided |
 | Scaffold the monorepo (layout in ARCHITECTURE §9), TypeScript, lint, formatting, commit hooks | Repo skeleton |
 | CI: lint, typecheck, unit tests, PHPUnit, Playwright, axe, Lighthouse CI, secret scanning, dependency audit, and the guard "no Etsy hostname or credential in `apps/storefront`" | Green pipeline on an empty app |
 | Local environment: Docker Compose with WordPress, WooCommerce, MariaDB, Mailpit, seeded fixture catalog (simple, variable, personalized, made-to-order, stock-limited) | `make up` works |
-| Staging: **clone** of the current WooCommerce site on a separate host with scrubbed customer data, test-mode Stripe only | G0 |
+| Staging: **clone** of the current WooCommerce site (MIGRATION §3 M1) on a separate host with scrubbed customer data, neutralized outbound side effects, test-mode Stripe only. The live site is not modified | G0 |
 | Secrets management and environment variable inventory | Documented, no secrets in git |
 
 Exit: pipeline green, local and staging environments reachable, decisions recorded.
@@ -66,7 +72,8 @@ Exit: pipeline green, local and staging environments reachable, decisions record
   selector, **personalization form**, availability and lead-time messaging), cart, order-complete,
   content pages, search, 404, footer and legal.
 - Built on typed fixture data behind the same data-access interface that will later call WooCommerce,
-  so design is not blocked on the backend.
+  so design is not blocked on the backend. The personalization form renders from a plugin-agnostic option
+  schema, so it does not depend on ADR-007.
 - SEO: metadata API, JSON-LD (Product, BreadcrumbList, Organization), sitemap, robots, canonical.
 - Accessibility baseline (WCAG 2.2 AA) and Lighthouse budgets in CI.
 
@@ -79,11 +86,17 @@ Exit (**G1**): you approve the design at mobile, tablet, and desktop widths.
   of products and categories, on-demand revalidation endpoint with HMAC verification.
 - Revalidation emitter in `kcpw-core` (debounced, via Action Scheduler).
 - Product variations, price ranges, stock status, made-to-order messaging, images, attributes,
-  categories, SEO fields (from the SEO plugin in use), and the personalization schema in the DTO.
+  categories, SEO fields (from the SEO plugin in use), and the personalization schema in the DTO
+  (through the adapter chosen in ADR-007).
+- **Variation parity report:** baseline from the product export versus the staging database versus DTO
+  output (variation counts, attributes, SKUs, prices, stock settings, images, status). Every existing
+  variation must be preserved; any mismatch fails CI.
+- Build the URL inventory and data-driven redirect map (MIGRATION §5).
 - Draft/preview mode for unpublished products. Sitemap and redirects generated from WooCommerce data.
 - Performance and resilience tests: serve with WooCommerce stopped; latency from save to
   visible update; Lighthouse budgets.
-- **Parallel, owner action:** register the Etsy developer app (personal access) and share the status.
+- **Parallel, owner action:** register the Etsy **Seller App** and share the status (check first whether an
+  existing registered app affects eligibility).
 
 Exit: every product type renders from staging data; invalidation under 30 s; pages survive a
 WooCommerce outage.
@@ -91,7 +104,9 @@ WooCommerce outage.
 ## 6. Step 3 — WooCommerce cart and Stripe-powered checkout (size: L)
 
 - Next.js cart (line intents), quote endpoint, handoff endpoint, token store (PAYMENTS §4).
-- Personalization validation and pricing in `kcpw-core` (PAYMENTS §5).
+- Personalization capture, validation, and pricing through the approach chosen in ADR-007 (PAYMENTS §5):
+  each personalization is its own order line item; readable item meta plus the normalized
+  `_kcpw_personalization` record are stored on the order.
 - `kcpw-checkout` block theme with brand tokens; WooCommerce Checkout block; order-received page.
 - Install the official Stripe plugin pinned to a tested version on **staging with test keys**; enable
   card, Apple Pay, Google Pay; register the staging webhook and Apple Pay domain (test mode).
@@ -116,13 +131,16 @@ Exit (**G2**): report approved. No live Stripe change is made at this step.
 
 ## 8. Step 5 — Register and connect the Etsy Seller App (size: M, plus external wait)
 
-- Owner: complete registration (personal access) and supply redirect URIs; confirm real rate limits
-  shown in the developer portal.
-- Vendor Etsy's OpenAPI spec into the repo; resolve every "To verify" item in
-  ETSY-INTEGRATION §16 against it and record the results.
+- Owner: complete the Seller App registration and supply redirect URIs; confirm real rate limits and
+  scopes shown in the developer portal.
+- In a network-enabled environment, connect Etsy's Dev MCP server (ETSY §2.1), vendor Etsy's OpenAPI
+  spec into the repo, and resolve every "To verify" and "Owner-stated" item in ETSY §16, recording
+  answer, date, and source.
 - `kcpw-etsy`: OAuth connect/disconnect, encrypted token store, refresh job, API client with
   read-only guard, rate limiter, circuit breaker, structured logging.
 - Connection status panel (first piece of the admin UI).
+- Webhook endpoint (`order.paid`) with signature verification, replay protection, SSRF guard, and tests
+  against recorded fixtures; subscribed in the portal by the owner for staging only (ETSY §10.5).
 - Review Etsy's current API terms: attribution, data retention, buyer data.
 - Chaos test baseline: with Etsy blocked, the shop passes the end-to-end purchase.
 
@@ -153,13 +171,16 @@ Exit: first approved apply on staging, undo demonstrated, scheduled refresh stab
 
 ## 11. Step 8 — Etsy order synchronization (size: M–L)
 
-- Receipt poller with watermark and overlap; unique-receipt idempotency; transaction mapping.
+- `order.paid` webhook triggers an idempotent receipt import; the receipt poller with watermark and
+  overlap is the recovery path with adaptive cadence and webhook-miss tracking; unique-receipt
+  idempotency; transaction mapping; daily reconciliation.
 - WooCommerce order creation as externally paid (`kcpw_etsy`), email suppression, no tax
   recalculation, integer money math, currency guard, unmapped-item handling, needs-attention queue.
 - Personalization and buyer note import; shipment status refresh; cancellation handling.
 - Etsy-sale stock decrement for items whose rule requires it.
 - Analytics separation for Etsy-sourced orders.
-- Tests: triple and concurrent import → one order; no PaymentIntent path for Etsy orders; the order
+- Tests: webhook plus poll race, duplicate and out-of-order deliveries, endpoint down for an hour then
+  recovered by polling, bad signature, stale timestamp; triple and concurrent import → one order; no PaymentIntent path for Etsy orders; the order
   total equals the Etsy receipt; personalization matches the Etsy receipt on real samples.
 
 Exit: a week of staging imports with every Etsy receipt matched to exactly one order (reconciliation report).
@@ -184,6 +205,7 @@ Exit: all items in your brief's admin list are present and operable by keyboard.
 | Accessibility | axe, keyboard, screen reader on storefront, checkout, emails, admin |
 | Data | Backup and restore drill; migration rehearsal on a fresh staging clone |
 | SEO | URL parity, 301 map, canonical, sitemap, structured data, `noindex` on the shop host except where needed |
+| Migration | Full cutover rehearsal (MIGRATION §3 M4): timings, count parity, redirect map versus URL inventory, rollback drill |
 | Compliance | Etsy API terms review, privacy policy updates, PCI self-assessment |
 | Soak | At least 7 days on staging with real read-only Etsy sync |
 | Docs | Runbooks (ARCHITECTURE §8), rollback plan, on-call contact |
@@ -196,7 +218,9 @@ Exit: all items in your brief's admin list are present and operable by keyboard.
       delivered; Apple Pay domain registered for the production shop host; statement descriptor
       reviewed; Stripe email receipts decision applied; live smoke test with a low-value order and refund.
 - [ ] Transactional email domain authenticated (SPF, DKIM, DMARC).
-- [ ] DNS and routing changes applied by you or with your approval; TLS valid on `www` and the shop host.
+- [ ] Cutover runbook executed (MIGRATION §9): `shop.` created and certified, final database copied, apex and
+      `www` repointed with your approval; TLS valid on the apex, `www`, and the shop host; old install
+      quarantined (no live keys, webhooks, email, or cron).
 - [ ] 301 redirect map live; sitemap submitted; analytics verified.
 - [ ] Production secrets rotated from staging values.
 - [ ] Etsy: production redirect URI registered; consent completed by you; sync enabled in read-only
@@ -230,7 +254,11 @@ Exit: all items in your brief's admin list are present and operable by keyboard.
 | R12 | Etsy buyer data compliance | Medium / Medium | Minimal fields, no email by default, terms review as a launch gate |
 | R13 | Email deliverability | Medium / Medium | Transactional provider, SPF, DKIM, DMARC, test before launch |
 | R14 | Brand accent fails contrast in some pairings | Certain / Low | Rules in ARCHITECTURE §10 applied from Step 1 |
-| R15 | Hosting constraints (no system cron, old PHP, shared host) | Unknown / High | Confirm in Phase 0; budget a host change if needed |
+| R15 | Hosting constraints on shared hosting (no system cron, old PHP, process limits, WAF blocking webhooks) | High / High | Confirm in Phase 0 (MIGRATION §10); load test in Step 10; budget a host change if needed |
+| R16 | Cutover problems (lost orders, in-flight payments, email or DNS breakage) | Medium / High | Clone-then-cutover, order freeze, zero in-flight payments rule, no nameserver change, rehearsal, rollback window (MIGRATION §9) |
+| R17 | Existing personalization plugin cannot be driven from a server-side cart build | Medium / High | Decision criteria in LIVE-SITE-DISCOVERY §2.1; adapter tests; migration option B |
+| R18 | Etsy webhook deliveries missing or unverifiable | Medium / Low | Polling recovery, daily reconciliation, miss-rate alerts (ETSY §10.5) |
+| R19 | Etsy details differ from this plan because docs were not readable here | High / Medium | Step 5 verification with the official spec and MCP; "Owner-stated"/"To verify" rows tracked in ETSY §16 |
 
 ## 17. Definition of done for the whole project
 

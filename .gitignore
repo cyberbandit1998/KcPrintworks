@@ -28,3 +28,6 @@ environments/**/data/
 .idea/
 .vscode/
 *.log
+
+# Raw discovery dumps may contain sensitive site details: never commit
+docs/discovery/raw/

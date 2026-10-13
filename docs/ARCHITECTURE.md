@@ -1,8 +1,9 @@
 # Architecture
 
-Status: **proposed**, pending the sign-offs listed in [DECISIONS.md](DECISIONS.md).
-Anything marked *(assumption)* depends on facts about your current hosting that I could not
-inspect; see the open inputs in DECISIONS.md.
+Status: **approved 2026-10-13** (see [DECISIONS.md](DECISIONS.md) for the status of each decision).
+Anything marked *(assumption)* depends on facts about the current hosting and plugins that could not be
+inspected; see the open inputs in DECISIONS.md and [LIVE-SITE-DISCOVERY.md](LIVE-SITE-DISCOVERY.md).
+Moving the existing store to the `shop.` host is covered in [MIGRATION-SHOP-DOMAIN.md](MIGRATION-SHOP-DOMAIN.md).
 
 ## 1. Principles
 
@@ -47,7 +48,7 @@ Next.js storefront.
 | | Local | Staging | Production |
 |---|---|---|---|
 | Storefront | `next dev` | Vercel preview or equivalent | `www.kcprintworks.com` |
-| WordPress/WooCommerce | Docker Compose, seeded fixture catalog | **Clone** of the current site, separate host | Current live site, **unchanged until launch gate** |
+| WordPress/WooCommerce | Docker Compose, seeded fixture catalog | **Clone** of the current site, separate host | Today: the live store on shared hosting at the apex, **unchanged until the launch gate**; afterward: `shop.` host (MIGRATION doc) |
 | Stripe | Test mode | Test mode | Live mode (approval gate G6) |
 | Etsy | Recorded fixtures only | Real shop, **read scopes only**; no Etsy sandbox is known to exist *(unverified)* | Same app and shop; sync enabled at G6 |
 | Email | Mailpit | Sandbox/catch-all | Transactional provider |
@@ -83,7 +84,7 @@ Staging must never share a database, Stripe account mode, or webhook secrets wit
 | Storefront read API | `GET /wp-json/kcpw/v1/products`, `/products/{slug}`, `/categories`, `/redirects`. Public, cacheable, ETag/`Last-Modified`. Returns a denormalized storefront DTO (§5.2). |
 | Revalidation emitter | Hooks product, variation, price, stock, term, and SEO changes; debounces; sends a signed webhook to Next.js. |
 | Cart quote and handoff | Server-to-server endpoints that validate line intents and hand the shopper to WooCommerce checkout. |
-| Personalization options | Per-product option schema, server-side validation, price adders, order-item meta. |
+| Personalization options | A plugin-agnostic option schema in the DTO, with an adapter for whichever approach ADR-007 selects (existing plugin, first-party schema, or hybrid). Always: server-side validation and pricing, each personalization as its own order line, readable item meta plus `_kcpw_personalization`. |
 | Order lookup | HMAC-signed `GET /orders/{id}?key=` so the storefront can verify order status server-side. |
 | Fulfillment view | Channel-agnostic admin list of website and Etsy orders (Step 9). |
 
@@ -219,8 +220,8 @@ runs in CI.
   limited to the Stripe domains.
 - **Server-to-server auth:** HMAC-SHA256 over method, path, timestamp, and body; ±5 minute
   window; constant-time compare; per-request nonce stored briefly for replay protection.
-- **Webhook verification:** always on the raw body (Stripe signature; Etsy `webhook-*` headers if
-  that feature is used). Do not rely on IP allowlists.
+- **Webhook verification:** always on the raw body (Stripe signature; Etsy `webhook-*` HMAC headers with
+  replay protection, dedupe, and an SSRF guard on the payload URL; see ETSY §10.5). Do not rely on IP allowlists.
 - **Admin:** capability checks plus nonces on every REST action; custom capabilities
   `kcpw_etsy_manage` and `kcpw_etsy_approve_writes`; 2FA required for admin accounts.
 - **WordPress hardening:** file editing disabled, XML-RPC off, login rate limiting, WAF, automatic

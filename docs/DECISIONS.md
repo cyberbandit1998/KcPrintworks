@@ -1,133 +1,157 @@
 # Decisions and Open Inputs
 
-## 1. What I need from you
+Last updated 2026-10-13, after the owner's approval of the overall architecture.
 
-I found an **empty repository** (no branches, no commits), so there was no earlier Next.js rebuild or
-plan to update. I wrote the architecture from your brief. The items below are things I could not
-inspect from here; each has a default I will use if you do not say otherwise.
+## 1. Decision status
 
-### 1.1 Decisions to sign off
+| ADR | Decision | Status |
+|---|---|---|
+| ADR-001 | Domain topology: Next.js at `kcprintworks.com`; WordPress/WooCommerce (admin, checkout, REST, webhooks) at `shop.kcprintworks.com` | **Approved** 2026-10-13 |
+| ADR-002 | Hybrid checkout: Next.js storefront and cart; WooCommerce-hosted checkout with the **official** Stripe plugin; secure single-use cart handoff | **Approved** 2026-10-13 |
+| ADR-003 | Etsy sync is a separate WooCommerce plugin (`kcpw-etsy`) on Action Scheduler | **Approved** 2026-10-13 |
+| ADR-004 | Etsy orders imported as WooCommerce orders marked "Paid on Etsy" | Proposed (not yet explicitly approved; implicit in the approved plan) |
+| ADR-005 | WooCommerce owns the website; per-field ownership; import-once defaults; Woo-owned SEO | Proposed (implicit in the approved plan) |
+| ADR-006 | Etsy access class: **Seller App / Seller API Access**, read-only scopes first | **Revised 2026-10-13** (was "personal access") |
+| ADR-007 | Personalization solution | **Pending discovery**: no solution is chosen until the installed plugins are inspected |
+| ADR-008 | Catalog delivery via cached DTO endpoints with tag-based revalidation | Proposed (implicit in the approved plan) |
+| ADR-009 | Migration strategy: clone then cut over; live site stays operational | **New, proposed** |
+| ADR-010 | Etsy `order.paid` webhook as fast path with polling as recovery | **New, proposed** |
+| ADR-011 | Accessible foreground colors on the unchanged brand palette | **Approved** 2026-10-13 |
 
-| # | Decision | My recommendation (default) | Why it matters |
-|---|---|---|---|
-| ADR-001 | Domain topology | `www.kcprintworks.com` = Next.js; `shop.kcprintworks.com` = WordPress, admin, checkout, Stripe webhooks | Apple Pay and webhooks bind to the shop host; any DNS change needs your approval (G6) |
-| ADR-002 | Checkout approach | Hybrid: Next.js storefront and cart; WooCommerce-hosted checkout with the official Stripe plugin | Everything in PAYMENTS-STRIPE.md depends on it; the alternative costs far more code |
-| ADR-003 | Where the Etsy sync lives | WordPress plugin `kcpw-etsy` on Action Scheduler | Direct WooCommerce access, bundled job queue, admin UI in WP admin |
-| ADR-004 | Etsy orders | Import as WooCommerce orders marked "Paid on Etsy" | One fulfillment queue; trade-offs listed below |
-| ADR-005 | Source of truth | WooCommerce owns the website; field-level policy; import-once defaults; Woo-owned SEO | Prevents overwrites of SEO copy, prices, variations |
-| ADR-006 | Etsy access class | Personal access, read-only scopes first, no commercial application | Lowest approval risk for a single owned shop |
-| ADR-007 | Personalization options | Thin first-party option schema in `kcpw-core` (unless you already use an add-ons plugin) | Headless needs the schema in JSON and server-side pricing |
-| ADR-008 | Catalog delivery | Public cached DTO endpoints in `kcpw-core` with tag-based revalidation | Fewer round trips than raw WooCommerce REST; no Etsy fields in public data |
+## 2. Inputs still needed
 
-### 1.2 Inputs I need
+Answering these unlocks the corresponding work. Most are covered by the read-only procedure in
+[LIVE-SITE-DISCOVERY.md](LIVE-SITE-DISCOVERY.md).
 
-1. **Hosting:** where does WooCommerce run today, and can a staging clone be made? PHP version,
-   WooCommerce version, HPOS status, ability to run system cron/WP-CLI?
-2. **Current plugins:** SEO plugin (Yoast, Rank Math, other), product add-ons or personalization
-   plugin, shipping and tax plugins, any existing Stripe/PayPal plugin.
-3. **Catalog shape:** approximate number of products, how many have variations, how many are
-   stock-limited, and how personalization works today (free text only, or choices, or image upload?).
-4. **Etsy shop shape:** approximate number of listings, how many have variations, how many use Etsy's
-   personalization field, and whether Etsy SKUs are consistently set. (I could not open the shop
-   from this environment.)
-5. **Stripe:** account activated and verified? Preferred statement descriptor? Link on or off?
-   Who will supply test keys and, later, live keys?
-6. **Tax and shipping:** countries you ship to, tax approach (WooCommerce tax tables, Stripe Tax, or a
-   service), flat versus live-rate shipping.
-7. **Next.js hosting:** Vercel (my default) or self-hosted?
-8. **Email:** current sending provider and domain.
-9. **Etsy price rule:** keep website and Etsy prices fully independent (default), or define a rule
-   later?
-10. **Etsy buyer email:** leave out (default, data minimization) or include?
+1. **Live-site inventory** (plugins, versions, theme, WooCommerce settings, HPOS). Blocks ADR-007 and the
+   migration plan. I could not inspect the live site from my environment.
+2. **Catalog and personalization facts:** how personalization works today, whether it is per line item or per
+   unit, and whether any product uses file upload (I assume none until discovery shows otherwise).
+3. **Hosting facts:** provider, PHP version, WP-CLI/cron availability, DNS provider, email hosting
+   ([MIGRATION-SHOP-DOMAIN.md](MIGRATION-SHOP-DOMAIN.md) §11).
+4. **Staging location:** hosting-provider staging, a separate host, or a new staging subdomain (the last is a
+   DNS change needing your approval).
+5. **Stripe:** account status, who supplies test keys, link on or off, statement descriptor, tax approach.
+6. **Shipping and tax** approach, and countries served.
+7. **Next.js hosting** (Vercel assumed).
+8. **Etsy:** whether a developer app is already registered, listing count, price rule (independent assumed),
+   buyer email (excluded by default).
+9. **Network access for verification work:** allow `developers.etsy.com`, `developer.etsy.com`,
+   `help.etsy.com`, and `mcp.api.etsycloud.com` (plus `kcprintworks.com` if you want me to inspect public
+   pages) in the environment's network settings, or run the discovery yourself.
+   See <https://code.claude.com/docs/en/cloud-environments#network-access>.
 
-### 1.3 Environment note
+## 3. Decision log
 
-Outbound access from this working environment to Etsy hosts (`developers.etsy.com`,
-`developer.etsy.com`, `www.etsy.com`, and `api.etsy.com`) is blocked by the environment's network
-policy. To let me read Etsy's documentation and specification here, add those hosts to the
-environment's allowed domains (cloud environment menu, Edit, Network access). Etsy API calls
-themselves will be made from the WordPress server, not from here, so this is only needed for
-verification work in Step 5. Documentation steps:
-<https://code.claude.com/docs/en/cloud-environments#network-access>.
+Format: context, decision, consequences.
 
-## 2. Decision log
+### ADR-001 — Domain topology (Approved)
 
-Format: context, decision, consequences. Status for all: **Proposed**.
+- **Context.** The Stripe plugin, Apple Pay domain registration, and webhooks must live on a host that runs
+  WooCommerce. Next.js is on a different runtime. The current WooCommerce site occupies `kcprintworks.com`.
+- **Decision.** `kcprintworks.com` (apex, canonical) serves Next.js; `www` redirects to it;
+  `shop.kcprintworks.com` serves WordPress.
+- **Consequences.** Apple Pay is registered on `shop.`. Cookies are host-only, so the cart is handed over rather
+  than shared. WordPress public pages other than checkout and account redirect to the apex. Because the apex
+  currently hosts the live store, the move is a **clone-then-cutover** (ADR-009). No DNS change is made without
+  approval.
 
-### ADR-001 — Domain topology
+### ADR-002 — Hybrid checkout with the official Stripe plugin (Approved)
 
-- **Context.** The Stripe plugin, Apple Pay domain registration, and webhooks must all live on a
-  host that runs WooCommerce. Next.js is on a different runtime.
-- **Decision.** Two hosts: `www` for Next.js, `shop` for WordPress.
-- **Consequences.** Apple Pay is registered on `shop`. Cookies are separate, so the cart
-  is handed over rather than shared. The WordPress public pages (other than checkout and account)
-  are `noindex` or redirected to `www`. A proxy-based single-domain setup is possible later but
-  adds routing complexity and risks Apple Pay and cookie issues.
+- **Context.** The brief says to use the official plugin unless something is demonstrably better supported. No
+  documentation I could reach supports driving the plugin's payment flow from a separate frontend.
+- **Decision.** Next.js owns browsing and cart; WooCommerce owns checkout and payment status. A validated,
+  single-use handoff transfers the cart (PAYMENTS-STRIPE §4).
+- **Consequences.** Minimal payment code of our own; checkout is a themed WooCommerce page; wallet buttons are
+  not on `www` pages in v1.
+- **Reversal trigger.** Step 3 spikes fail, or the checkout look is rejected at G1/G2. Then option C in
+  PAYMENTS §12, after you approve.
 
-### ADR-002 — Hybrid checkout with the official Stripe plugin
+### ADR-003 — Etsy sync as a separate WooCommerce plugin (Approved)
 
-- **Context.** The brief says to use the official plugin unless something is demonstrably better
-  supported. No documentation I could reach supports driving the plugin's payment flow from a
-  separate frontend.
-- **Decision.** Next.js owns browsing and cart; WooCommerce owns checkout and payment status.
-  A validated single-use handoff transfers the cart.
-- **Consequences.** Minimal payment code of our own; checkout is a themed WooCommerce page rather
-  than a Next.js page; wallet buttons are not on `www` pages in v1.
-- **Reversal trigger.** Step 3 spikes fail, or the checkout look is rejected at G1/G2. Then
-  option C in PAYMENTS §12, after you approve.
-
-### ADR-003 — Etsy sync as a WordPress plugin
-
-- **Context.** Needs: direct WooCommerce CRUD, transactions, a job queue, retries, WP admin
-  authorization, and strict isolation from shoppers.
-- **Decision.** `kcpw-etsy` plugin using Action Scheduler, driven by system cron.
-- **Alternatives.** A separate Node worker: type-sharing with Next.js and process isolation, but it
-  needs its own queue, state, and authenticated admin, and would write to WooCommerce through
-  REST without transactions.
+- **Context.** Needs: direct WooCommerce CRUD, transactions, a job queue, retries, WP admin authorization, and
+  strict isolation from shoppers.
+- **Decision.** `kcpw-etsy` plugin using Action Scheduler, driven by cron, separate from `kcpw-core`.
+- **Alternatives.** A separate Node worker: type-sharing with Next.js and process isolation, but it needs its
+  own queue, state, and authenticated admin, and would write to WooCommerce through REST without transactions.
 - **Consequences.** Sync shares the WordPress host with checkout, so load is managed with batch limits,
-  concurrency 1, and a load test (R7). Plugin boundary and kill switch keep it removable.
+  concurrency 1, and a load test (R7). The plugin boundary and kill switch keep it removable. Shared hosting
+  may make this harder (MIGRATION §10).
 
-### ADR-004 — Etsy orders as WooCommerce orders
+### ADR-004 — Etsy orders as WooCommerce orders (Proposed)
 
 - **Context.** "Import into WooCommerce or a consolidated fulfillment view."
 - **Decision.** Import as WooCommerce orders with payment method "Paid on Etsy".
-- **Pros.** One queue; packing slips, shipping-label plugins, and exports work unchanged;
-  personalization is visible in the same place.
-- **Cons and mitigations.** Revenue and tax reports include Etsy sales (filter by source in Step 9);
-  customer emails must be suppressed (done by filters and no recipient); stock must not be touched
-  by default (rule-driven); refunds must not hit Stripe (gateway without refund support).
-- **Alternative.** A separate table and fulfillment page: cleaner reports, but loses the plugin
-  ecosystem and duplicates fulfillment UI.
+- **Pros.** One queue; packing slips, shipping-label plugins, and exports work unchanged; personalization is
+  visible in one place.
+- **Cons and mitigations.** Revenue and tax reports include Etsy sales (filter by source in Step 9); customer
+  emails must be suppressed (filters and no recipient); stock is never touched by default (rule-driven);
+  refunds must not hit Stripe (gateway without refund support).
+- **Alternative.** A separate table and fulfillment page: cleaner reports, but loses the plugin ecosystem and
+  duplicates fulfillment UI.
 
-### ADR-005 — Source of truth and field ownership
+### ADR-005 — Source of truth and field ownership (Proposed)
 
-- **Decision.** Per-field policy (ETSY §7), WooCommerce owns the website, import-once defaults,
-  SEO and WooCommerce-specific options never written, three-way conflict detection, preview
-  required before apply.
-- **Consequences.** More up-front configuration; much lower risk of overwriting SEO copy,
-  prices, or variations.
+- **Decision.** Per-field policy (ETSY §7), WooCommerce owns the website, import-once defaults, SEO and
+  WooCommerce-specific options never written, three-way conflict detection, preview required before apply.
+- **Consequences.** More up-front configuration; much lower risk of overwriting SEO copy, prices, or variations.
 
-### ADR-006 — Etsy access class and scopes
+### ADR-006 — Etsy access class and scopes (Revised)
 
-- **Decision.** Personal access for our own shop; `shops_r`, `listings_r`, `transactions_r` only
-  until a write feature is approved; no `listings_d`; `email_r` off by default.
-- **Consequences.** Etsy webhooks (commercial apps) are unavailable, so we poll. If personal access
-  proves insufficient, we revisit with evidence rather than applying for commercial access
-  speculatively.
+- **Context.** The owner reports that Etsy introduced Seller API Access in July 2026 for sellers connecting their
+  own shops. Excerpts of Etsy's help center agree: a Seller App covers the registered shop only, cannot serve
+  other sellers, and approval is typically quick. I could not open Etsy's pages, so details remain to be verified.
+- **Decision.** Register a **Seller App**; do not apply for Commercial Access. Scopes `shops_r`, `listings_r`,
+  `transactions_r` only until a write feature is approved; no `listings_d`; `email_r` off by default.
+- **Consequences.** Replaces the earlier "personal access" plan. The app may only ever be used with this shop.
+  Confirm rate limits, scope list, and the effect of any existing registered app on the real page in Step 5,
+  using Etsy's Dev MCP server and the official OpenAPI spec (ETSY §2.1).
 
-### ADR-007 — Personalization options
+### ADR-007 — Personalization options (Pending discovery)
 
-- **Decision.** First-party schema in `kcpw-core` stored in product meta, validated and priced
-  server-side, saved as order-item meta.
-- **Alternative.** A commercial add-ons plugin: faster to start, but headless JSON exposure and
-  server-side pricing control are weaker. If you already use one and it exposes its schema, we
-  revisit.
+- **Context.** The first draft proposed a first-party option schema. The owner asked that the installed plugins be
+  inspected first and that uploads not be assumed.
+- **Decision.** **None yet.** The storefront DTO uses a plugin-agnostic option schema so design and the product
+  page can proceed. Choose between (A) keep the existing plugin with adapters, (B) migrate to a first-party
+  schema, or (C) hybrid, using the criteria in LIVE-SITE-DISCOVERY §2.1.
+- **Invariants regardless of the choice.** Server-side validation and pricing; each personalization becomes its
+  own order line item; readable item meta plus a normalized `_kcpw_personalization` record; all existing
+  variations preserved and proven by a parity report; no upload feature unless existing products already use it.
 
-### ADR-008 — Catalog delivery to Next.js
+### ADR-008 — Catalog delivery to Next.js (Proposed)
 
-- **Decision.** Purpose-built read endpoints returning a denormalized DTO; the storefront has
-  no WooCommerce credentials; tag-based revalidation with a time-based fallback.
-- **Alternatives.** WooCommerce REST (N+1 calls for variations, needs credentials), Store API
-  (cart-oriented), WPGraphQL (extra stack).
-- **Consequences.** We maintain a small API and its contract tests; in return the public data shape is
-  controlled and Etsy data cannot leak into it.
+- **Decision.** Purpose-built read endpoints returning a denormalized DTO; the storefront has no WooCommerce
+  credentials; tag-based revalidation with a time-based fallback.
+- **Alternatives.** WooCommerce REST (N+1 calls for variations, needs credentials), Store API (cart-oriented),
+  WPGraphQL (extra stack).
+- **Consequences.** We maintain a small API and its contract tests; in return the public data shape is controlled
+  and Etsy data cannot leak into it.
+
+### ADR-009 — Migration: clone, then cut over (Proposed)
+
+- **Context.** The live WooCommerce store runs at the apex on shared hosting and must stay operational during
+  development. The target puts Next.js on the apex.
+- **Decision.** Build and test on a staging clone; create the `shop.` host from a fresh clone; at cutover, freeze
+  orders briefly, copy the final database to `shop.`, then repoint the apex. The old install is quarantined, not
+  deleted, for 30 days. Full plan in MIGRATION-SHOP-DOMAIN.md.
+- **Consequences.** A short order freeze at cutover; DNS, SSL, and Stripe changes each need approval; shared-
+  hosting limits are a project risk (R15).
+
+### ADR-010 — `order.paid` webhook with polling recovery (Proposed)
+
+- **Context.** The owner reports webhooks are available beyond commercial-only apps. Payloads are thin and early
+  reports mention missed deliveries.
+- **Decision.** Webhook triggers an idempotent receipt import (fast path); polling continues as the recovery
+  path with an adaptive cadence; a daily reconciliation checks every receipt has exactly one order. The webhook
+  handler verifies the signature over the raw body, dedupes by `webhook-id`, never fetches the payload's URL as
+  given (SSRF guard), and responds quickly (ETSY §10.5).
+- **Consequences.** Faster order visibility with no loss of correctness if webhooks fail; one more public
+  endpoint that must pass the host's WAF.
+
+### ADR-011 — Accessible colors on the unchanged brand palette (Approved)
+
+- **Decision.** Keep `#F3EBDD`, `#111216`, `#FF4A24`, `#2B59E6` exactly. Adjust only **how they are paired**:
+  dark text on orange buttons (5.58:1) instead of white (3.36:1); ink borders and focus rings instead of orange;
+  blue links with underlines on cream; cream or orange (not blue) for links on the dark footer. Contrast ratios
+  are asserted by an automated test in the storefront package (ARCHITECTURE §10).
+- **Consequences.** Any new color pairing must pass the test before it ships.
