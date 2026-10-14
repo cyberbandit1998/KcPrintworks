@@ -7,6 +7,14 @@ import { expect, test } from '@playwright/test';
  * outages, are in wordpress-content.spec.ts.
  */
 
+// Videos are third-party pages: a test must not depend on them loading (the sandbox cannot reach them, CI can), and the accessibility
+// scan must judge OUR page, not YouTube's. The frames stay in the page, with their own title checked; only their content is not fetched.
+test.beforeEach(async ({ page }) => {
+  await page.route(/youtube-nocookie\.com|player\.vimeo\.com|youtube\.com/, (route) =>
+    route.abort(),
+  );
+});
+
 test('the blog lists the newest posts, nine to a page, with working page links', async ({
   page,
 }) => {

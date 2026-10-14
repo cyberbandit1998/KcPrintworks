@@ -954,6 +954,13 @@ test.describe('categories, Featured and New Arrivals from WooCommerce', () => {
  * under another test.
  */
 test.describe('WordPress content: blog, Our Story, Contact', () => {
+  // A video in a post is a third-party page: not fetched in tests (see blog.spec.ts), so the scan judges only our page.
+  test.beforeEach(async ({ page }) => {
+    await page.route(/youtube-nocookie\.com|player\.vimeo\.com|youtube\.com/, (route) =>
+      route.abort(),
+    );
+  });
+
   test.beforeEach(async ({ request }) => {
     await mockPost(request, 'reset', {});
     expect((await revalidate(request)).status()).toBe(202);
