@@ -2,30 +2,29 @@
 
 Living document. Update it at the end of every session (see [CLAUDE.md](CLAUDE.md)).
 
-- **Last updated:** 2026-10-14 (session 1, after the decision that **Etsy is the master catalog** and the Step 2 WooCommerce request)
+- **Last updated:** 2026-10-14 (session 1, after ADR-014: **WooCommerce is the single source of truth; the Etsy sync service is the owner's, interchangeable, and not ours**)
 - **Branch:** `claude/hopeful-hamilton-lq8pw6` (no pull request opened; owner has not asked for one)
-- **Environment:** staging only. The **staging** Docker image (noindex, checkout disabled) runs on the owner's VPS with the placeholder
-  catalog; the newest image can read the real WooCommerce catalog once the owner adds a Read-only key (`docs/DEPLOYMENT-VPS.md` §9).
-  The WordPress plugin `wordpress/kcpw-etsy` (read-only) is built but **not installed anywhere**. The live WooCommerce site, WordPress,
-  MariaDB, Nginx Proxy Manager, Etsy listings, Stripe configuration, and DNS have **not** been touched.
+- **Environment:** staging only. The **staging** Docker image (noindex, **checkout off**) runs on the owner's VPS; it can read the real WooCommerce catalog
+  once the owner adds a Read-only key (`docs/DEPLOYMENT-VPS.md` §9). The WordPress plugin `wordpress/kcpw-core` (cart handoff + personalization) is built
+  and tested with stand-ins but **not installed anywhere**. The live WooCommerce site, WordPress, MariaDB, Nginx Proxy Manager, Etsy listings, the
+  owner's sync service, Stripe configuration, and DNS have **not** been touched.
 
 ## Where we are
 
 | Phase                                                       | Status                                                                                                    |
 | ----------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| Architecture and plan                                       | **Approved by the owner 2026-10-13** (see below)                                                          |
+| Architecture and plan                                       | **Approved by the owner 2026-10-13**; sync-neutral revision (ADR-014) decided 2026-10-14                  |
 | Phase 0: foundations (monorepo, CI, guards)                 | **Done** except staging and local WordPress environments (blocked on discovery/hosting facts)             |
 | Live-site discovery (plugins, products, personalization)    | **Partly done.** Product export analyzed (`docs/discovery/INVENTORY.md`); plugins, orders, hosting, DNS still unknown |
-| Step 1: Next.js storefront design                           | **Built, awaiting owner design review (gate G1).** Default data is synthetic; `CATALOG_SOURCE=export` previews the owner's real 66 products (titles, prices, options). Photo hero is in; the owner's photo file is still needed |
-| Step 2: WooCommerce products and variations                 | **Built, tested against a mock store, not yet run against kcprintworks.com.** Read-only REST source with cache + signed refresh (`docs/WOOCOMMERCE-CATALOG.md`). Needs the owner's Read-only key |
-| Etsy as master catalog: architecture and decisions          | **Decided by the owner 2026-10-14** (ADR-013); docs updated (`docs/ETSY-INTEGRATION.md`, `docs/ARCHITECTURE.md`, `docs/DECISIONS.md`)|
-| Etsy Seller App connection (plugin `kcpw-etsy`)             | **Built, read-only, tested with mocks only.** Needs the owner to register the app and install on staging (`docs/ETSY-SETUP.md`) |
-| Read-only import preview (download, matching report, owner decisions, dry-run plan) | **Built, tested with mocks and the real WooCommerce export.** Not run against real Etsy |
-| First synchronization into WooCommerce, rollback, scheduling, webhooks | **Not built; needs the owner's approval after reviewing matches and the dry-run** |
+| Step 1: Next.js storefront design                           | **Built, awaiting owner design review (gate G1).** Default data is synthetic; `CATALOG_SOURCE=export` previews the owner's real 66 products. The owner's hero photo file is still needed |
+| Step 2: WooCommerce products and variations                 | **Built, tested against a mock store, not yet run against kcprintworks.com.** Read-only REST source, cache + signed refresh, sync-neutral display policy (`docs/WOOCOMMERCE-CATALOG.md`). Needs the owner's Read-only key |
+| Independence from the sync service (ADR-014)                | **Done in code and guard.** No Etsy API, credentials, or sync-product names in shipped code; the storefront reads only standard WooCommerce data plus our own `_kcpw_*` meta (`docs/SYNC-INDEPENDENCE.md`). Behavior of ExportYourStore/Nembol toward product meta and IDs is **unverified** |
+| Custom Etsy plugin `kcpw-etsy`                              | **Withdrawn and removed** (built read-only earlier the same day, never installed; recoverable with `git show 29cc10f:wordpress/kcpw-etsy`) |
+| Step 3a: `kcpw-core` WordPress plugin (handoff + personalization) | **Built; logic proven by shared TS/PHP vectors; WordPress/WooCommerce glue verified with stubs only.** Not installed |
+| Step 3b: storefront cart handoff (`/api/cart/handoff/`)     | **Built and tested end to end against a stand-in shop.** Off by default; impossible in a production build |
+| Stripe checkout (official WooCommerce plugin, test mode)    | **Nothing of ours touches payment.** Owner configures the Stripe plugin on staging; runbook `docs/CHECKOUT-STAGING-CHECKLIST.md`. Not yet run |
 | Deployment of the storefront (staging container, VPS)       | **Image published; owner installs it** (`docs/DEPLOYMENT-VPS.md`). Needs the owner's DNS and Nginx Proxy Manager steps |
-| Step 3: cart handoff and Stripe checkout (test mode)        | Not started. Checkout button is intentionally disabled                                                    |
-| Step 4: personalized order + payment testing                | Not started                                                                                               |
-| Etsy order import and fulfillment view (old Steps 8 and 9)  | Not started (design documented; later phase)                                                              |
+| Step 4: personalized order + payment testing                | Not started (needs staging WordPress with `kcpw-core` and Stripe test keys)                              |
 | Step 10: full integration test and launch readiness         | Not started                                                                                               |
 
 ### Approvals received (owner message, 2026-10-13)
@@ -40,29 +39,28 @@ preview before applying; use staging and Stripe test mode; build in phases.
 
 ### Owner decisions and instructions, 2026-10-14
 
-**Etsy is the master product catalog** (ADR-013): products are created and edited on Etsy and synchronize into WooCommerce, which supplies the
-Next.js storefront. Etsy owns titles, descriptions, images, variations, colors, and base prices; WooCommerce keeps checkout, shipping, tax, Stripe,
-SEO URLs, categories, shipping rules, and approved overrides. Mappings by Etsy listing/inventory IDs; **no duplicates** (a matching report and the
-owner's decision on every ambiguous match come first); preview, dry-run, conflict detection, rollback; scheduled sync with webhooks where available;
-no Etsy calls from customer requests. **The live WooCommerce site stays unchanged until the owner approves the first synchronization**, and no
-WooCommerce product is created, updated, or deleted until the owner has reviewed the proposed matches and changes. Step 2 (real catalog in Next.js)
-must read WooCommerce read-only, keep variation IDs/prices/options/personalization, keep checkout disabled, and be verifiable without a Docker rebuild.
+**WooCommerce is the single source of truth** (ADR-014, which supersedes ADR-013 "Etsy is master"). The owner synchronizes Etsy into WooCommerce with a
+third-party service (ExportYourStore now, perhaps Nembol later). The storefront must not depend on either, must need **no code change** if the service
+is switched, must not call Etsy or build an Etsy integration, and must not be coupled to a sync product. Priorities: WooCommerce product integration,
+personalization, cart handoff, Stripe checkout. Standing constraints still apply: do not alter the live WordPress site, DNS, or payment settings; the
+live WooCommerce products and inventory stay unchanged; checkout stays disabled until integration testing is complete; no WooCommerce product is created,
+updated, or deleted by us.
 
 ### Approvals **not** given (all still required)
 
 Any DNS change (including creating `shop.` or a staging subdomain), SSL issuance on production, Stripe test or
-live configuration changes (webhooks, Apple Pay domain, keys), Etsy app registration and OAuth consent (the
-owner performs these), any Etsy write scope, **the first synchronization / any WooCommerce product write**, installing `kcpw-etsy` on the live
-site, creating a WooCommerce webhook, and the cutover (gate G6). Creating the WooCommerce Read-only REST key is the owner's action.
+live configuration changes (webhooks, Apple Pay domain, keys), any change to the Etsy shop or to the sync service's settings, any WooCommerce
+product or inventory write by us, installing `kcpw-core` on the **live** site (staging first), creating a WooCommerce webhook, switching checkout on
+anywhere, and the cutover (gate G6). Creating the WooCommerce Read-only REST key and the Stripe test keys are the owner's actions.
 
 ## What exists in the code
 
-Verified on 2026-10-14: `npm run check` and `npm run test:e2e` pass locally: **103** contracts tests (incl. 33 shared
-personalization vectors and a graph test that keeps zod out of the browser entry), **140** storefront unit tests (2 skip in CI because
-they read the gitignored export), **46** script tests (analyzer, duplicate/category/stock recommenders, read-only fetcher, variation comparison,
-deploy script, freshness script), **106** PHP tests / 5,610 assertions for `kcpw-etsy`, and **65** Playwright e2e tests (axe WCAG 2.2 AA on every
-route, no horizontal scroll 320 to 1280 px, keyboard and focus flows, payload and script-size budgets, and 14 against a mock WooCommerce store).
-CI-style run with the export moved aside also passes. GitHub Actions on `196a701`: **CI green** (run 38493443121, incl. PHP tests and the WooCommerce e2e suite) and **Publish Docker image green** (run 38493443156): tag **`sha-196a701`**, digest `sha256:028a2be5…db805`, smoke-tested normally and with a hostile `SITE_ENV=production` runtime environment.
+Verified on 2026-10-14: `npm run check` and `npm run test:e2e` pass locally: **108** contracts tests (incl. 33 shared personalization vectors,
+29 shared line-pricing vectors, 3 request-signing vectors, and a graph test that keeps zod out of the browser entry), **171** storefront unit tests
+(2 skip in CI because they read the gitignored export), **46** script tests, **66** PHP tests / 725 assertions for `kcpw-core`, and **74** Playwright
+e2e tests (axe WCAG 2.2 AA on every route, no horizontal scroll 320 to 1280 px, keyboard and focus flows, payload and script-size budgets, and 23 against
+a mock WooCommerce store plus a `kcpw-core` stand-in with checkout switched on). The CI-style run with the export moved aside is recorded in the session log.
+Previous published image: **`sha-196a701`** (CI and image workflows green); the image for this work is recorded in the session log once published.
 
 - **`packages/contracts`:** integer money; plugin-agnostic personalization option schema and `validateOptions`;
   strict product DTO (rejects Etsy fields); strict cart line intents (rejects client prices); `priceLine`
@@ -81,12 +79,18 @@ CI-style run with the export moved aside also passes. GitHub Actions on `196a701
   stale-while-revalidate cache with single flight, race-safe invalidation, and last-good fallback. Image optimizer limited to
   `kcprintworks.com` hosts (build-time `IMAGE_HOSTS`). `scripts/verify-catalog-freshness.mjs` proves a change appears without a rebuild.
   Tests: unit tests against `tests/support/mock-woo.mjs` (GET-only mock store, synthetic data) and a Playwright suite.
-- **`wordpress/kcpw-etsy` (v0.1.0, read-only)** ~100 PHP files: Seller App OAuth 2.0 + PKCE, encrypted token vault, rotation-safe
-  token source, GET-only rate-limit-aware Etsy client with an allowlisting transport, normalizer, resumable listing collector, matcher
-  (strong/weak signals, duplicate "twins" make a match ambiguous), owner decisions + CSV, dry-run planner (field policy, price and
-  inventory policies, overrides, three-way conflicts, variation matching, personalization suggestion), admin screens (Connection,
-  Import preview, Dry-run plan) behind capability + nonce checks, packaging (`npm run build:etsy-plugin`), CI job + artifact.
-  `ReadOnlySafetyTest` fails if any WooCommerce write or Etsy write appears.
+- **Sync-neutral display policy** `apps/storefront/src/lib/catalog/display-policy.ts`: marketplace-style attributes are hidden from shoppers (display only; list
+  extendable with `CATALOG_HIDDEN_ATTRIBUTES`), a generic "Listed with ...com" footer is stripped by shape, and made-to-order is read from a
+  tag/attribute/`_kcpw_made_to_order` meta. Nothing names a sync product; `npm run guard` fails if Etsy or a sync-service name appears in shipped code.
+- **`wordpress/kcpw-core` (v0.1.0)** the only first-party WordPress code: a pure PHP core (option validator ported from `validateOptions`, line resolver and
+  pricing ported from `priceLine`, HMAC request verifier, single-use handoff tokens: 43 chars, SHA-256 hash stored, 10-minute TTL, intents stored not prices) and a thin
+  `src/Wp` layer (REST routes `/kcpw/v1/cart/quote`, `/cart/handoff`, `/status`; cart rebuild on redemption through `WC()->cart->add_to_cart()`; a
+  "Personalization" product tab; option charges recomputed from the schema at `woocommerce_before_calculate_totals`; readable order-item meta plus a hidden
+  `_kcpw_personalization` JSON; cart/checkout revalidation; readiness page). It writes **no product data except `_kcpw_*` meta on the product the owner is editing** and
+  contains no payment code (`CoreIsPureTest`). Packaged by `npm run build:core-plugin` (CI artifact `kcpw-core-plugin`).
+- **Cart handoff in the storefront:** `POST /api/cart/handoff/` (strict body: line intents only; 403 unless `readCheckoutStatus()` is enabled; local re-validation and re-pricing;
+  signed server-to-server call; response redirect accepted only if same origin, path `/`, one `kcpw_handoff` token) and `GET /api/checkout-status/`. The cart page shows a working
+  **Checkout** button only when enabled, otherwise the unchanged "checkout coming soon" state. A 409 ("prices changed") reloads the catalog before the shopper retries.
 - **Design:** brand palette unchanged; dark text on orange buttons; ink borders/focus rings; cream links in the
   footer. The contrast rules are enforced by a unit test reading the real CSS.
 - **CI:** `.github/workflows/ci.yml` runs on every push. Run #1 (commit `d03b756`) **passed in full on GitHub's
@@ -121,9 +125,9 @@ Full text in [docs/DECISIONS.md](docs/DECISIONS.md).
 | ------- | ----------------------------------------------------------------------------- | ---------------------- |
 | 001     | `kcprintworks.com` = Next.js; `shop.kcprintworks.com` = WordPress/WooCommerce | Approved               |
 | 002     | Hybrid checkout, official Stripe plugin, single-use cart handoff              | Approved               |
-| 003     | Etsy sync as a separate WooCommerce plugin                                    | Approved; built read-only |
+| 003     | Etsy sync as a separate WooCommerce plugin                                    | **Withdrawn (014)**    |
 | 004     | Etsy orders imported as WooCommerce orders "Paid on Etsy"                     | Proposed               |
-| 005     | WooCommerce is master; per-field ownership; preview before apply              | **Superseded by 013**  |
+| 005     | WooCommerce is master; per-field ownership; preview before apply              | **Re-adopted by 014**  |
 | 006     | Etsy **Seller App** (Seller API Access), read scopes only first               | Revised (was personal) |
 | 007     | Personalization solution                                                      | **Pending discovery**  |
 | 008     | Catalog delivery: now WooCommerce REST (read-only) + SWR cache + signed refresh | **Revised, built**   |
@@ -131,7 +135,8 @@ Full text in [docs/DECISIONS.md](docs/DECISIONS.md).
 | 010     | Etsy `order.paid` webhook with polling as recovery                            | Proposed               |
 | 011     | Accessible foreground pairings on the unchanged palette                       | Approved               |
 | 012     | Docker image on GHCR, staging by default (rendering per request since 2026-10-14) | Implemented        |
-| 013     | **Etsy is the master product catalog**                                        | **Owner decision**     |
+| 013     | Etsy is the master product catalog (custom `kcpw-etsy` plugin)                | **Superseded by 014**  |
+| 014     | **WooCommerce is the single source of truth; sync service is external and interchangeable** | **Owner decision** |
 
 ## Blockers and inputs needed from the owner
 
@@ -145,25 +150,29 @@ Full text in [docs/DECISIONS.md](docs/DECISIONS.md).
    shipping/returns, legal).
 3. **Choose where staging lives** (host staging feature, separate host, or a new subdomain, which needs DNS
    approval).
-4. **Etsy (blocks the first real connection):** register the Seller App and install `kcpw-etsy` on a **staging** WordPress, following
-   [docs/ETSY-SETUP.md](docs/ETSY-SETUP.md) (check whether an existing registered app affects eligibility). Send back the *Test connection*
-   rows, then review the matching report and decide each ambiguous match. Confirm listing count and personalization use.
-4a. **WooCommerce Read-only REST key (blocks Step 2 on real data):** create it and put it in the VPS `.env` ([docs/DEPLOYMENT-VPS.md](docs/DEPLOYMENT-VPS.md) §9), then run the status and freshness checks ([docs/WOOCOMMERCE-CATALOG.md](docs/WOOCOMMERCE-CATALOG.md) §3).
-4b. **Approve (or not) the first synchronization** once you have seen the matches and the dry-run.
+4. **WooCommerce Read-only REST key (blocks Step 2 on real data):** create it (Permissions: Read) and put it in the VPS `.env`
+   ([docs/DEPLOYMENT-VPS.md](docs/DEPLOYMENT-VPS.md) §9), then run the status and freshness checks ([docs/WOOCOMMERCE-CATALOG.md](docs/WOOCOMMERCE-CATALOG.md) §3).
+4a. **Staging WordPress + WooCommerce** (a clone, never the live site) to install `kcpw-core` on, then follow
+   [docs/CHECKOUT-STAGING-CHECKLIST.md](docs/CHECKOUT-STAGING-CHECKLIST.md): constants in `wp-config.php`, the official Stripe plugin in **test mode**, per-product
+   personalization setup, then `CHECKOUT_ENABLED=true` on the staging container only.
+4b. **Tell us how the sync service treats product data** (does a re-sync keep a product's ID and slug, and does it leave `_kcpw_option_schema` alone?). The
+   checklist has a short test for each; this decides whether `docs/SYNC-INDEPENDENCE.md` needs more precautions.
 5. **Stripe:** account status, who supplies **test** keys, whether Link is wanted, tax and shipping approach.
-6. **Optional:** allowlist the Etsy hosts and `kcprintworks.com` for the sandbox network so docs and the public
-   site can be read here, or run the verification yourself.
+6. **Optional:** allowlist `kcprintworks.com` (and the WordPress.org / WooCommerce / Stripe download hosts) for the sandbox network so the public site and the real
+   WordPress stack can be exercised here, or run the checklist yourself.
 
 ## Known issues, limitations, and tech debt
 
 **Unverified or unknown**
 
-- Etsy facts are **not verified against Etsy's documentation** (hosts blocked) and **the plugin has never talked to Etsy**: every Etsy
-  response in the tests is a mock written from memory and excerpts. Seller API Access and webhooks beyond commercial apps are owner-stated.
-  See the verification table, `docs/ETSY-INTEGRATION.md` §16. The plugin's *Test connection* is the first real check; first task after it: connect the Etsy
-  Dev MCP server, vendor the OpenAPI spec, resolve every "To verify" row.
-- **The plugin has never run inside WordPress/WooCommerce** (no PHP runtime with WordPress here): the pure core and the admin logic are tested; the database
-  stores (`Wp*Store`), `WpWooReader`, SQL, hooks, and rendering are verified only by WordPress stubs. Expect small fixes on the first staging run.
+- **`kcpw-core` has never run inside WordPress/WooCommerce** (no PHP runtime with WordPress here; WordPress.org and WooCommerce downloads are blocked): the pure core is
+  proven against the TypeScript reference with shared vectors (options, line pricing, request signing), and the glue (`src/Wp`: hooks, REST registration, the product tab,
+  the handoff table, cart rebuild, order-item meta) is verified only with WordPress/WooCommerce **stubs**. Expect small fixes on the first staging run; the checklist lists the exact tests.
+- **Stripe has not been run at all.** We add no payment code; whether the official plugin behaves as designed after our cart rebuild (redirect, webhook, duplicate protection) is unverified.
+- **Sync-service behavior is unverified:** we assume a sync service keeps WooCommerce product/variation IDs and slugs stable on re-sync and does not wipe `_kcpw_*` meta. Neither
+  service has been observed. If a service re-creates products with new IDs, carts built earlier fail safely (`invalid_lines`), but personalization setups on those products would need re-entering.
+- **Etsy is not involved in our code at all**, so no Etsy fact needs verifying here; what Etsy or the sync service puts into WooCommerce (titles, attributes such as Condition or MPN, import footers) is handled
+  defensively by the display policy and is only known from the 2026-10-13 export.
 - **Step 2 has not run against kcprintworks.com** (unreachable from here, no key yet). The converter follows WooCommerce's documented REST shapes and was
   exercised with synthetic data that mimics the export's oddities. The first real load may expose differences; `/api/catalog-status/` lists every skipped row.
 - Known from the 2026-10-13 export: the WooCommerce catalog (71 products, 259 variations). Unknown: the live site's
@@ -196,8 +205,8 @@ Full text in [docs/DECISIONS.md](docs/DECISIONS.md).
 - The Dockerfile cannot be built in this sandbox (no Docker daemon); CI verifies it. Only the amd64 architecture is built.
 - Open decisions that block personalization work: icons (curated list vs free emoji, because the validator rejects the
   zero-width joiner that many emoji contain), cable colors, the order sample (Q3).
-- Checkout is disabled (`lib/checkout.ts`); `/api/cart/handoff` does not exist yet. Coupons are rejected in the
-  preview quote.
+- Checkout is **off by default** and cannot be enabled in a production build (`lib/checkout.ts`); the handoff has only run against a stand-in shop. Coupons are rejected in the
+  quote (the shopper can enter one on the WooCommerce checkout).
 - `/api/cart/quote/` has a body-size check but **no rate limiting** yet. No strict CSP with nonces yet (planned
   for Step 10; baseline security headers are set).
 - `sanitize-html` runs on the server at render time (`RichText`), so WooCommerce HTML is sanitized on every path; script/style text is also
@@ -229,12 +238,11 @@ Full text in [docs/DECISIONS.md](docs/DECISIONS.md).
    staging clone (needs owner approval and hosting facts).
 4. **Step 2 (storefront side done):** run it against the real store (owner's Read-only key), review `/api/catalog-status/` skips, then URL inventory and
    redirect map, SEO fields mapping, variation parity report, and (later) `kcpw-core` DTO endpoints.
-4c. **Etsy master pipeline:** owner registers the Seller App and installs the plugin on staging; review *Test connection*; download listings; owner decides
-   ambiguous matches; review the dry-run; **then, with approval,** build the first synchronization (apply + change log + rollback) on staging, then scheduling and webhooks, then order import.
-5. **Step 3:** cart quote and handoff endpoints in `kcpw-core` (shared test vectors with
-   `packages/contracts`), checkout block theme, official Stripe plugin on staging in test mode, spikes listed
-   in `docs/IMPLEMENTATION-PLAN.md` §6.
-6. Steps 4 to 10 as in the plan. Etsy verification against the official spec happens with the first real connection (see 4c).
+5. **Step 3 (code done, owner steps remain):** stand up a staging WordPress + WooCommerce, install `dist/kcpw-core.zip`, set the constants, add the official Stripe plugin in
+   **test mode**, define personalization on a few products, switch `CHECKOUT_ENABLED` on in the **staging** container only, run the matrix in
+   [docs/CHECKOUT-STAGING-CHECKLIST.md](docs/CHECKOUT-STAGING-CHECKLIST.md), and send back the results. Fix whatever the real stack shows.
+6. Step 4 onward as in the plan: personalized-order and payment testing (idempotency, webhooks, refunds), checkout theme polish, shipping and tax review, then launch readiness (Step 10).
+   Later and optional: Etsy order import (no Etsy code of ours; only if the sync service does not already bring orders in) and a fulfillment view.
 
 ## How to resume in a new session
 
@@ -245,7 +253,13 @@ Full text in [docs/DECISIONS.md](docs/DECISIONS.md).
 
 ## Session log
 
-- **2026-10-14, session 1 (fourth part):** owner decided **Etsy is the master catalog**. Wrote ADR-013 and rewrote the Etsy, architecture, and decision docs; built
+- **2026-10-14, session 1 (fifth part):** owner asked for a storefront independent of the sync service (ExportYourStore now, maybe Nembol later), with WooCommerce as the single
+  source of truth, no custom Etsy integration, and priority on WooCommerce integration, personalization, cart handoff, and Stripe checkout. Wrote ADR-014 and `docs/SYNC-INDEPENDENCE.md`;
+  **removed `wordpress/kcpw-etsy`** and its docs/scripts (git `29cc10f`); extended the guard so Etsy and sync-service names fail the build in shipped code; added the display policy; built
+  `wordpress/kcpw-core` (66 PHP tests, shared vectors with the TypeScript reference) and the signed storefront cart handoff (`/api/cart/handoff/`, off by default and refused in production builds);
+  wrote `docs/CHECKOUT-STAGING-CHECKLIST.md`; extended the mock store with a `kcpw-core` stand-in. Nothing on the live site, VPS, Nginx Proxy Manager, DNS, Etsy, the sync service, or Stripe was touched.
+
+- **2026-10-14, session 1 (fourth part, since superseded by the fifth):** owner decided **Etsy is the master catalog**. Wrote ADR-013 and rewrote the Etsy, architecture, and decision docs; built
   `wordpress/kcpw-etsy` v0.1.0 (Seller App connection, read-only client, token vault, listing download, matching report + decisions, dry-run planner, admin screens,
   packaging, CI) with 106 PHP tests; built the storefront's WooCommerce read-only catalog source (cache, signed refresh, status endpoint, image-host allowlist, per-request
   rendering), the freshness script, a mock WooCommerce store, and 14 e2e tests; hardened the Docker/compose/CI path (SITE_ENV cannot be overridden at run time; optimizer

@@ -1,8 +1,10 @@
 #!/usr/bin/env node
 // Repository guards. Run with `npm run guard` (also runs in CI).
 //
-// 1. Etsy isolation: the public storefront must never reference Etsy's API hosts or Etsy credentials.
-//    (Architecture principle P2: Etsy is background-only and lives in the WordPress plugin.)
+// 1. Sync-service independence: Etsy products reach WooCommerce through a third-party synchronization service the owner
+//    chooses (and may change). Nothing we ship (storefront, shared packages, the WordPress plugin, deploy files) may call
+//    Etsy, reference Etsy's API hosts or credentials, or name a synchronization product. WooCommerce is the only contract.
+//    (ADR-014; docs/SYNC-INDEPENDENCE.md.)
 // 2. No secret-shaped strings (Stripe keys, webhook secrets, WooCommerce REST keys) in code.
 // 3. No secret-like names on NEXT_PUBLIC_ variables (they are exposed to the browser).
 //
@@ -37,6 +39,14 @@ const etsyPatterns = [
   /x-api-key/i,
 ];
 
+const syncServicePatterns = [
+  new RegExp(['export', '\\s*-?your', '\\s*-?store'].join(''), 'i'),
+  new RegExp(['nem', 'bol'].join(''), 'i'),
+];
+
+/** Where the rules above apply: code and configuration we ship. Docs may discuss these services freely. */
+const shippedPrefixes = ['apps/', 'packages/', 'wordpress/', 'deploy/', '.github/'];
+
 const secretPatterns = [
   new RegExp(['sk', '(?:live|test)', '[A-Za-z0-9]{10,}'].join('_')),
   new RegExp(['rk', '(?:live|test)', '[A-Za-z0-9]{10,}'].join('_')),
@@ -70,11 +80,20 @@ for (const file of walk(root)) {
   const inDocs = rel.startsWith('docs/') || /^(README|CLAUDE|PROJECT_STATUS)\.md$/.test(rel);
   const text = readFileSync(file, 'utf8');
 
-  if (rel.startsWith('apps/storefront/')) {
+  if (shippedPrefixes.some((prefix) => rel.startsWith(prefix)) || rel === 'Dockerfile') {
     for (const re of etsyPatterns) {
       const m = re.exec(text);
       if (m)
-        violations.push(`${rel}:${lineOf(text, m.index)} Etsy reference in storefront: "${m[0]}"`);
+        violations.push(
+          `${rel}:${lineOf(text, m.index)} Etsy reference in shipped code: "${m[0]}"`,
+        );
+    }
+    for (const re of syncServicePatterns) {
+      const m = re.exec(text);
+      if (m)
+        violations.push(
+          `${rel}:${lineOf(text, m.index)} sync-service name in shipped code: "${m[0]}"`,
+        );
     }
   }
 
@@ -101,5 +120,5 @@ if (violations.length > 0) {
   process.exit(1);
 }
 console.log(
-  'Guards passed: Etsy isolation, no secret-shaped strings, no secret-like public env names.',
+  'Guards passed: no Etsy or sync-service code in shipped files, no secret-shaped strings, no secret-like public env names.',
 );

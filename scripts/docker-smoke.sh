@@ -4,7 +4,7 @@
 #   scripts/docker-smoke.sh <base-url> <staging|production> [container-name]
 #
 # Read-only HTTP checks (plus `id` inside the container). It proves the properties that must never regress:
-# the app is up, staging is noindex, prices cannot come from the browser, checkout is disabled, and the
+# the app is up, staging is noindex, prices cannot come from the browser, checkout is off by default, and the
 # process is not root.
 set -euo pipefail
 
@@ -50,6 +50,10 @@ pass "image optimizer works"
 
 # Catalog endpoints exist and behave for the placeholder catalog: status reports the source, refresh is not an endpoint.
 curl -fsS "$base/api/catalog-status/" | grep -q '"source":"fixtures"' || fail "catalog-status did not report the placeholder source"
+# Checkout is off in the default deployment: the status says so and the handoff endpoint refuses, whatever the browser sends.
+curl -fsS "$base/api/checkout-status/" | grep -q '"enabled":false' || fail "checkout-status did not report checkout as off"
+code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$base/api/cart/handoff/" -H 'content-type: application/json' -d '{"lines":[{"productId":1,"quantity":1}]}')
+[ "$code" = "403" ] || fail "handoff endpoint answered $code with checkout off (expected 403)"
 code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$base/api/revalidate/" -d '{}')
 [ "$code" = "404" ] || fail "revalidate endpoint answered $code without a WooCommerce source (expected 404)"
 pass "catalog endpoints"
@@ -60,7 +64,7 @@ code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$base/api/cart/quote/" \
 [ "$code" = "400" ] || fail "quote endpoint accepted a browser-supplied price (HTTP $code)"
 pass "browser-supplied prices are rejected"
 
-# Checkout is a compile-time constant; the cart's disabled-state message must be in the shipped JavaScript.
+# With checkout off the cart's disabled-state message must be in the shipped JavaScript.
 html=$(curl -fsS "$base/cart/")
 found=0
 for src in $(echo "$html" | grep -oE '/_next/static/[^"]+\.js' | sort -u); do

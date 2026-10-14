@@ -14,6 +14,8 @@ export const WooCategoryRefSchema = z.object({
   slug: z.string(),
 });
 
+export const WooTagSchema = z.object({ id: z.number().catch(0), name: str, slug: z.string() });
+
 export const WooAttributeSchema = z.object({
   id: z.number().catch(0),
   name: z.string(),
@@ -40,6 +42,7 @@ export const WooProductSchema = z.object({
   on_sale: z.boolean().catch(false),
   stock_status: z.string().catch('instock'),
   categories: z.array(WooCategoryRefSchema).catch([]),
+  tags: z.array(WooTagSchema).catch([]),
   images: z.array(WooImageSchema).catch([]),
   attributes: z.array(WooAttributeSchema).catch([]),
   variations: z.array(z.number()).catch([]),

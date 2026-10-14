@@ -6,41 +6,36 @@ Guidance for Claude Code sessions working in this repository. Read this first, t
 
 ## What this project is
 
-A Next.js storefront for **kcprintworks.com** (made-to-order, personalized goods), backed by the
-existing **WooCommerce** store (moving to `shop.kcprintworks.com`), paid through the **official WooCommerce
-Stripe plugin**. **Etsy is the master product catalog (owner decision 2026-10-14, ADR-013):** products are created and
-edited on <https://kcprintworks.etsy.com> and flow `Etsy -> kcpw-etsy plugin -> WooCommerce -> Next.js`, using the Etsy
-Open API v3 with a Seller App. WooCommerce keeps checkout, shipping, tax, and Stripe. The overall architecture was approved on 2026-10-13.
+A Next.js storefront for **kcprintworks.com** (made-to-order, personalized goods), backed by the existing **WooCommerce** store
+(moving to `shop.kcprintworks.com`), paid through the **official WooCommerce Stripe plugin**. **WooCommerce is the single source of truth**
+for products, prices, variations, and orders (ADR-014, owner decision 2026-10-14). Etsy products reach WooCommerce through the owner's
+third-party sync service (ExportYourStore today, maybe Nembol later): **we build no Etsy integration and depend on neither service**; the storefront
+and our plugin must keep working whichever is used ([docs/SYNC-INDEPENDENCE.md](docs/SYNC-INDEPENDENCE.md)). Priority is the buying path:
+WooCommerce product integration (built), personalization, cart handoff, Stripe checkout (built, verified with stand-ins only, **off by default**).
+The overall architecture was approved on 2026-10-13.
 
 ## Hard rules (never break these without explicit owner approval in the conversation)
 
-1. **Do not modify the live WooCommerce site, live Etsy listings, payment credentials or configuration, or
+1. **Do not modify the live WooCommerce site, the Etsy shop or its sync service's settings, payment credentials or configuration, or
    DNS.** Work on local/staging only; Stripe stays in **test mode**. Each such change is an approval gate in
-   [docs/IMPLEMENTATION-PLAN.md](docs/IMPLEMENTATION-PLAN.md) §2. Creating a staging DNS record, registering a
-   Stripe webhook, or enabling an Etsy write scope each counts as a change that needs approval.
-2. **Etsy integration is read-only toward Etsy, always, and previews before applying.** No Etsy write scopes
-   (`shops_r`, `listings_r`, later `transactions_r`). The `kcpw-etsy` plugin has **no WooCommerce write code yet**
-   (`ReadOnlySafetyTest` fails if any appears). The first synchronization is a separate step that needs the owner's
-   approval after reviewing the matching report and the dry-run; new listings become **drafts only**. Installing the plugin
-   (or any constant/key) on the **live** site is itself a change: do it on staging unless the owner says otherwise.
+   [docs/IMPLEMENTATION-PLAN.md](docs/IMPLEMENTATION-PLAN.md) §2. Creating a staging DNS record or registering a Stripe webhook each counts as a change that needs
+   approval. **Installing `kcpw-core` (or adding a constant/key) on the live site is itself a change**: staging first, unless the owner says otherwise.
+2. **Checkout is off until the owner turns it on.** `CHECKOUT_ENABLED` defaults to off, works only in staging containers (never in a production build), and
+   needs the shop address and handoff secret (`src/lib/checkout.ts`). Do not change those rules, publish a checkout-enabled production image, or enable it in a
+   default deployment file without the owner's approval. The owner's standing instruction is to keep checkout disabled until integration testing is complete.
 3. **Never store card data.** Only Stripe object IDs. Never treat a redirect or client callback as proof of
    payment; payment truth is a server-verified Stripe event.
-4. **The storefront never has Etsy credentials or calls Etsy.** All Etsy code lives in the WordPress plugin
-   (`wordpress/kcpw-etsy`). `npm run guard` enforces this.
+4. **No Etsy integration, no sync-service dependency.** Nothing we ship (storefront, packages, `wordpress/kcpw-core`, deploy files, workflows) calls Etsy,
+   holds an Etsy credential, or names a sync product; `npm run guard` enforces it. The storefront relies only on standard WooCommerce data plus our own `_kcpw_*` meta.
 5. **The browser never supplies prices.** The cart holds line _intents_ only. Cart/quote schemas are `.strict()`
    so a `price` field is rejected. WooCommerce is the authority for prices, tax, shipping, discounts.
-6. **Etsy is master for product content; WooCommerce is master for the website's operation.** Etsy owns title, description,
-   images, variations, colors, and base prices; WooCommerce owns slug/SEO, categories, shipping and tax rules, the
-   personalization schema, the inventory policy, and approved overrides (per-field policy in
-   [docs/ETSY-INTEGRATION.md](docs/ETSY-INTEGRATION.md) §7). Match by IDs/SKUs, never by title alone; never create a product
-   that might duplicate an existing one without the owner's decision; keep existing WooCommerce variation IDs.
-7. **Do not invent facts about the owner's catalog, plugins, hosting, or Etsy shop.** Only the product export
-   (2026-10-13) has been seen, summarized in `docs/discovery/INVENTORY.md`; plugins, hosting, DNS, orders, and the
-   Etsy shop are unknown (see "Environment limits"). Fixture data is synthetic placeholder and says so; it does not
-   describe real products. Personalization plugin choice
-   (ADR-007) is **undecided** until the discovery in [docs/LIVE-SITE-DISCOVERY.md](docs/LIVE-SITE-DISCOVERY.md)
-   is done. Do not assume customers upload images. Etsy's real API shapes, the live WooCommerce data, and the plugin running on a
-   real WordPress are **unverified** (the sandbox reaches none of them); tests use mocks and synthetic fixtures, and docs must say so.
+6. **The sync service is the owner's, and it may overwrite what it touches.** Never write to products from the storefront; the only product meta we write is
+   `_kcpw_option_schema` (and read `_kcpw_made_to_order`). Match by IDs/SKUs, never by title alone; keep existing WooCommerce variation IDs; do not create or delete
+   products. Switching services is a data-quality event, not a code change ([docs/SYNC-INDEPENDENCE.md](docs/SYNC-INDEPENDENCE.md) has the checklist).
+7. **Do not invent facts about the owner's catalog, plugins, hosting, or sync service.** Only the product export (2026-10-13) has been seen, summarized in
+   `docs/discovery/INVENTORY.md`; plugins, hosting, DNS, orders, and what either sync service does are unknown. Fixture data is synthetic and says so. Do not assume
+   customers upload images. The live WooCommerce data, a real WordPress/WooCommerce running `kcpw-core`, and Stripe are **unverified** (the sandbox reaches none of them);
+   tests use stand-ins and synthetic fixtures, and docs must say so.
 8. **No secrets in the repo.** `.env*` (except `.env.example`) is gitignored; secrets live in host env or
    `wp-config.php`. Never paste tokens into an AI session.
 
@@ -52,22 +47,22 @@ apps/storefront/            Next.js 16 App Router storefront (TypeScript)
                             /api/cart/quote, sitemap, robots, 404
   src/components/           UI components (server by default; client where noted 'use client')
   src/lib/catalog/          CatalogSource interface; fixtures; export (design preview); woo/ = the WooCommerce REST source (GET only, SWR cache)
-  src/app/api/              cart/quote, health, catalog-status (what is loaded), revalidate (signed "refresh now")
+  src/app/api/              cart/quote, cart/handoff (to kcpw-core), health, catalog-status, checkout-status, revalidate (signed "refresh now")
+  src/lib/handoff/          request signing + the server-to-server client for kcpw-core (never in the browser)
   src/lib/cart/             pure cart logic (cart-state.ts) + localStorage store (store.ts)
   src/styles/               tokens.css (brand + semantic tokens), base.css, components.css
   tests/unit/               Vitest;  tests/e2e/  Playwright + axe
 packages/contracts/         shared zod schemas + reference validation/pricing (the oracle for the PHP side).
                             `@kcpw/contracts` = everything (server); `@kcpw/contracts/client` = zod-free (browser)
-scripts/guards.mjs          repo guards (Etsy isolation, secret-shaped strings, public env names)
+scripts/guards.mjs          repo guards (no Etsy / sync-service names in shipped code, secret-shaped strings, public env names)
 scripts/verify-catalog-freshness.mjs   status / wait / refresh against a running storefront (owner's freshness check; never touches WooCommerce)
-scripts/php-check.mjs, build-etsy-plugin.mjs   PHP lint + plugin tests; builds dist/kcpw-etsy.zip
+scripts/php-check.mjs, build-core-plugin.mjs   PHP lint + plugin tests; builds dist/kcpw-core.zip
 scripts/discovery/          analyze-wc-export.mjs: read-only analysis of a WooCommerce product CSV export (+ tests)
-docs/                       architecture, payments, Etsy, plan, migration, discovery, decisions
+docs/                       architecture, payments, sync independence, checkout checklist, plan, migration, discovery, decisions
 Dockerfile, deploy/         Docker image (Next.js standalone, multi-stage) and the VPS compose + deploy.sh; see docs/DEPLOYMENT-VPS.md
 .github/workflows/          ci.yml (checks) and docker-publish.yml (build, smoke-test, publish to GHCR)
-wordpress/kcpw-etsy/        WordPress plugin, read-only (v0.1.0): Seller App OAuth, Etsy client, listing download, matcher + owner decisions,
-                            dry-run planner, admin screens. Pure PHP core (no WP calls) + thin `src/Wp` layer; `php tests/run.php`
-wordpress/                  (planned) kcpw-core and the checkout theme: NOT created yet
+wordpress/kcpw-core/        WordPress plugin (v0.1.0): checkout link (quote + single-use handoff), personalization editor/validation/order-item meta.
+                            Pure PHP core (no WP calls; tested with shared vectors) + thin `src/Wp` layer (tested with stubs); `php tests/run.php`
 ```
 
 ## Commands
@@ -84,10 +79,10 @@ Node 22 (`.nvmrc`), npm workspaces. Run from the repo root.
 | `npm run lint`                          | ESLint (flat config; includes jsx-a11y and React Compiler rules)                     |
 | `npm run typecheck`                     | `next typegen` + `tsc --noEmit` in each workspace                                    |
 | `npm test`                              | Vitest in `packages/contracts` and `apps/storefront`                                 |
-| `npm run test:e2e`                      | Playwright + axe (builds, serves on :3100, plus a second storefront on :3101 reading a mock WooCommerce on :3200 from `tests/support/mock-woo.mjs`; uses `/opt/pw-browsers/chromium` if present; override with `PW_CHROMIUM_PATH`) |
+| `npm run test:e2e`                      | Playwright + axe (builds, serves on :3100, plus a second storefront on :3101 (checkout switched on) reading a mock WooCommerce store AND a kcpw-core stand-in on :3200 from `tests/support/mock-woo.mjs`; uses `/opt/pw-browsers/chromium` if present; override with `PW_CHROMIUM_PATH`) |
 | `npm run test:scripts`                  | `node --test` for `scripts/**` (export analyzer, deploy.sh, freshness script)        |
-| `npm run test:php`                      | PHP lint + the kcpw-etsy tests (`wordpress/kcpw-etsy/tests/run.php`, no dependencies) |
-| `npm run build:etsy-plugin`             | Packages `dist/kcpw-etsy.zip` (also a CI artifact)                                   |
+| `npm run test:php`                      | PHP lint + the kcpw-core tests (`wordpress/kcpw-core/tests/run.php`, no dependencies) |
+| `npm run build:core-plugin`             | Packages `dist/kcpw-core.zip` (also a CI artifact)                                   |
 | `npm run check`                         | guard, format, lint, typecheck, test, test:scripts, build (e2e is separate)          |
 | `node scripts/discovery/analyze-wc-export.mjs <csv>` | Markdown report on a product export (`--json` for machine output). Raw exports live in `docs/discovery/raw/` (gitignored) |
 
@@ -120,7 +115,7 @@ ADRs updated if a decision changed.
   code points (see `FORBIDDEN_RANGES` in `packages/contracts/src/options.ts`).
 - **Next.js 16 specifics:** route `params` are Promises (`await params`); `trailingSlash: true` is set to match
   WooCommerce URLs, so call internal API routes with a trailing slash (`/api/cart/quote/`).
-- **No Etsy in the storefront**, not even in comments with hostnames or env names (the guard will fail it).
+- **No Etsy and no sync-service names in shipped code** (`apps/`, `packages/`, `wordpress/`, `deploy/`, `.github/`, `Dockerfile`), not even in comments with hostnames or env names (the guard will fail it). Docs may discuss them.
 - Keep comments to what the code cannot say (why, constraints). Match surrounding style (Prettier is enforced).
 
 ## Deployment (Docker, InterServer VPS)
@@ -129,9 +124,10 @@ ADRs updated if a decision changed.
   (the tested image is the pushed image). Runs on the VPS via `deploy/docker-compose.yml` on the existing external `proxy`
   network, `expose: 3000` only (never `ports:`), container `kcprintworks-nextjs`. Install, update, rollback: `docs/DEPLOYMENT-VPS.md`.
 - `SITE_ENV`, `NEXT_PUBLIC_SITE_URL` and `IMAGE_HOSTS` are **build-time** (next.config.ts `env` writes them into the build; a container's environment cannot change them): default
-  `staging` = noindex. A production image is a deliberate manual workflow run and needs the owner's approval. Checkout is the constant `checkoutAvailable = false`, not a setting.
+  `staging` = noindex. A production image is a deliberate manual workflow run and needs the owner's approval.
 - Pages are **rendered per request** (`dynamic = 'force-dynamic'` in the root layout) because the catalog is read from WooCommerce at run time. Runtime-only settings: `CATALOG_SOURCE`
-  (`fixtures` default | `woo`), `WC_BASE_URL`, `WC_CONSUMER_KEY`/`WC_CONSUMER_SECRET` (a **Read-only** key the owner creates), `CATALOG_REVALIDATE_SECONDS`, `REVALIDATE_SECRET`. They live only in the VPS `.env`.
+  (`fixtures` default | `woo`), `WC_BASE_URL`, `WC_CONSUMER_KEY`/`WC_CONSUMER_SECRET` (a **Read-only** key the owner creates), `CATALOG_REVALIDATE_SECONDS`, `REVALIDATE_SECRET`,
+  and for checkout `CHECKOUT_ENABLED` (default false), `KCPW_API_URL`, `KCPW_HANDOFF_SECRET`. They live only in the VPS `.env`.
   Never put them in the image, the repo, a test, or a chat. See [docs/WOOCOMMERCE-CATALOG.md](docs/WOOCOMMERCE-CATALOG.md).
 - Never touch WordPress, MariaDB, Nginx Proxy Manager, DNS, or Stripe from these files. `deploy.sh` only runs `docker compose` for this
   project; its test fails if it ever issues another kind of docker command.
@@ -141,16 +137,12 @@ ADRs updated if a decision changed.
 
 ## Environment limits (important)
 
-This cloud sandbox's network policy blocks several hosts. Observed on 2026-10-13: **all Etsy hosts**
-(`developers.etsy.com`, `developer.etsy.com`, `help.etsy.com`, `www.etsy.com`, `api.etsy.com`,
-`mcp.api.etsycloud.com`) and **`kcprintworks.com`** fail DNS or return 403 from the proxy. GitHub and the npm
-registry work. Consequences:
+This cloud sandbox's network policy blocks several hosts. Observed on 2026-10-13/14: **`kcprintworks.com`**, **wordpress.org / downloads.wordpress.org** (so no real WordPress or
+WooCommerce can be installed here), **GitHub downloads of other repositories**, and **Stripe** fail DNS or return 403 from the proxy. GitHub (this repo), the npm registry, Packagist metadata,
+and the Ubuntu archive work. Consequences:
 
-- Etsy API facts in the docs are tagged Confirmed / Owner-stated / Reported / To verify
-  ([docs/ETSY-INTEGRATION.md](docs/ETSY-INTEGRATION.md) §16). Do not promote a fact without reading Etsy's
-  official docs or the OpenAPI spec (the Etsy Dev MCP server, once reachable; see ETSY §2.1).
-- The live site's plugins/products could not be inspected; the owner runs the read-only procedure in
-  LIVE-SITE-DISCOVERY.md. If the owner allowlists the hosts (cloud environment settings), re-check.
+- `kcpw-core` runs here only against stand-ins (`tests/wp-stubs.php`) and the storefront only against a mock store. The shared vectors prove the *logic*; the WordPress/WooCommerce
+  glue and Stripe are proven only by the owner running [docs/CHECKOUT-STAGING-CHECKLIST.md](docs/CHECKOUT-STAGING-CHECKLIST.md). If the owner allowlists the hosts, re-check and run a real WordPress here.
 - Do not "work around" a blocked host with mocked or made-up results; say what is unverified.
 
 ## Pitfalls already hit (save yourself the time)
@@ -176,6 +168,7 @@ registry work. Consequences:
 - Use absolute paths in shell commands; the working directory can shift between calls.
 - Playwright `expect(bigString).not.toContain(x)` prints the whole string on failure (megabytes of page source): assert `.includes(x)` is `false` with a message instead.
 - Tests that read `docs/discovery/raw/products.csv` (gitignored) must skip **and** load lazily; simulate CI by moving it aside (`mv docs/discovery/raw/products.csv /tmp/...`) before pushing.
+- Playwright runs files in parallel: specs that share the mock store (`woo-catalog.spec.ts`) must stay in ONE file with `mode: 'serial'`.
 - A mid-load `invalidate()` must not be lost: `SwrCache` uses a generation counter; do not "simplify" it back to a boolean.
 - WordPress/PHP: the plugin core must not call WordPress functions (a test enforces it); anything needing WP goes in `src/Wp` behind an interface, with a fake in `tests/`.
 

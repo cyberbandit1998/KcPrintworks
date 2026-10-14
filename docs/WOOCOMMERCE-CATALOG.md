@@ -10,8 +10,8 @@ WooCommerce (kcprintworks.com)                       VPS container kcprintworks-
  product saved ──(optional webhook / script)── POST /api/revalidate/ ──> "refresh now" (signed)
 ```
 
-Nothing in WooCommerce is created, changed, or deleted. Checkout stays disabled (it is a compile-time constant). Etsy is not involved in this
-path: Etsy products reach WooCommerce through the `kcpw-etsy` plugin ([ETSY-INTEGRATION.md](ETSY-INTEGRATION.md)) and the storefront only ever reads WooCommerce.
+Nothing in WooCommerce is created, changed, or deleted by this path. Etsy is not involved in it: Etsy products reach WooCommerce through the owner's
+synchronization service, and the storefront only ever reads WooCommerce ([SYNC-INDEPENDENCE.md](SYNC-INDEPENDENCE.md)). Checkout is a separate, off-by-default path ([CHECKOUT-STAGING-CHECKLIST.md](CHECKOUT-STAGING-CHECKLIST.md)).
 
 ## 1. What is read
 

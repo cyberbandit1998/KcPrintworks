@@ -3,6 +3,7 @@
 // test change the "store" through /__mock/ so the revalidation flow can be exercised end to end.
 //
 //   node tests/support/mock-woo.mjs 3200
+import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import { createServer } from 'node:http';
 import { pathToFileURL } from 'node:url';
 import { createFixture } from './woo-fixture.mjs';
@@ -12,11 +13,95 @@ const SVG =
 
 export const MOCK_KEY = 'ck_mock_read_only_key';
 export const MOCK_SECRET = 'cs_mock_read_only_secret';
+export const MOCK_HANDOFF_SECRET = 'e2e-handoff-secret-not-real-0123456789abcdef';
+
+// ---- a stand-in for the kcpw-core plugin's endpoints (SYNTHETIC: enough to exercise the storefront end to end; the real
+// rules live in wordpress/kcpw-core and are proven by its own tests). It verifies the request signature independently.
+const cents = (price) => Math.round(Number(price) * 100);
+
+function verifySignature(req, route, body, secret) {
+  const ts = req.headers['x-kcpw-timestamp'] ?? '';
+  const nonce = req.headers['x-kcpw-nonce'] ?? '';
+  const signature = req.headers['x-kcpw-signature'] ?? '';
+  if (
+    !/^\d{9,12}$/.test(ts) ||
+    !/^[A-Za-z0-9_-]{16,64}$/.test(nonce) ||
+    !/^[0-9a-f]{64}$/.test(signature)
+  )
+    return false;
+  if (Math.abs(Date.now() / 1000 - Number(ts)) > 300) return false;
+  const bodyHash = createHash('sha256').update(Buffer.from(body, 'utf8')).digest('hex');
+  const canonical = ['KCPW1', ts, nonce, req.method, route, bodyHash].join('\n');
+  const expected = createHmac('sha256', secret).update(canonical, 'utf8').digest('hex');
+  return (
+    expected.length === signature.length &&
+    timingSafeEqual(Buffer.from(expected), Buffer.from(signature))
+  );
+}
+
+function resolveLine(data, line) {
+  const issues = [];
+  const product = data.products.find((p) => p.id === line.productId && p.status === 'publish');
+  if (!product)
+    return {
+      issues: [{ code: 'unknown_product', message: 'This item is no longer available.' }],
+      unit: 0,
+      name: 'Unavailable item',
+    };
+  let unit = cents(product.price);
+  if (product.type === 'variable') {
+    const variation = (data.variations.get(product.id) ?? []).find(
+      (v) => v.id === line.variationId && v.status === 'publish',
+    );
+    if (!variation)
+      issues.push({ code: 'invalid_variation', message: 'Choose a valid option for this item.' });
+    else {
+      unit = cents(variation.price);
+      for (const attr of product.attributes.filter((a) => a.variation)) {
+        const slug = attr.name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+        const fixed = variation.attributes.find((a) => a.name === attr.name)?.option ?? '';
+        if (fixed === '' && !(line.attributes ?? {})[slug])
+          issues.push({
+            code: 'invalid_variation',
+            message: `Choose a ${attr.name.toLowerCase()}.`,
+          });
+      }
+      if (variation.stock_status === 'outofstock')
+        issues.push({ code: 'out_of_stock', message: `${product.name} is out of stock.` });
+    }
+  } else if (product.stock_status === 'outofstock') {
+    issues.push({ code: 'out_of_stock', message: `${product.name} is out of stock.` });
+  }
+  const schema = product.meta_data.find((m) => m.key === '_kcpw_option_schema');
+  const options = line.options ?? {};
+  if (!schema) {
+    for (const key of Object.keys(options))
+      issues.push({ code: 'invalid_option', field: key, message: `Unknown option "${key}".` });
+  } else {
+    const fields = JSON.parse(schema.value).fields;
+    for (const key of Object.keys(options))
+      if (!fields.some((f) => f.id === key))
+        issues.push({ code: 'invalid_option', field: key, message: `Unknown option "${key}".` });
+    for (const f of fields) {
+      const v = options[f.id];
+      if (f.required && (typeof v !== 'string' || v.trim() === ''))
+        issues.push({ code: 'invalid_option', field: f.id, message: `${f.label} is required.` });
+      else if (typeof v === 'string' && v.length > f.maxLength)
+        issues.push({
+          code: 'invalid_option',
+          field: f.id,
+          message: `${f.label} must be at most ${f.maxLength} characters.`,
+        });
+    }
+  }
+  return { issues, unit, name: product.name };
+}
 
 export function createMockWoo({ port = 0, key = MOCK_KEY, secret = MOCK_SECRET } = {}) {
   let host = `http://127.0.0.1:${port}`;
   let data = createFixture(host);
-  const log = { requests: [], writes: 0, unauthorized: 0 };
+  const log = { requests: [], writes: 0, unauthorized: 0, core: [] };
+  const handoffs = new Map();
   const expected = `Basic ${Buffer.from(`${key}:${secret}`).toString('base64')}`;
 
   const json = (res, status, body, headers = {}) => {
@@ -46,6 +131,8 @@ export function createMockWoo({ port = 0, key = MOCK_KEY, secret = MOCK_SECRET }
           log.requests = [];
           log.writes = 0;
           log.unauthorized = 0;
+          log.core = [];
+          handoffs.clear();
           return json(res, 200, { ok: true });
         }
         if (url.pathname === '/__mock/product') {
@@ -70,6 +157,105 @@ export function createMockWoo({ port = 0, key = MOCK_KEY, secret = MOCK_SECRET }
         'cache-control': 'public, max-age=60',
       });
       return res.end(SVG);
+    }
+
+    // ---- kcpw-core stand-in
+    if (url.pathname.startsWith('/wp-json/kcpw/v1/')) {
+      let raw = '';
+      req.setEncoding('utf8');
+      req.on('data', (c) => (raw += c));
+      req.on('end', () => {
+        const route = url.pathname.replace('/wp-json', '');
+        log.core.push({ method: req.method, route, body: raw, headers: { ...req.headers } });
+        if (!verifySignature(req, route, raw, MOCK_HANDOFF_SECRET))
+          return json(res, 401, { code: 'kcpw_unauthorized', message: 'Not authorized.' });
+        if (route === '/kcpw/v1/status' && req.method === 'GET') {
+          return json(res, 200, {
+            ok: true,
+            plugin: '0.1.0-mock',
+            woocommerce: '9.9.9',
+            currency: 'USD',
+            storefrontUrlConfigured: true,
+            stripeActive: true,
+            stripeTestMode: true,
+          });
+        }
+        if (route !== '/kcpw/v1/cart/handoff' || req.method !== 'POST')
+          return json(res, 404, { code: 'rest_no_route' });
+        let body;
+        try {
+          body = JSON.parse(raw);
+        } catch {
+          return json(res, 400, {
+            ok: false,
+            status: 'invalid_request',
+            problems: ['The request is not valid JSON.'],
+          });
+        }
+        const extra = Object.keys(body).filter((k) => !['lines', 'expectedSubtotal'].includes(k));
+        const lineExtra = (body.lines ?? []).flatMap((l) =>
+          Object.keys(l).filter(
+            (k) => !['productId', 'variationId', 'attributes', 'quantity', 'options'].includes(k),
+          ),
+        );
+        if (
+          extra.length ||
+          lineExtra.length ||
+          !Array.isArray(body.lines) ||
+          body.lines.length === 0
+        ) {
+          return json(res, 400, {
+            ok: false,
+            status: 'invalid_request',
+            problems: ['Prices and totals are never accepted from a request.'],
+          });
+        }
+        const resolved = body.lines.map((line, index) => ({
+          index,
+          ...resolveLine(data, line),
+          line,
+        }));
+        const subtotal = resolved.reduce(
+          (sum, r) => sum + (r.issues.length ? 0 : r.unit * r.line.quantity),
+          0,
+        );
+        const lines = resolved.map((r) => ({
+          index: r.index,
+          productId: r.line.productId,
+          name: r.name,
+          quantity: r.line.quantity,
+          unitPrice: r.unit,
+          issues: r.issues,
+        }));
+        if (resolved.some((r) => r.issues.length))
+          return json(res, 422, { ok: false, status: 'invalid_lines', subtotal, lines });
+        if (body.expectedSubtotal !== undefined && body.expectedSubtotal !== subtotal)
+          return json(res, 409, { ok: false, status: 'changed', subtotal, lines });
+        const token = randomBytes(32).toString('base64url');
+        handoffs.set(token, { lines: body.lines, subtotal });
+        return json(res, 200, {
+          ok: true,
+          status: 'ok',
+          currency: 'USD',
+          subtotal,
+          lines,
+          redirectUrl: `${host}/?kcpw_handoff=${token}`,
+          expiresAt: Math.floor(Date.now() / 1000) + 600,
+        });
+      });
+      return;
+    }
+    // The "shop host" front page the browser lands on: shows the cart that was handed over, once.
+    if (url.pathname === '/' && url.searchParams.has('kcpw_handoff')) {
+      const token = url.searchParams.get('kcpw_handoff');
+      const found = handoffs.get(token);
+      handoffs.delete(token);
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      return res.end(
+        found
+          ? `<!doctype html><title>Mock checkout</title><h1>Mock WooCommerce checkout</h1><pre id="cart">${JSON.stringify(found).replace(/</g, '\\u003c')}</pre>`
+          : '<!doctype html><title>Mock checkout</title><h1>Link expired</h1>',
+      );
     }
 
     log.requests.push({ method: req.method, path: url.pathname, search: url.search });

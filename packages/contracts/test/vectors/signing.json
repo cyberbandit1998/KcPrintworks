@@ -1,0 +1,37 @@
+{
+  "version": 1,
+  "note": "Request signing vectors shared by the storefront (TypeScript) and kcpw-core (PHP). canonical = KCPW1 \\n timestamp \\n nonce \\n METHOD \\n route \\n sha256hex(body); signature = hex(HMAC-SHA256(secret, canonical)). The secret here is a fixed test value, not a real credential.",
+  "secret": "0123456789abcdef0123456789abcdef-test-secret-not-real",
+  "cases": [
+    {
+      "name": "typical handoff request",
+      "timestamp": "1800000000",
+      "nonce": "AbCdEf0123456789_-AbCdEf",
+      "method": "POST",
+      "route": "/kcpw/v1/cart/handoff",
+      "body": "{\"lines\":[{\"productId\":11,\"quantity\":2,\"options\":{\"name\":\"Robin\"}}],\"expectedSubtotal\":1798}",
+      "bodySha256": "49470246d82e252dde762aae7abf63a1ab8a44f116bedba8e5c16bcbfe2c3402",
+      "signature": "c40760c53690c0c5724d0016a15d60aa426a4e077601852ede957ea66b48e414"
+    },
+    {
+      "name": "empty body",
+      "timestamp": "1800000123",
+      "nonce": "nonce-with-sixteen-chars",
+      "method": "POST",
+      "route": "/kcpw/v1/cart/quote",
+      "body": "",
+      "bodySha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "signature": "cab960d3967b5d8bfeffd71f8294b283c9b010fa853e3d9175fc687f6a2260f9"
+    },
+    {
+      "name": "non-ASCII body is hashed as UTF-8 bytes",
+      "timestamp": "1800000456",
+      "nonce": "0000000000000000",
+      "method": "POST",
+      "route": "/kcpw/v1/cart/handoff",
+      "body": "{\"lines\":[{\"productId\":1,\"quantity\":1,\"options\":{\"name\":\"Zoë ☃ 日本\"}}]}",
+      "bodySha256": "634abefd2fbb13b3a419a1a5dee1d31496e9b1a86a6561ecf186b7712d4bd56b",
+      "signature": "2f5cfde928e59549d94b2ec327971091e5306d45a589e2973fa575145843967c"
+    }
+  ]
+}

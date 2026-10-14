@@ -1,10 +1,11 @@
 # KCPrintWorks — Storefront Rebuild
 
-A Next.js storefront for **kcprintworks.com**, with WooCommerce as the catalog and
-order-management backend, Stripe for payments, and a read-first synchronization with the
-Etsy shop at <https://kcprintworks.etsy.com> via the Etsy Open API v3.
+A Next.js storefront for **kcprintworks.com**, with WooCommerce as the single source of truth for products,
+prices, variations, and orders, and Stripe (the official WooCommerce plugin) for payments. Products from the Etsy shop at
+<https://kcprintworks.etsy.com> reach WooCommerce through the owner's third-party synchronization service
+(ExportYourStore today, possibly Nembol later); this project contains no Etsy integration and works with either.
 
-> **Status: architecture approved (2026-10-13); storefront build in progress.** Nothing is deployed, no
+> **Status: architecture approved (2026-10-13); storefront and checkout built, verified with stand-ins only.** No
 > credentials are in this repository, and the live WooCommerce site, Etsy listings, payment configuration, and
 > DNS have not been touched. Current progress, decisions, and known issues: [PROJECT_STATUS.md](PROJECT_STATUS.md).
 > Instructions for AI coding sessions: [CLAUDE.md](CLAUDE.md).
@@ -15,7 +16,9 @@ Etsy shop at <https://kcprintworks.etsy.com> via the Etsy Open API v3.
 |---|---|
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | System design: components, domains, caching, data model, security, brand/accessibility tokens |
 | [docs/PAYMENTS-STRIPE.md](docs/PAYMENTS-STRIPE.md) | Stripe payment design, cart-to-checkout handoff, personalization, duplicate protection, test plan, contingency design |
-| [docs/ETSY-INTEGRATION.md](docs/ETSY-INTEGRATION.md) | Etsy OAuth, product/order/inventory sync, field ownership, import preview, admin UI, future publishing |
+| [docs/SYNC-INDEPENDENCE.md](docs/SYNC-INDEPENDENCE.md) | How the storefront stays independent of the Etsy sync service (ExportYourStore now, maybe Nembol later); switching checklist |
+| [docs/CHECKOUT-STAGING-CHECKLIST.md](docs/CHECKOUT-STAGING-CHECKLIST.md) | Owner runbook: install `kcpw-core`, Stripe test mode, switch checkout on in staging, test matrix |
+| [docs/ETSY-INTEGRATION.md](docs/ETSY-INTEGRATION.md) | Superseded: Etsy is handled by a third-party sync service, not by us |
 | [docs/IMPLEMENTATION-PLAN.md](docs/IMPLEMENTATION-PLAN.md) | The 10-step build order with exit criteria, approval gates, risks, and launch checklist |
 | [docs/MIGRATION-SHOP-DOMAIN.md](docs/MIGRATION-SHOP-DOMAIN.md) | Moving WordPress/WooCommerce to `shop.kcprintworks.com`: SSL, redirects, API connections, webhooks, checkout/session behavior, cutover and rollback |
 | [docs/LIVE-SITE-DISCOVERY.md](docs/LIVE-SITE-DISCOVERY.md) | Read-only procedure to inventory the live site's plugins, products, and personalization before choosing a solution |
@@ -39,8 +42,8 @@ npm run check           # guard, format, lint, typecheck, unit tests, build
 npm run test:e2e        # Playwright + axe accessibility tests
 ```
 
-The storefront currently shows a **design preview** with invented placeholder products. Checkout is not
-connected yet (Step 3). See [PROJECT_STATUS.md](PROJECT_STATUS.md) for what is real and what is pending.
+The storefront shows placeholder products by default, or your real WooCommerce catalog (read-only) once you add a key. Checkout is
+**off by default** and can be switched on in a staging container only. See [PROJECT_STATUS.md](PROJECT_STATUS.md) for what is real and what is pending.
 
 ## Guardrails (apply to every phase)
 
@@ -51,16 +54,13 @@ connected yet (Step 3). See [PROJECT_STATUS.md](PROJECT_STATUS.md) for what is r
    elements). We store only Stripe object IDs.
 3. **A redirect is never proof of payment.** Orders become paid only after server-side
    verification with Stripe (verified webhook and/or direct PaymentIntent retrieval).
-4. **The Etsy API never runs on a public page request.** Etsy credentials exist only in the
-   WordPress-side sync plugin and are absent from the storefront. Etsy being down cannot
-   affect browsing, cart, or payment.
-5. **Etsy integration starts read-only.** Write scopes are requested only when a write feature
-   is approved. Live Etsy listings are never published or overwritten without approval;
-   future publishing creates drafts only.
-6. **WooCommerce is the master record for the website storefront.** Etsy data is imported
-   under an explicit per-field ownership policy, never an implicit overwrite.
-7. **Products are matched by IDs and SKUs, never by title alone.** Low-confidence matches go
-   to a manual matching tool.
+4. **We build no Etsy integration.** Etsy products arrive in WooCommerce through the owner's sync service. Nothing we ship calls Etsy,
+   holds an Etsy credential, or names a sync product (`npm run guard` enforces it), so the storefront keeps working whichever
+   service is used ([docs/SYNC-INDEPENDENCE.md](docs/SYNC-INDEPENDENCE.md)).
+5. **WooCommerce is the single source of truth** for the website's products, prices, variations, and order data. The storefront reads it
+   read-only; the browser never supplies a price.
+6. **Checkout is off until the owner turns it on**, in staging only, with Stripe in test mode, after the staging checklist
+   ([docs/CHECKOUT-STAGING-CHECKLIST.md](docs/CHECKOUT-STAGING-CHECKLIST.md)).
 
 ## Brand
 
@@ -78,7 +78,7 @@ Contrast-driven usage rules (for example, button label color) are in
 
 - **Storefront:** Next.js (App Router, TypeScript), Node 22 LTS. Registry `latest` on
   2026-10-13 was Next.js 16.4.0 with React 19.3; the exact versions are pinned at scaffold time.
-- **Backend:** WordPress + WooCommerce (HPOS), two small first-party plugins (`kcpw-core`,
-  `kcpw-etsy`), plus the official WooCommerce Stripe Payment Gateway plugin.
-- **Jobs:** Action Scheduler (bundled with WooCommerce), driven by system cron.
+- **Backend:** WordPress + WooCommerce (HPOS), one small first-party plugin (`kcpw-core`: checkout link and
+  personalization), plus the official WooCommerce Stripe Payment Gateway plugin. Etsy products reach WooCommerce through the
+  owner's third-party sync service; we build no Etsy integration.
 - **Testing:** Vitest, Playwright, axe-core, Lighthouse CI, PHPUnit, Stripe CLI.

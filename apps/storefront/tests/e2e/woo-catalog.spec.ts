@@ -1,5 +1,5 @@
 import AxeBuilder from '@axe-core/playwright';
-import { expect, test, type APIRequestContext } from '@playwright/test';
+import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
 import { createHmac } from 'node:crypto';
 import path from 'node:path';
@@ -37,6 +37,7 @@ test('the shop lists the published WooCommerce products and not drafts or hidden
 }) => {
   await page.goto('/shop/');
   await expect(page.getByRole('note')).toContainText('WooCommerce');
+  await expect(page.getByRole('note')).toContainText('Stripe test cards');
   const names = await page.locator('article.card h2, article.card h3').allInnerTexts();
   expect(names).toContain('Synthetic Bag Tag');
   expect(names).toContain('Synthetic Card Box & Sleeves');
@@ -87,7 +88,7 @@ test('the bag tag keeps 169 "Any" variations as two color pickers and adds to th
   await page.goto('/cart/');
   await expect(page.getByText('Tag Color: Navy, Text Color: Red')).toBeVisible();
   await expect(page.getByRole('complementary')).toContainText('$12.00'); // the quote came from the WooCommerce catalog
-  await expect(page.locator('#checkout-note')).toContainText('Checkout is not connected');
+  await expect(page.getByRole('button', { name: 'Checkout' })).toBeVisible(); // switched on for this test server
 });
 
 test('a product with a stored option schema shows it; a personalized title gets proposed fields', async ({
@@ -245,4 +246,222 @@ test('the storefront only ever read from WooCommerce', async ({ request }) => {
   expect(log.writes).toBe(0);
   expect(log.unauthorized).toBe(0);
   expect(log.requests.every((r: { method: string }) => r.method === 'GET')).toBe(true);
+});
+
+/**
+ * The cart handing a shopper to the shop's checkout. This server is in checkout mode and talks to a stand-in for the kcpw-core
+ * plugin (tests/support/mock-woo.mjs), which verifies the request signature on its own. The real plugin is proven by its PHP tests
+ * and the real shop by the staging checklist. In the same file as the catalog tests because both share one mock store and
+ * Playwright would otherwise run them at the same time.
+ */
+test.describe('checkout handoff', () => {
+  async function clearCart(page: Page) {
+    await page.goto('/cart/');
+    await page.evaluate(() => window.localStorage.clear());
+  }
+
+  async function addCardBox(page: Page, color = 'Red') {
+    await page.goto('/product/synthetic-card-box/');
+    await page.getByRole('group', { name: /Color/ }).getByLabel(color).check();
+    await page.getByRole('button', { name: 'Add to cart' }).click();
+    await expect(page.getByRole('status').getByText(/added to your cart/)).toBeVisible();
+  }
+
+  test.beforeEach(async ({ page, request }) => {
+    await mockPost(request, 'reset', {});
+    expect((await revalidate(request)).status()).toBe(202); // the storefront's copy matches the reset store
+    await clearCart(page);
+  });
+
+  test('a valid cart is handed to the shop and arrives there as the same items, once', async ({
+    page,
+    request,
+  }) => {
+    await addCardBox(page);
+    await page.goto('/cart/');
+    const checkout = page.getByRole('button', { name: 'Checkout' });
+    await expect(checkout).toBeVisible();
+    await expect(page.getByRole('complementary')).toContainText('$12.50');
+    await checkout.click();
+
+    await page.waitForURL(`${WOO_TEST.mockUrl}/?kcpw_handoff=*`);
+    await expect(page.getByRole('heading', { name: 'Mock WooCommerce checkout' })).toBeVisible();
+    const cart = JSON.parse((await page.locator('#cart').textContent()) ?? '{}');
+    expect(cart.lines).toHaveLength(1);
+    expect(cart.lines[0]).toMatchObject({ productId: 103, variationId: 7001, quantity: 1 });
+    expect(cart.subtotal).toBe(1250);
+
+    // The link works once.
+    const link = page.url();
+    await page.goto(link);
+    await expect(page.getByRole('heading', { name: 'Link expired' })).toBeVisible();
+
+    // What the storefront server sent: signed, intents only, never a price.
+    const log = await (await request.get(`${WOO_TEST.mockUrl}/__mock/log`)).json();
+    const sent = log.core.filter((c: { route: string }) => c.route === '/kcpw/v1/cart/handoff');
+    expect(sent).toHaveLength(1);
+    expect(sent[0].headers['x-kcpw-signature']).toMatch(/^[0-9a-f]{64}$/);
+    expect(sent[0].body).not.toMatch(/price/i);
+    expect(JSON.parse(sent[0].body)).toEqual({
+      lines: [
+        {
+          productId: 103,
+          variationId: 7001,
+          quantity: 1,
+          attributes: { color: 'red' },
+          options: {},
+        },
+      ],
+      expectedSubtotal: 1250,
+    });
+  });
+
+  test('personalization travels with the cart line and reaches the shop exactly as typed', async ({
+    page,
+  }) => {
+    await page.goto('/product/synthetic-plaque/');
+    await page.getByLabel(/Inscription/).fill('In loving memory');
+    await page.getByRole('button', { name: 'Add to cart' }).click();
+    await expect(page.getByRole('status').getByText(/added to your cart/)).toBeVisible();
+    await page.goto('/cart/');
+    await page.getByRole('button', { name: 'Checkout' }).click();
+    await page.waitForURL(`${WOO_TEST.mockUrl}/?kcpw_handoff=*`);
+    const cart = JSON.parse((await page.locator('#cart').textContent()) ?? '{}');
+    expect(cart.lines[0]).toMatchObject({
+      productId: 106,
+      quantity: 1,
+      options: { inscription: 'In loving memory' },
+    });
+  });
+
+  test('the shop refusing a personalization it does not know keeps the cart and says why', async ({
+    page,
+  }) => {
+    // The keychain shows proposed fields, but WooCommerce has no stored setup for it: the shop will not take it.
+    await page.goto('/product/synthetic-personalized-keychain/');
+    await page.getByLabel(/Name or short text/).fill('Robin');
+    await page.getByRole('button', { name: 'Add to cart' }).click();
+    await expect(page.getByRole('status').getByText(/added to your cart/)).toBeVisible();
+    await page.goto('/cart/');
+    await page.getByRole('button', { name: 'Checkout' }).click();
+
+    const notice = page.getByRole('alert').filter({ hasText: 'cannot be ordered right now' });
+    await expect(notice).toBeVisible();
+    await expect(notice).toContainText('Synthetic Personalized Keychain');
+    await expect(notice).toContainText('Unknown option');
+    await expect(page).toHaveURL(/\/cart\/$/);
+    await expect(page.getByText('Robin')).toBeVisible(); // the cart is untouched
+
+    const results = await new AxeBuilder({ page })
+      .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'])
+      .analyze();
+    expect(results.violations.map((v) => v.id)).toEqual([]);
+  });
+
+  test('a price that changed in the store behind the page is reported, never silently charged', async ({
+    page,
+    request,
+  }) => {
+    await page.goto('/shop/');
+    await page.goto('/product/synthetic-uncategorized/');
+    await page.getByRole('button', { name: 'Add to cart' }).click();
+    await expect(page.getByRole('status').getByText(/added to your cart/)).toBeVisible();
+    await page.goto('/cart/');
+    await expect(page.getByRole('complementary')).toContainText('$3.00');
+
+    await mockPost(request, 'product', {
+      id: 109,
+      fields: { price: '3.50', regular_price: '3.50' },
+    });
+    await page.getByRole('button', { name: 'Checkout' }).click();
+    await expect(
+      page.getByRole('alert').filter({ hasText: 'Something in your cart changed' }),
+    ).toBeVisible();
+    await expect(page).toHaveURL(/\/cart\/$/);
+
+    await page.reload(); // the storefront reloaded its catalog when the shop disagreed
+    await expect(page.getByRole('complementary')).toContainText('$3.50');
+    await page.getByRole('button', { name: 'Checkout' }).click();
+    await page.waitForURL(`${WOO_TEST.mockUrl}/?kcpw_handoff=*`);
+  });
+
+  test('the shop sending a shopper back explains why, and ignores unknown words', async ({
+    page,
+  }) => {
+    await addCardBox(page);
+    for (const [word, text] of [
+      ['changed', 'Something in your cart changed'],
+      ['expired', 'expired or was already used'],
+      ['unavailable', 'could not be added to checkout'],
+    ]) {
+      await page.goto(`/cart/?handoff=${word}`);
+      await expect(page.getByRole('alert').filter({ hasText: text! })).toBeVisible();
+    }
+    await page.goto('/cart/?handoff=<script>alert(1)</script>');
+    // (Next adds its own route announcer with role=alert, so look for our notice, not for any alert.)
+    await expect(page.locator('.notice[role="alert"]')).toHaveCount(0);
+  });
+
+  test('checkout is a single press: the button cannot be pressed twice', async ({
+    page,
+    request,
+  }) => {
+    await addCardBox(page);
+    await page.goto('/cart/');
+    const checkout = page.getByRole('button', { name: 'Checkout' });
+    await checkout.dblclick();
+    await page.waitForURL(`${WOO_TEST.mockUrl}/?kcpw_handoff=*`);
+    const log = await (await request.get(`${WOO_TEST.mockUrl}/__mock/log`)).json();
+    expect(
+      log.core.filter((c: { route: string }) => c.route === '/kcpw/v1/cart/handoff'),
+    ).toHaveLength(1);
+  });
+
+  test('the operator status page sees the shop and its Stripe mode, and shows no secret', async ({
+    request,
+  }) => {
+    const response = await request.get('/api/checkout-status/');
+    const text = await response.text();
+    const json = JSON.parse(text);
+    expect(json).toMatchObject({
+      enabled: true,
+      shop: { reachable: true, plugin: '0.1.0-mock', stripeTestMode: true },
+    });
+    expect(text).not.toContain(WOO_TEST.handoffSecret);
+    expect(text).not.toContain(WOO_TEST.mockUrl);
+  });
+
+  test('cart page has no WCAG 2.2 AA violations with checkout switched on', async ({ page }) => {
+    await addCardBox(page);
+    await page.goto('/cart/?handoff=changed');
+    await page.waitForLoadState('networkidle');
+    const results = await new AxeBuilder({ page })
+      .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'])
+      .analyze();
+    expect(
+      results.violations.map((v) => ({ id: v.id, nodes: v.nodes.map((n) => n.target) })),
+    ).toEqual([]);
+  });
+
+  test('with checkout off (the default server) the button is disabled and the endpoint refuses', async ({
+    page,
+    request,
+  }) => {
+    const off = 'http://localhost:3100';
+    const refused = await request.post(`${off}/api/cart/handoff/`, {
+      data: { lines: [{ productId: 1, quantity: 1 }] },
+    });
+    expect(refused.status()).toBe(403);
+    expect(await (await request.get(`${off}/api/checkout-status/`)).json()).toMatchObject({
+      enabled: false,
+    });
+    await page.goto(`${off}/product/sample-sticker-pack/`);
+    await page.getByRole('button', { name: 'Add to cart' }).click();
+    await page.goto(`${off}/cart/`);
+    await expect(page.getByRole('button', { name: 'Checkout' })).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
+    await expect(page.getByText('Checkout is not connected')).toBeVisible();
+  });
 });

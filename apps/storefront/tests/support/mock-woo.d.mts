@@ -1,10 +1,17 @@
 export const MOCK_KEY: string;
 export const MOCK_SECRET: string;
+export const MOCK_HANDOFF_SECRET: string;
 export function createMockWoo(options?: { port?: number; key?: string; secret?: string }): {
   log: {
     requests: { method: string; path: string; search: string }[];
     writes: number;
     unauthorized: number;
+    core: {
+      method: string;
+      route: string;
+      body: string;
+      headers: Record<string, string | string[] | undefined>;
+    }[];
   };
   readonly baseUrl: string;
   start(): Promise<string>;

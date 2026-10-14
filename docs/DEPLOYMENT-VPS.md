@@ -17,7 +17,7 @@ Browser ──https──> Nginx Proxy Manager ──http (proxy network)──>
 | Container                 | `kcprintworks-nextjs`, image `ghcr.io/<owner>/kcprintworks-nextjs:<tag>`, Next.js 16 standalone server, non-root, read-only root filesystem, all capabilities dropped                          |
 | Network                   | Joins the existing external Docker network `proxy`. Port 3000 is `expose`d to that network only; **nothing is published on the VPS** (`ports:` is absent)                                      |
 | Staging behavior          | `X-Robots-Tag: noindex, nofollow`, `robots.txt` disallows everything, `<meta name="robots" content="noindex">`. Fixed **when the image is built** (default `staging`), so it cannot drift       |
-| Checkout                  | Disabled. It is a compile-time constant, not a setting; no environment variable can enable it. Turning it on is a code change that needs the owner's approval                                   |
+| Checkout                  | **Off by default.** It is switched on only by `CHECKOUT_ENABLED=true` plus the shop address and a handoff secret in the VPS `.env` (section 10), and it can never be on in a production image (that is decided when the image is built). Turning it on for a production image is a code change that needs the owner's approval |
 | Prices                    | Never accepted from the browser (the quote endpoint rejects them; checked on every build)                                                                                                       |
 | Data                      | Default: placeholder catalog baked into the image (no outbound calls). With `CATALOG_SOURCE=woo` (section 9): the published WooCommerce products, **read with GET requests only** using a Read-only key kept in the VPS `.env`. No database, no Stripe or Etsy credentials, no secrets in the image |
 | Health check              | `GET /api/health/` inside the container (30 s interval, 5 s timeout, 20 s start period, 3 retries). It never calls an upstream, so a WooCommerce outage cannot make the container look dead    |
@@ -299,3 +299,21 @@ Then open `https://YOUR-STAGING-HOST/shop/`: the banner says it is a staging pre
 **E. Back out at any time:** set `CATALOG_SOURCE=fixtures` in `.env` and run the same `./deploy.sh` line. Delete the REST key in WordPress to cut access completely.
 
 **F. Prove changes appear without a rebuild:** [WOOCOMMERCE-CATALOG.md](WOOCOMMERCE-CATALOG.md) section 3.
+
+## 10. Checkout on staging (off by default)
+
+Checkout hands the cart to the WooCommerce shop that runs the `kcpw-core` plugin, which uses the official Stripe plugin in **test mode**. Nothing in this section
+is needed to browse the shop. Do the shop-side setup first ([CHECKOUT-STAGING-CHECKLIST.md](CHECKOUT-STAGING-CHECKLIST.md) sections 1 to 3: install the plugin on a **staging**
+WordPress, set `KCPW_HANDOFF_SECRET`, Stripe test keys). Then, on the VPS:
+
+```bash
+cd /opt/kcprintworks-nextjs
+nano .env      # set:  CHECKOUT_ENABLED=true   KCPW_API_URL=https://YOUR-STAGING-WORDPRESS   KCPW_HANDOFF_SECRET=<same value as wp-config.php>
+./deploy.sh "$(grep '^IMAGE_TAG=' .env | cut -d= -f2-)"
+curl -s https://YOUR-STAGING-STOREFRONT/api/checkout-status/     # expect "enabled":true and "shop":{"reachable":true,... "stripeTestMode":true}
+```
+
+The page banner then says checkout is for testing with Stripe test cards. To switch it off again: `CHECKOUT_ENABLED=false` and the same `deploy.sh` line.
+If `reachable` is false the answer names the reason (secret mismatch, plugin not active, secret not set on the shop).
+
+Deploying a new image keeps all of this: it lives in `.env`, not in the image.

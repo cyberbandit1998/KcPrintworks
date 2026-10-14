@@ -1,20 +1,15 @@
 import { NextResponse } from 'next/server';
-import {
-  QuoteRequestSchema,
-  priceLine,
-  zero,
-  addMoney,
-  type QuoteIssue,
-  type QuoteResponse,
-} from '@kcpw/contracts';
+import { QuoteRequestSchema } from '@kcpw/contracts';
 import { getCatalog } from '@/lib/catalog';
+import { buildQuote } from '@/lib/quote-server';
 
 const MAX_BODY_BYTES = 32_000;
 
 /**
- * Cart quote. In Step 1 this prices lines from the fixture catalog using the shared reference logic; in
- * Step 3 it forwards to `kcpw-core` (server-to-server, HMAC-signed) so WooCommerce computes the numbers.
- * Either way the browser only ever sends line intents, and unknown fields (such as a price) are rejected.
+ * Cart quote for DISPLAY: prices the lines from the catalog this storefront is showing (WooCommerce data when
+ * CATALOG_SOURCE=woo, at most a couple of minutes old). The authoritative check is made by kcpw-core on the shop host when
+ * the shopper presses Checkout (/api/cart/handoff/). The browser only ever sends line intents; unknown fields (such as a
+ * price) are rejected.
  */
 export async function POST(request: Request) {
   const length = Number(request.headers.get('content-length') ?? '0');
@@ -46,30 +41,6 @@ export async function POST(request: Request) {
     );
   }
 
-  const catalog = getCatalog();
-  const lines = await Promise.all(
-    parsed.data.lines.map(async (intent) =>
-      priceLine(await catalog.getProductById(intent.productId), intent),
-    ),
-  );
-
-  const issues: QuoteIssue[] = [];
-  if (parsed.data.coupon) {
-    issues.push({ code: 'coupon_invalid', message: 'Coupons are not available in this preview.' });
-  }
-
-  const currency = lines[0]?.unitPrice.currency ?? 'USD';
-  const subtotal = lines
-    .filter((l) => l.issues.length === 0)
-    .reduce((sum, l) => addMoney(sum, l.lineTotal), zero(currency));
-
-  const response: QuoteResponse = {
-    lines,
-    subtotal,
-    issues,
-    checkoutReady:
-      lines.length > 0 && lines.every((l) => l.issues.length === 0) && issues.length === 0,
-    note: 'Shipping, tax, and any discounts are calculated at checkout.',
-  };
+  const response = await buildQuote(getCatalog(), parsed.data.lines, parsed.data.coupon);
   return NextResponse.json(response, { headers: { 'Cache-Control': 'no-store' } });
 }

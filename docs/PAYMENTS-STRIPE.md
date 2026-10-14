@@ -1,9 +1,21 @@
 # Payments — Stripe
 
-Status: **proposed**; the checkout topology needs your sign-off (ADR-002 in
-[DECISIONS.md](DECISIONS.md)). No Stripe account setting is changed until the gates in
-[IMPLEMENTATION-PLAN.md](IMPLEMENTATION-PLAN.md) are approved. All build and test work uses
-Stripe **test mode on staging**.
+Status: **approved (ADR-002, 2026-10-13); the handoff is built (2026-10-14) and not yet proven against a real shop or Stripe.** No Stripe account setting is changed until
+the gates in [IMPLEMENTATION-PLAN.md](IMPLEMENTATION-PLAN.md) are approved. All build and test work uses Stripe **test mode on staging**.
+
+### Implementation status
+
+| Piece | State |
+|---|---|
+| Cart in the browser as line intents; no prices | Built (storefront) |
+| `POST /api/cart/handoff/` on the storefront server: strict request, local pre-check, signed call to the shop, validated single-use link | Built, **off by default** (`CHECKOUT_ENABLED`), never on in a production build |
+| `kcpw-core` plugin: `cart/quote`, `cart/handoff`, `/?kcpw_handoff=` redemption, WooCommerce cart rebuild, option charges, order-item meta (§4, §5) | Built; PHP logic proven by shared vectors; **WordPress/WooCommerce glue proven only against stand-ins** |
+| Official Stripe plugin on staging in test mode, webhooks, wallets | **Owner setup** ([CHECKOUT-STAGING-CHECKLIST.md](CHECKOUT-STAGING-CHECKLIST.md)); we write no payment code |
+| §6 order-status rules, §7 duplicate protection, §8 webhooks, §9 refunds | The official plugin's behavior; **to be verified** with the checklist's test matrix |
+| Coupons, wallets on the storefront, order-received page on `www`, nightly reconciliation | Not built (later) |
+
+Signing between the storefront and the shop: HMAC-SHA256 over `KCPW1`, timestamp, nonce, method, route, and the body hash; ±5 minutes; nonce replay protection
+(`wordpress/kcpw-core/src/Auth/RequestSigner.php`; shared vectors in `packages/contracts/test/vectors/signing.json`).
 
 ## 1. Decision summary
 
@@ -139,8 +151,7 @@ Rules:
    from the schema. A tampered client value cannot change a price.
 2. Validated values are stored as cart-item data and become **order-item meta** with readable
    labels, so they appear in WooCommerce admin, packing slips, and emails.
-3. Item-meta labels intentionally match the labels used for imported Etsy personalization, so
-   fulfillment sees one consistent format.
+3. Item-meta labels are the field labels the owner typed in the product's Personalization tab, so fulfillment reads exactly what the shopper saw.
 4. Output is escaped everywhere it is rendered (storefront, admin, emails, PDF).
 
 ## 6. Order status rules (redirect is never proof)
@@ -207,8 +218,8 @@ order status server-to-server before clearing the cart. The spike tests whether 
 - Full and partial refunds from the WooCommerce order screen call Stripe through the plugin.
 - Refunds started in the Stripe Dashboard return through the verified webhook and appear as
   WooCommerce refunds.
-- Imported Etsy orders use an internal "Paid on Etsy" payment method with refunds **disabled**, so
-  an Etsy order can never be refunded through Stripe.
+- If the owner's sync service also brings Etsy orders into WooCommerce, those orders were paid on Etsy, not through Stripe. Refund them in Etsy;
+  do not refund them through the Stripe plugin (check the service's payment method label on those orders).
 - Test: full, partial, multiple partial, over-refund attempt, refund from Dashboard.
 
 **Emails**

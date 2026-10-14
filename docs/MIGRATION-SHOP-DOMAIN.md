@@ -88,9 +88,9 @@ This is the first change to production DNS and must be approved with the exact r
 
 ### M3 — Integrations rehearsed in test mode
 
-Everything in §6 and §7 is configured against the `shop.` host using Stripe **test** mode and the Etsy
-Seller App (read-only): Stripe test webhook and Apple Pay domain **[APPROVAL for each Stripe change]**,
-Etsy redirect URI and webhook, the Next.js server-to-server secret, revalidation hook, email provider.
+Everything in §6 and §7 is configured against the `shop.` host using Stripe **test** mode: Stripe test webhook and Apple Pay domain
+**[APPROVAL for each Stripe change]**, the Next.js server-to-server secret (`KCPW_HANDOFF_SECRET`), the revalidation hook, email provider, and
+the Etsy sync service's site address (its own settings).
 
 ### M4 — Cutover rehearsal on staging
 
@@ -177,7 +177,7 @@ Review every connection that stores the site URL, a domain-bound key, or a callb
 | **Other gateways (PayPal, etc.)** | Unknown until discovery | Return/IPN URLs change |
 | **WooCommerce REST API keys** used by external tools (shipping, accounting, automation) | Base URL changes; keys may need regenerating | Inventory them under WooCommerce → Settings → Advanced → REST API |
 | **WooCommerce webhooks** (Settings → Advanced → Webhooks) | Delivery URLs of the receivers stay; the source host changes | Receivers that allowlist the sender hostname need updating |
-| **Etsy** | Seller App redirect URI and webhook callback registered for the shop host | New integration, not a migration |
+| **Etsy sync service** (ExportYourStore / Nembol) | It connects to the WooCommerce site by address or API key | Check its settings after the move; it may need the new host, and must not create duplicate products on the new site |
 | **Premium plugin licenses and WooCommerce.com subscriptions** | Often bound to the site URL | Check each; deactivate on the old URL and reactivate on the new where required |
 | **Jetpack or other cloud-connected plugins** | Connection is tied to the URL | Plan a reconnect; avoid disconnecting the live site early |
 | **Shipping and tax services** | Domain-bound API keys or origin allowlists | Add the shop host |
@@ -195,13 +195,13 @@ differ between plugin versions.
 | Source → receiver | Old (today) | New (after cutover) | Verified by |
 |---|---|---|---|
 | Stripe → WooCommerce Stripe plugin | `https://kcprintworks.com/…` (as shown in the plugin or Stripe Dashboard) | `https://shop.kcprintworks.com/…` (as shown in the plugin) | Stripe signature |
-| Etsy → `kcpw-etsy` (`order.paid`) | none | `https://shop.kcprintworks.com/wp-json/kcpw-etsy/v1/webhooks/etsy` | `webhook-*` HMAC headers |
+| Etsy sync service → WooCommerce | its own settings point at the WooCommerce site | **must be updated to the new host if it uses the site address** (check the service's settings) | the service |
 | WordPress → Next.js revalidation | none | `https://kcprintworks.com/api/revalidate` | HMAC + timestamp |
 | WooCommerce webhooks to third parties, if any | listed in discovery | same receivers, new sender host | per receiver |
 
 Rules:
 
-- **Staging** gets its own endpoints and secrets in Stripe test mode and Etsy; production secrets are never reused.
+- **Staging** gets its own endpoints and secrets in Stripe test mode; production secrets are never reused. Do not point a second WooCommerce copy at the sync service while the live one uses it.
 - **Overlap:** at cutover, register the new live Stripe endpoint first, verify a delivery, and only then
   remove the old endpoint. Never leave the old install able to act on events (§3 M6).
 - Webhook paths must bypass page caches, CDN caching, bot challenges, and the host's web application
@@ -256,7 +256,7 @@ and re-imported.
 | No WP-CLI, shell, or system cron | Use the panel's cron to run the Action Scheduler runner; otherwise the low-concurrency fallback in ETSY §11.2 |
 | Low memory or execution time breaks big imports | Chunked exports and imports; host support request ahead of cutover |
 | Host WAF blocks webhooks | Allow rules and delivery tests (§7) |
-| Outbound HTTPS restricted | Confirm cURL to Stripe and Etsy works from the host |
+| Outbound HTTPS restricted | Confirm cURL to Stripe (and the sync service) works from the host |
 | Email deliverability from shared IPs | Transactional provider with SPF/DKIM/DMARC |
 | Older PHP | The Stripe plugin requires WordPress 6.9 and PHP 7.4 or newer; our plugins target PHP 8.2. If the host cannot provide it, the host changes (decided in Phase 0) |
 | Shared inode, disk, or backup limits | Check quotas before cloning |

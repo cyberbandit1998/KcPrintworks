@@ -1,8 +1,6 @@
 import {
   ProductSchema,
   type Category,
-  type OptionField,
-  type OptionSchema,
   type Product,
   type ProductAttribute,
   type ProductImage,
@@ -18,6 +16,7 @@ import {
   sanitizeTitle,
   toMinorUnits,
 } from './text';
+import { MARKETPLACE_ATTRIBUTES, proposedOptions } from '../display-policy';
 
 /**
  * Turns a WooCommerce product export into storefront DTOs, for the DESIGN PREVIEW only.
@@ -29,18 +28,6 @@ import {
  *   proposed personalization fields (the export has no structured personalization)
  * Every derived or proposed value is reported in `notes`, and the preview banner says so.
  */
-
-/** Attributes that exist for other sales channels (marketplace listings), not for shoppers. Hidden from display only. */
-export const MARKETPLACE_ATTRIBUTES: ReadonlySet<string> = new Set([
-  'condition',
-  'condition description',
-  'mpn',
-  'primary color',
-  'secondary color',
-  'material multi',
-  'occasion',
-  'holiday',
-]);
 
 export interface ConvertOptions {
   /** Where each product's category comes from. `current` = the store as it is; `proposed` = the reviewed plan. */
@@ -149,48 +136,6 @@ function imagesOf(
       height: 1000,
     };
   });
-}
-
-/** Personalization the export cannot describe. Proposed fields for the products that say they are personalized. */
-export function proposedOptions(title: string): { schema: OptionSchema; proposed: boolean } {
-  const personalized = /personali[sz]ed|custom name/i.test(title);
-  if (!personalized) return { schema: { version: 1, fields: [] }, proposed: false };
-  const fields: OptionField[] = [
-    {
-      id: 'name',
-      type: 'text',
-      label: 'Name or short text',
-      helpText: 'Proposed field for review. Printed exactly as typed, so check the spelling.',
-      required: true,
-      minLength: 1,
-      maxLength: 24,
-      placeholder: 'e.g. Robin',
-    },
-  ];
-  if (/bag tag/i.test(title)) {
-    fields.push(
-      {
-        id: 'icon',
-        type: 'text',
-        label: 'Icon (emoji)',
-        helpText:
-          'Proposed field. A fixed list of icons you can print is safer than free emoji; see the personalization notes.',
-        required: false,
-        minLength: 0,
-        maxLength: 4,
-      },
-      {
-        id: 'cable_color',
-        type: 'text',
-        label: 'Cable color',
-        helpText: 'Proposed field. Your real cable colors will become a choice list.',
-        required: false,
-        minLength: 0,
-        maxLength: 30,
-      },
-    );
-  }
-  return { schema: { version: 1, fields }, proposed: true };
 }
 
 export function convertExport(rows: ExportRow[], options: ConvertOptions): ConvertResult {

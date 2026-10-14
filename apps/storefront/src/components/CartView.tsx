@@ -9,17 +9,46 @@ import {
   type QuoteResponse,
 } from '@kcpw/contracts/client';
 import { cartActions, useCartLines } from '@/lib/cart/store';
-import { checkoutAvailable } from '@/lib/checkout';
 import { useIsClient } from '@/lib/use-is-client';
 import { ProductImage } from './ProductImage';
 
 type QuoteResult = { requestKey: string; quote?: QuoteResponse; failed?: boolean };
 
-export function CartView() {
+/** Why the shop host sent the shopper back to the cart (see app/cart/page.tsx). */
+export type HandoffNotice = 'changed' | 'expired' | 'unavailable';
+
+const NOTICE_TEXT: Record<HandoffNotice, string> = {
+  changed:
+    'Something in your cart changed while we were preparing checkout (a price, the stock, or an option). Your cart is kept. Please review it, then press Checkout again.',
+  expired: 'Your checkout link expired or was already used. Press Checkout to start again.',
+  unavailable:
+    'One of your items could not be added to checkout. Your cart is kept. Please review it and try again.',
+};
+
+type CheckoutState =
+  { phase: 'idle' } | { phase: 'working' } | { phase: 'error'; message: string; details: string[] };
+
+const ERROR_TEXT: Record<string, string> = {
+  invalid_lines: 'Some items cannot be ordered right now:',
+  changed: NOTICE_TEXT.changed,
+  invalid_request: 'We could not read your cart. Please reload the page and try again.',
+  checkout_disabled: 'Checkout is not available right now.',
+  unavailable:
+    'Checkout is not reachable right now. Your cart is kept; please try again in a moment.',
+};
+
+export function CartView({
+  checkoutEnabled = false,
+  handoffNotice,
+}: {
+  checkoutEnabled?: boolean;
+  handoffNotice?: HandoffNotice;
+}) {
   const isClient = useIsClient();
   const lines = useCartLines();
   const [result, setResult] = useState<QuoteResult | null>(null);
   const [announcement, setAnnouncement] = useState('');
+  const [checkout, setCheckout] = useState<CheckoutState>({ phase: 'idle' });
   const headingRef = useRef<HTMLHeadingElement>(null);
   const focusHeadingAfterRender = useRef(false);
 
@@ -62,6 +91,44 @@ export function CartView() {
     return () => controller.abort();
   }, [lines, isClient, requestKey]);
 
+  async function startCheckout() {
+    if (checkout.phase === 'working') return;
+    setCheckout({ phase: 'working' });
+    try {
+      const response = await fetch('/api/cart/handoff/', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ lines }),
+      });
+      const data: unknown = await response.json();
+      const body = (typeof data === 'object' && data !== null ? data : {}) as {
+        ok?: unknown;
+        redirectUrl?: unknown;
+        error?: unknown;
+        lines?: { index?: number; issues?: { message?: string }[] }[];
+      };
+      if (body.ok === true && typeof body.redirectUrl === 'string') {
+        // Leaves this site for the shop's checkout. The phase stays "working" so the button cannot be pressed twice.
+        window.location.assign(body.redirectUrl);
+        return;
+      }
+      const code = typeof body.error === 'string' ? body.error : 'unavailable';
+      const details = (body.lines ?? []).flatMap((line) =>
+        (line.issues ?? []).map((issue) => {
+          const name = quote?.lines[line.index ?? -1]?.name;
+          return name ? `${name}: ${issue.message ?? ''}` : (issue.message ?? '');
+        }),
+      );
+      setCheckout({
+        phase: 'error',
+        message: ERROR_TEXT[code] ?? ERROR_TEXT.unavailable!,
+        details,
+      });
+    } catch {
+      setCheckout({ phase: 'error', message: ERROR_TEXT.unavailable!, details: [] });
+    }
+  }
+
   const quote = lines.length > 0 ? (result?.quote ?? null) : null;
   const failed = lines.length > 0 && result?.requestKey === requestKey && result.failed === true;
 
@@ -100,6 +167,11 @@ export function CartView() {
           Your cart
         </h1>
       </div>
+      {handoffNotice ? (
+        <div className="notice" role="alert">
+          <p>{NOTICE_TEXT[handoffNotice]}</p>
+        </div>
+      ) : null}
       <div role="status" aria-live="polite" className="visually-hidden">
         {announcement}
       </div>
@@ -205,10 +277,37 @@ export function CartView() {
           {hasIssues ? (
             <p className="field__error">Fix the items marked above before checking out.</p>
           ) : null}
-          {checkoutAvailable ? (
-            <Link href="/checkout/" className="button">
-              Checkout
-            </Link>
+          {checkoutEnabled ? (
+            <>
+              <button
+                type="button"
+                className="button"
+                aria-disabled={hasIssues || !quote || checkout.phase === 'working'}
+                aria-describedby="checkout-status"
+                onClick={() => {
+                  if (!hasIssues && quote) void startCheckout();
+                }}
+              >
+                {checkout.phase === 'working' ? 'Preparing checkout…' : 'Checkout'}
+              </button>
+              <div id="checkout-status" role="status" aria-live="polite">
+                {checkout.phase === 'working' ? (
+                  <p className="pdp__note">Taking you to secure checkout…</p>
+                ) : null}
+              </div>
+              {checkout.phase === 'error' ? (
+                <div className="notice" role="alert">
+                  <p>{checkout.message}</p>
+                  {checkout.details.length > 0 ? (
+                    <ul>
+                      {checkout.details.map((detail) => (
+                        <li key={detail}>{detail}</li>
+                      ))}
+                    </ul>
+                  ) : null}
+                </div>
+              ) : null}
+            </>
           ) : (
             <>
               <button

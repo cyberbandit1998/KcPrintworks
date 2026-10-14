@@ -8,7 +8,7 @@ import {
   type StockStatus,
   type Variation,
 } from '@kcpw/contracts';
-import { MARKETPLACE_ATTRIBUTES, proposedOptions } from '../export/convert';
+import { isMadeToOrder, proposedOptions, readHiddenAttributes } from '../display-policy';
 import {
   decodeEntities,
   descriptionHtml,
@@ -89,7 +89,10 @@ function prices(source: {
   };
 }
 
-export function convertWooCatalog(input: WooCatalogInput): WooCatalogResult {
+export function convertWooCatalog(
+  input: WooCatalogInput,
+  hiddenAttributes: ReadonlySet<string> = readHiddenAttributes(),
+): WooCatalogResult {
   const skipped: WooCatalogResult['skipped'] = [];
   const products: Product[] = [];
   let proposedPersonalization = 0;
@@ -120,7 +123,7 @@ export function convertWooCatalog(input: WooCatalogInput): WooCatalogResult {
     row.attributes.forEach((a, index) => {
       const lower = a.name.toLowerCase();
       const forVariation = variationNames.has(lower);
-      if (!forVariation && (MARKETPLACE_ATTRIBUTES.has(lower) || !a.visible)) return;
+      if (!forVariation && (hiddenAttributes.has(lower) || !a.visible)) return;
       const names = a.options.map((o) => decodeEntities(o).trim()).filter(Boolean);
       if (names.length === 0) return; // an attribute with no options cannot be offered
       const optionSlugs = uniqueSlugs(names);
@@ -200,10 +203,11 @@ export function convertWooCatalog(input: WooCatalogInput): WooCatalogResult {
     const fromMeta = schemaFromMeta(row);
     const proposed = proposedOptions(title);
     if (!fromMeta && proposed.proposed) proposedPersonalization += 1;
-    const madeToOrder = row.attributes.some(
-      (a) =>
-        a.name.toLowerCase() === 'condition' && a.options.some((o) => /made_to_order/i.test(o)),
-    );
+    const madeToOrder = isMadeToOrder({
+      attributes: row.attributes,
+      tags: row.tags,
+      meta: row.meta_data,
+    });
     const html = descriptionHtml(row.description);
     const text = plainText(html);
 

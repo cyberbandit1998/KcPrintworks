@@ -1,24 +1,25 @@
 # Decisions and Open Inputs
 
-Last updated 2026-10-14. Etsy is now the master product catalog (ADR-013); the storefront reads WooCommerce read-only (ADR-008, revised).
+Last updated 2026-10-14. **WooCommerce is the single source of truth; a third-party sync service (ExportYourStore now, maybe Nembol later) fills it from Etsy and we build no Etsy integration (ADR-014).** The cart hands off to WooCommerce checkout through the `kcpw-core` plugin; Stripe is the official plugin.
 
 ## 1. Decision status
 
 | ADR | Decision | Status |
 |---|---|---|
 | ADR-001 | Domain topology: Next.js at `kcprintworks.com`; WordPress/WooCommerce (admin, checkout, REST, webhooks) at `shop.kcprintworks.com` | **Approved** 2026-10-13 |
-| ADR-002 | Hybrid checkout: Next.js storefront and cart; WooCommerce-hosted checkout with the **official** Stripe plugin; secure single-use cart handoff | **Approved** 2026-10-13 |
-| ADR-003 | Etsy sync is a separate WooCommerce plugin (`kcpw-etsy`) | **Approved** 2026-10-13. Revised 2026-10-14: now the product **source** pipeline (ADR-013); read-only preview built, no WooCommerce writes yet |
-| ADR-004 | Etsy orders imported as WooCommerce orders marked "Paid on Etsy" | Proposed (not yet explicitly approved; implicit in the approved plan) |
-| ADR-005 | WooCommerce owns the website; per-field ownership; import-once defaults; Woo-owned SEO | **Superseded 2026-10-14 by ADR-013** (the owner chose Etsy as master) |
+| ADR-002 | Hybrid checkout: Next.js storefront and cart; WooCommerce-hosted checkout with the **official** Stripe plugin; secure single-use cart handoff | **Approved** 2026-10-13. **Built 2026-10-14** (`kcpw-core` + storefront), off by default, tested with stand-ins only; staging checklist pending |
+| ADR-003 | Etsy sync is a separate WooCommerce plugin (`kcpw-etsy`) | **Withdrawn 2026-10-14** (ADR-014): the owner uses a third-party sync service. The plugin was built (read-only) and removed; it is in git history at `29cc10f` |
+| ADR-004 | Etsy orders imported as WooCommerce orders marked "Paid on Etsy" | **Withdrawn** (ADR-014): if Etsy orders reach WooCommerce, the sync service does it; the storefront does not care |
+| ADR-005 | WooCommerce owns the website; per-field ownership; import-once defaults; Woo-owned SEO | **Restored in spirit by ADR-014**: WooCommerce is the single source of truth for the website. Field-level sync rules belong to the sync service, not to us |
 | ADR-006 | Etsy access class: **Seller App / Seller API Access**, read-only scopes first | **Revised 2026-10-13** (was "personal access"). 2026-10-14: scopes `shops_r` + `listings_r` now; `transactions_r` only with order import; still no write scope |
-| ADR-007 | Personalization solution | **Recommended: first-party `kcpw-core` module** (no plugin exists to adapt; see [PERSONALIZATION.md](PERSONALIZATION.md)). Awaiting owner approval, icons decision, and an order sample |
+| ADR-007 | Personalization solution | **First-party `kcpw-core` module, built 2026-10-14** (editor on the product screen, server-side validation proven against 33 shared vectors, saved on the order item). Open: icons decision, cable colors, order sample; staging verification |
 | ADR-008 | Catalog delivery to Next.js | **Revised 2026-10-14, Step 2 built:** the storefront reads the WooCommerce REST API (GET only, read-only key, in-memory stale-while-revalidate cache, signed refresh endpoint). Purpose-built DTO endpoints stay a later optimization |
 | ADR-009 | Migration strategy: clone then cut over; live site stays operational | **New, proposed** |
-| ADR-010 | Etsy `order.paid` webhook as fast path with polling as recovery | **New, proposed** |
+| ADR-010 | Etsy `order.paid` webhook as fast path with polling as recovery | **Withdrawn** (ADR-014) |
 | ADR-011 | Accessible foreground colors on the unchanged brand palette | **Approved** 2026-10-13 |
 | ADR-012 | Storefront runs as a Docker image published to GHCR; staging by default; rollback by image tag | **Implemented**, owner requested 2026-10-13. Revised 2026-10-14: pages are rendered per request; noindex and image hosts are still fixed at build |
-| ADR-013 | **Etsy is the master product catalog**; Etsy → `kcpw-etsy` → WooCommerce → Next.js; permanent ID mappings; no duplicates; preview, dry-run, rollback; WooCommerce keeps checkout, shipping, tax, Stripe | **Owner decision 2026-10-14.** Read-only connection and preview built; **nothing is written to WooCommerce until the owner approves the first synchronization** |
+| ADR-013 | Etsy is the master product catalog, synchronized by our own plugin | **Superseded the same day by ADR-014** (owner decision) |
+| ADR-014 | **WooCommerce is the single source of truth; the Etsy sync service is external and interchangeable; no custom Etsy integration; the storefront is sync-neutral** | **Owner decision 2026-10-14. Implemented** |
 
 ## 2. Inputs still needed
 
@@ -39,17 +40,17 @@ Answering these unlocks the corresponding work. Most are covered by the read-onl
 5. **Stripe:** account status, who supplies test keys, link on or off, statement descriptor, tax approach.
 6. **Shipping and tax** approach, and countries served.
 7. **Next.js hosting** (Vercel assumed).
-8. **Etsy:** whether a developer app is already registered, listing count, price rule (independent assumed),
-   buyer email (excluded by default).
-9. **Etsy Seller App (new, blocks the first real connection):** register the app under your Etsy account, add its redirect
-   address, and put the API key in `wp-config.php` of the **staging** WordPress ([ETSY-SETUP.md](ETSY-SETUP.md)). Until then the
-   plugin has only been tested against mock Etsy responses.
+8. **Sync service (ExportYourStore today):** which products it keeps in sync, whether it updates existing products in place or creates new ones, and how it sets stock for
+   made-to-order items (docs/SYNC-INDEPENDENCE.md). Needed before any switch to another service.
+9. **Staging WordPress + WooCommerce for the checkout tests (new, blocks Step 3 verification):** a copy of the shop where `kcpw-core` and the
+   official Stripe plugin (test mode) can be installed ([CHECKOUT-STAGING-CHECKLIST.md](CHECKOUT-STAGING-CHECKLIST.md)). Installing them
+   on the live site would change it, so it needs your approval.
 10. **WooCommerce read-only REST key (new, blocks Step 2 on the real catalog):** you create it (Read permission) and put it only in the
     VPS `.env` ([DEPLOYMENT-VPS.md](DEPLOYMENT-VPS.md) section 9).
-11. **Network access for verification work:** allow `developers.etsy.com`, `developer.etsy.com`,
-   `help.etsy.com`, and `mcp.api.etsycloud.com` (plus `kcprintworks.com` if you want me to inspect public
-   pages) in the environment's network settings, or run the discovery yourself.
-   See <https://code.claude.com/docs/en/cloud-environments#network-access>.
+11. **Network access for verification work (optional, would remove the biggest gap):** allow `wordpress.org`, `downloads.wordpress.org` and
+    `kcprintworks.com` in the environment's network settings
+    (<https://code.claude.com/docs/en/cloud-environments#network-access>). With WordPress and WooCommerce downloadable I could run
+    the `kcpw-core` plugin inside a real WordPress here instead of against stubs, and read real catalog responses from your store.
 
 ## 3. Decision log
 
@@ -77,7 +78,10 @@ Format: context, decision, consequences.
 - **Reversal trigger.** Step 3 spikes fail, or the checkout look is rejected at G1/G2. Then option C in
   PAYMENTS §12, after you approve.
 
-### ADR-003 — Etsy sync as a separate WooCommerce plugin (Approved)
+### ADR-003 — Etsy sync as a separate WooCommerce plugin (Withdrawn by ADR-014)
+
+> Withdrawn 2026-10-14: the owner uses a third-party sync service. Kept for the record.
+
 
 - **Context.** Needs: direct WooCommerce CRUD, transactions, a job queue, retries, WP admin authorization, and
   strict isolation from shoppers.
@@ -88,7 +92,10 @@ Format: context, decision, consequences.
   concurrency 1, and a load test (R7). The plugin boundary and kill switch keep it removable. Shared hosting
   may make this harder (MIGRATION §10).
 
-### ADR-004 — Etsy orders as WooCommerce orders (Proposed)
+### ADR-004 — Etsy orders as WooCommerce orders (Withdrawn by ADR-014)
+
+> Withdrawn 2026-10-14. Kept for the record.
+
 
 - **Context.** "Import into WooCommerce or a consolidated fulfillment view."
 - **Decision.** Import as WooCommerce orders with payment method "Paid on Etsy".
@@ -109,7 +116,10 @@ Format: context, decision, consequences.
   WooCommerce-specific options never written, three-way conflict detection, preview required before apply.
 - **Consequences.** More up-front configuration; much lower risk of overwriting SEO copy, prices, or variations.
 
-### ADR-006 — Etsy access class and scopes (Revised)
+### ADR-006 — Etsy access class and scopes (Withdrawn by ADR-014)
+
+> Withdrawn 2026-10-14: we make no Etsy API calls. Kept for the record.
+
 
 - **Context.** The owner reports that Etsy introduced Seller API Access in July 2026 for sellers connecting their
   own shops. Excerpts of Etsy's help center agree: a Seller App covers the registered shop only, cannot serve
@@ -120,7 +130,34 @@ Format: context, decision, consequences.
   Confirm rate limits, scope list, and the effect of any existing registered app on the real page in Step 5,
   using Etsy's Dev MCP server and the official OpenAPI spec (ETSY §2.1).
 
-### ADR-013 — Etsy is the master product catalog (Owner decision 2026-10-14)
+### ADR-014 — WooCommerce is the source of truth; the sync service is external and interchangeable (Owner decision 2026-10-14)
+
+- **Context.** The owner already synchronizes Etsy listings into WooCommerce with ExportYourStore and may switch back to Nembol. The
+  previous day's plans (ADR-005 WooCommerce-master, then ADR-013 Etsy-master with our own `kcpw-etsy` plugin) assumed we would build
+  the Etsy connection. The owner does not want that, and wants the new storefront to keep working whichever service is in use.
+- **Decision.**
+  1. **No custom Etsy API integration.** No Etsy credentials, calls, OAuth, or webhooks in anything we ship. No dependency on, or
+     reference to, ExportYourStore or Nembol in shipped code. `npm run guard` fails the build if either appears.
+  2. **WooCommerce is the single source of truth** for the website's products, prices, variations, and order data. The storefront
+     reads it read-only through the standard REST API (Step 2) and relies only on standard WooCommerce data plus metadata we own
+     (`_kcpw_*`). Marketplace-style attributes are a display hint (configurable), never a requirement.
+  3. **`kcpw-etsy` is withdrawn and removed** from the tree (built read-only on 2026-10-14 and never installed; recoverable from git history
+     at `29cc10f`). ADR-003, ADR-004, ADR-010, ADR-013 are withdrawn or superseded; `docs/ETSY-INTEGRATION.md` is now a short note.
+  4. **Priority: complete the buying path.** Product integration (done in Step 2), personalization, cart handoff, and Stripe checkout
+     (ADR-002), delivered by a new first-party plugin, **`kcpw-core`**, plus the storefront's handoff route.
+  5. **Checkout stays off by default**, switched on only by an operator in a staging container's environment, impossible in a production
+     build, and the owner's standing instruction ("keep checkout disabled until integration testing is complete") still governs when.
+- **Consequences.** Switching sync services needs no storefront change, but WooCommerce data quality is the service's job: if a service changes
+  product IDs or slugs, saved carts and personalization setups break (docs/SYNC-INDEPENDENCE.md has the checklist). We cannot test either
+  service from here. The one thing in WooCommerce that we write is our own personalization meta, which a sync service might overwrite;
+  the setup can be copied out as JSON.
+- **Alternatives considered.** Keeping our own Etsy plugin (rejected by the owner); coupling the storefront to one service's data model
+  (rejected: that is the lock-in the owner wants to avoid).
+
+### ADR-013 — Etsy is the master product catalog (Superseded by ADR-014 the same day)
+
+> Superseded: the owner chose a third-party sync service instead. The text below is kept for the record only; nothing in it is built or planned.
+
 
 - **Context.** The first plan (ADR-005) made WooCommerce the master and imported Etsy data once. The owner decided otherwise: products are
   created and edited **on Etsy**, and WooCommerce (which supplies the Next.js storefront) follows. The WooCommerce catalog already holds
@@ -225,7 +262,10 @@ Original proposal:
 - **Consequences.** A short order freeze at cutover; DNS, SSL, and Stripe changes each need approval; shared-
   hosting limits are a project risk (R15).
 
-### ADR-010 — `order.paid` webhook with polling recovery (Proposed)
+### ADR-010 — `order.paid` webhook with polling recovery (Withdrawn by ADR-014)
+
+> Withdrawn 2026-10-14. Kept for the record.
+
 
 - **Context.** The owner reports webhooks are available beyond commercial-only apps. Payloads are thin and early
   reports mention missed deliveries.

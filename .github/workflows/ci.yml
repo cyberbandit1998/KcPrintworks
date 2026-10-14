@@ -24,7 +24,7 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
-      - name: Guards (Etsy isolation, secret-shaped strings)
+      - name: Guards (no Etsy or sync-service code, secret-shaped strings)
         run: npm run guard
       - name: Formatting
         run: npm run format:check
@@ -45,13 +45,13 @@ jobs:
         run: npm run test:e2e
         env:
           CI: 'true'
-      - name: Build the Etsy plugin package
-        run: npm run build:etsy-plugin
-      - name: Upload the Etsy plugin package
+      - name: Build the kcpw-core plugin package
+        run: npm run build:core-plugin
+      - name: Upload the kcpw-core plugin package
         uses: actions/upload-artifact@v4
         with:
-          name: kcpw-etsy-plugin
-          path: dist/kcpw-etsy.zip
+          name: kcpw-core-plugin
+          path: dist/kcpw-core.zip
           retention-days: 30
       - name: Upload Playwright traces on failure
         if: failure()

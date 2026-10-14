@@ -39,7 +39,8 @@ export function toMinorUnits(value: string): number | undefined {
   return Number(match[1]) * 100 + Number((match[2] ?? '').padEnd(2, '0') || '0');
 }
 
-const IMPORT_FOOTER = /(?:<br\s*\/?>|\s)*Listed with ExportYourStore\.com\s*$/i;
+/** A "Listed with <service>.com" credit line that listing/sync tools append to descriptions. Matched by shape, not by service name. */
+const IMPORT_FOOTER = /(?:<br\s*\/?>|\s)*Listed with [A-Za-z0-9][A-Za-z0-9 .-]{1,40}\.com\s*$/i;
 
 /**
  * Description HTML ready to display. The export writes line breaks as the two characters backslash-n and

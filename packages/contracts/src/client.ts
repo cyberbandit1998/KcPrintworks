@@ -17,4 +17,5 @@ export * from './purchase-model';
 
 export type * from './options';
 export type * from './cart';
+export type * from './handoff';
 export type * from './product';

@@ -1,7 +1,13 @@
 # Personalization: investigation and the safest implementation
 
-Status: **recommendation for your approval** (ADR-007). Nothing has been changed on the live site. The new storefront already renders the
-form from the plugin-agnostic schema; what is left is where the field definitions and the saved values live in WooCommerce.
+Status: **built 2026-10-14 as option B (ADR-007), awaiting staging verification.** Nothing has been changed on the live site. The first-party module lives in
+the `kcpw-core` plugin (`wordpress/kcpw-core`): a **Personalization** tab on the product screen defines the fields (no code, no JSON needed), the server validates
+every value with the same rules as the storefront (33 shared vectors, all passing in PHP), recomputes option charges from the schema, shows the choices in the cart and
+checkout, and saves them on the order item. See [CHECKOUT-STAGING-CHECKLIST.md](CHECKOUT-STAGING-CHECKLIST.md) section 3 to define fields and tests C to E to verify.
+Still open: the icons decision (section 6), your cable colors, and a recent order sample (Q3). **A sync service might overwrite product meta** where the setup is
+stored: after the next sync, check that it survived ([SYNC-INDEPENDENCE.md](SYNC-INDEPENDENCE.md)); the JSON under *Advanced* is the backup.
+
+The original investigation and recommendation follow.
 
 ## 1. What I found
 

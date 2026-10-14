@@ -37,7 +37,7 @@ for (const file of phpFiles(join(root, 'wordpress'))) {
 }
 if (failed) process.exit(1);
 
-const tests = spawnSync('php', [join(root, 'wordpress/kcpw-etsy/tests/run.php')], {
+const tests = spawnSync('php', [join(root, 'wordpress/kcpw-core/tests/run.php')], {
   stdio: 'inherit',
 });
 process.exit(tests.status ?? 1);

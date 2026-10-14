@@ -1,25 +1,26 @@
 # Architecture
 
-Status: **approved 2026-10-13**; **updated 2026-10-14**: Etsy is the master product catalog ([ADR-013](DECISIONS.md#adr-013--etsy-is-the-master-product-catalog-owner-decision-2026-10-14)) and the
+Status: **approved 2026-10-13**; **updated 2026-10-14**: WooCommerce is the single source of truth and the Etsy sync service is external ([ADR-014](DECISIONS.md#adr-014--woocommerce-is-the-source-of-truth-the-sync-service-is-external-and-interchangeable-owner-decision-2026-10-14)); the
 storefront reads WooCommerce directly and read-only (ADR-008, revised). See [DECISIONS.md](DECISIONS.md) for the status of each decision.
 Anything marked *(assumption)* depends on facts about the current hosting and plugins that could not be
 inspected; see the open inputs in DECISIONS.md and [LIVE-SITE-DISCOVERY.md](LIVE-SITE-DISCOVERY.md).
 Moving the existing store to the `shop.` host is covered in [MIGRATION-SHOP-DOMAIN.md](MIGRATION-SHOP-DOMAIN.md).
 
-> **Product data flow (2026-10-14).** `Etsy --(kcpw-etsy, read-only, background)--> WooCommerce --(REST GET, read-only key, cached)--> Next.js`. Etsy owns title, description, images, variations, colors, and base
-> prices; WooCommerce owns the website address and SEO, categories, shipping and tax rules, the personalization schema, the inventory policy, and approved overrides; Next.js never calls Etsy.
-> Orders, checkout, shipping, tax, and Stripe stay in WooCommerce. Built so far: the plugin's connection, listing download, matching report, and dry-run planner (no WooCommerce writes), and the
-> storefront's WooCommerce catalog source ([WOOCOMMERCE-CATALOG.md](WOOCOMMERCE-CATALOG.md)). Not built: the first synchronization (needs approval), scheduling, webhooks, order import.
+> **Product data flow (updated 2026-10-14, ADR-014).** `Etsy --(owner's sync service: ExportYourStore now, maybe Nembol later)--> WooCommerce --(REST GET, read-only key, cached)--> Next.js`.
+> WooCommerce is the single source of truth for products, prices, variations, and orders. We build **no Etsy integration**; the storefront and our plugin never call Etsy or name a sync product
+> ([SYNC-INDEPENDENCE.md](SYNC-INDEPENDENCE.md)). The buying path is: cart in the browser -> signed server-to-server handoff to the `kcpw-core` plugin -> WooCommerce checkout with the official Stripe plugin.
+> **Built:** the storefront's WooCommerce catalog source ([WOOCOMMERCE-CATALOG.md](WOOCOMMERCE-CATALOG.md)), `kcpw-core` (checkout link, personalization), the storefront handoff and a switchable checkout button.
+> **Verified with stand-ins only** (no WordPress, WooCommerce, or Stripe is reachable from the build environment): [CHECKOUT-STAGING-CHECKLIST.md](CHECKOUT-STAGING-CHECKLIST.md) is how the real thing gets proven.
 
 ## 1. Principles
 
 | # | Principle | Consequence |
 |---|---|---|
-| P1 | WooCommerce is the system of record for what the website sells, orders, and payment status; **Etsy is the master for product content** (ADR-013) | The storefront never computes prices or totals; WooCommerce does. Product content is edited on Etsy and flows into WooCommerce only through approved, previewed syncs. |
-| P2 | The shopper path has no dependency on Etsy | Etsy code lives in its own plugin; the storefront has no Etsy credentials; all Etsy calls are background jobs. |
+| P1 | WooCommerce is the single source of truth for products, prices, variations, orders, and payment status (ADR-014) | The storefront never computes the amount charged; WooCommerce does. Whatever tool fills WooCommerce is interchangeable. |
+| P2 | The shopper path has no dependency on Etsy or on any sync service | Nothing we ship calls or names them (`npm run guard`); the storefront reads standard WooCommerce data only. |
 | P3 | Payment truth comes from Stripe, verified server-side | Redirects and client callbacks are informational only. |
-| P4 | Nothing changes without a preview, and nothing live changes without approval | Dry-run first, plan-hash apply, approval gates, kill switches. |
-| P5 | Fail soft | If WooCommerce or Etsy is slow or down, cached pages keep serving; failures are logged and retried, not surfaced to shoppers. |
+| P4 | Nothing live changes without approval | Staging first, Stripe in test mode, approval gates, checkout off by default. |
+| P5 | Fail soft | If WooCommerce is slow or down, the last good catalog keeps serving; failures are logged and retried, not surfaced to shoppers. |
 | P6 | Own as little payment/security code as possible | Use the official Stripe plugin; ours is a thin handoff layer. |
 
 ## 2. System context
@@ -27,21 +28,19 @@ Moving the existing store to the `shop.` host is covered in [MIGRATION-SHOP-DOMA
 ```mermaid
 flowchart LR
   shopper([Shopper]) -->|"browse, cart"| www["Next.js storefront<br/>www.kcprintworks.com"]
-  www -->|"read catalog (cached, tagged)"| core
+  www -->|"read catalog (REST GET, read-only key, cached)"| woo
   www -->|"quote / handoff (server-to-server, HMAC)"| core
   shopper -->|"checkout and pay"| woo
   subgraph shop["shop.kcprintworks.com: WordPress + WooCommerce"]
-    core["kcpw-core<br/>read API, cart handoff, options"]
+    core["kcpw-core<br/>cart handoff, personalization"]
     woo["WooCommerce<br/>catalog, orders, checkout"]
     stripePlugin["Official Stripe gateway plugin"]
-    etsyPlugin["kcpw-etsy<br/>sync engine, admin UI"]
     core --- woo
     woo --- stripePlugin
-    etsyPlugin --- woo
   end
   stripePlugin <-->|"Stripe.js, API, signed webhooks"| stripe[(Stripe)]
-  etsy[("Etsy: master catalog")] -.->|"OAuth + Open API v3 reads, background jobs only"| etsyPlugin
-  core -.->|"signed revalidate webhook"| www
+  etsy[("Etsy")] -.->|"owner's sync service (external)"| woo
+  woo -.->|"optional signed refresh webhook"| www
   staff([Staff]) --> woo
 ```
 
@@ -56,7 +55,7 @@ Next.js storefront.
 | Storefront | `next dev` | Vercel preview or equivalent | `www.kcprintworks.com` |
 | WordPress/WooCommerce | Docker Compose, seeded fixture catalog | **Clone** of the current site, separate host | Today: the live store on shared hosting at the apex, **unchanged until the launch gate**; afterward: `shop.` host (MIGRATION doc) |
 | Stripe | Test mode | Test mode | Live mode (approval gate G6) |
-| Etsy | Recorded fixtures only | Real shop, **read scopes only**; no Etsy sandbox is known to exist *(unverified)* | Same app and shop; sync enabled at G6 |
+| Etsy sync service | not part of this project | The owner's service, pointed at the **live** store only | unchanged; do not point a second copy of the store at it |
 | Email | Mailpit | Sandbox/catch-all | Transactional provider |
 
 Staging must never share a database, Stripe account mode, or webhook secrets with production.
@@ -67,8 +66,8 @@ Staging must never share a database, Stripe account mode, or webhook secrets wit
 
 - App Router, TypeScript, server components by default. Product, category, and content pages
   are statically generated with tag-based on-demand revalidation plus a time-based fallback.
-- Holds **no secrets that can move money or read Etsy**. Its only secrets: the shared HMAC secret
-  for server-to-server calls to `kcpw-core`, and the revalidation secret.
+- Holds **no secrets that can move money**. Its only secrets: the WooCommerce **read-only** REST key, the shared HMAC secret
+  for server-to-server calls to `kcpw-core`, and the revalidation secret (all runtime environment, never in the image).
 - Browsers never call WordPress APIs directly. Quote and handoff calls go through Next.js
   route handlers that call WordPress server-to-server with HMAC signatures, which avoids CORS
   and hides the WordPress API from the browser.
@@ -83,28 +82,24 @@ Staging must never share a database, Stripe account mode, or webhook secrets wit
 - Calculates prices, shipping, tax, discounts, and totals. Owns orders and their statuses.
 - Hosts the checkout (see [PAYMENTS-STRIPE.md](PAYMENTS-STRIPE.md)).
 
-### 4.3 `kcpw-core` (first-party plugin)
+### 4.3 `kcpw-core` (first-party plugin, `wordpress/kcpw-core`)
 
-| Module | Responsibility |
-|---|---|
-| Storefront read API | `GET /wp-json/kcpw/v1/products`, `/products/{slug}`, `/categories`, `/redirects`. Public, cacheable, ETag/`Last-Modified`. Returns a denormalized storefront DTO (§5.2). |
-| Revalidation emitter | Hooks product, variation, price, stock, term, and SEO changes; debounces; sends a signed webhook to Next.js. |
-| Cart quote and handoff | Server-to-server endpoints that validate line intents and hand the shopper to WooCommerce checkout. |
-| Personalization options | A plugin-agnostic option schema in the DTO, with an adapter for whichever approach ADR-007 selects (existing plugin, first-party schema, or hybrid). Always: server-side validation and pricing, each personalization as its own order line, readable item meta plus `_kcpw_personalization`. |
-| Order lookup | HMAC-signed `GET /orders/{id}?key=` so the storefront can verify order status server-side. |
-| Fulfillment view | Channel-agnostic admin list of website and Etsy orders (Step 9). |
+| Module | Status | Responsibility |
+|---|---|---|
+| Cart quote and handoff | **Built** | `POST /wp-json/kcpw/v1/cart/quote` and `/cart/handoff` (signed, server to server): validate line intents against WooCommerce, price them, store a single-use 10-minute token, return the checkout link; `/?kcpw_handoff=` rebuilds the WooCommerce cart with WooCommerce's own add-to-cart and redirects to checkout |
+| Personalization | **Built** | A "Personalization" tab on the product screen; one JSON schema in product meta; server-side validation identical to the storefront's (33 shared vectors); option charges recomputed from the schema on every totals calculation; values shown in the cart and saved on the order item (readable lines + hidden `_kcpw_personalization`) |
+| Checkout link status page | **Built** | WooCommerce > Checkout link: readiness checks (https, secret, permalinks, Stripe active and in test mode, broken setups) |
+| Storefront read API (`/products`, `/categories`) | Not built | Replaced for now by the storefront reading WooCommerce's own REST API (ADR-008, revised). A DTO endpoint stays an optimization |
+| Revalidation emitter | Not built | The storefront refreshes itself every 2 minutes and on a signed request; a WooCommerce webhook can call it |
+| Order lookup, fulfillment view | Not built | Later, if wanted |
 
-### 4.4 `kcpw-etsy` (first-party plugin)
+It never writes to products (two allowed writes: its own meta key and its own cart/order lines), contains no payment code, and calls no external service;
+tests enforce that. See [wordpress/kcpw-core/README.md](../wordpress/kcpw-core/README.md).
 
-Everything Etsy: OAuth, API client, snapshot store, matcher, preview/apply engine, order
-importer, inventory rules, scheduler, admin UI. Detailed in
-[ETSY-INTEGRATION.md](ETSY-INTEGRATION.md).
+### 4.4 Etsy and the sync service
 
-**Status (2026-10-14).** Version 0.1.0 is read-only: connection, download, matching report with owner decisions, and a dry-run planner. It contains no WooCommerce write code and no Etsy write
-capability; `tests/ReadOnlySafetyTest.php` fails the build if either appears. Apply, change log, rollback, scheduling, and webhooks are the next phases and each needs the owner's approval.
-
-**Isolation rule:** deactivating `kcpw-etsy`, or setting `KCPW_ETSY_ENABLED=false`, must have
-zero effect on browsing, cart, checkout, or payments. This is covered by an automated test.
+Not ours. The owner's third-party service writes products into WooCommerce; the storefront reads WooCommerce. What the storefront relies on and how to
+switch services: [SYNC-INDEPENDENCE.md](SYNC-INDEPENDENCE.md). (A custom `kcpw-etsy` plugin was built and removed on 2026-10-14; see [ETSY-INTEGRATION.md](ETSY-INTEGRATION.md).)
 
 ### 4.5 Official Stripe plugin (third-party, pinned)
 
@@ -159,10 +154,8 @@ canonical, Open Graph, robots, optional structured-data overrides), `updatedAt`.
   as shopper-facing details; `made_to_order` sets `availability.madeToOrder`.
 - Drafts, private, and hidden products are never emitted; stock counts are ignored for made-to-order items.
 
-**Excluded by construction:** cost, Etsy IDs, Etsy prices, internal notes, any customer data.
+**Excluded by construction:** cost, internal notes, any customer data, and any field a sync tool adds for its own use.
 The DTO is validated by a shared schema (zod) on both the contract test and the Next.js side.
-This is how separate Etsy and website prices stay separate: the Etsy price never leaves
-the admin.
 
 ### 5.3 Invalidation and freshness
 
@@ -180,46 +173,29 @@ cart at handoff. The cart page re-quotes through `kcpw-core` and shows what chec
 
 | Failure | Shopper impact |
 |---|---|
-| Etsy down or rate-limited | None. Sync jobs back off; admin shows the error. |
+| Sync service down or behind | None. The shop shows whatever WooCommerce holds. |
 | WooCommerce slow | Cached pages keep serving; cart and checkout degrade. |
 | Revalidation webhook lost | Pages stay up to an hour stale, then self-heal. |
-| `kcpw-etsy` fatal error | Isolated by plugin boundary; covered by a test that loads the shop with it disabled. |
+| `kcpw-core` fatal error or deactivated | Browsing and the catalog are unaffected (the storefront reads WooCommerce's REST API); Checkout reports "not reachable" and keeps the cart. |
 
 ### 5.5 Performance budget
 
 Targets at p75 on mobile: LCP ≤ 2.5 s, INP ≤ 200 ms, CLS ≤ 0.1. Enforced in CI with
 Lighthouse CI against the staging build. Product images go through `next/image`; the DTO is
 kept small (no embedded HTML for unrelated products). **Guard:** CI fails if the storefront
-package references an Etsy hostname or an Etsy credential variable.
+package references an Etsy hostname, an Etsy credential variable, or a sync product by name.
 
 ## 6. Data model
 
 WordPress/WooCommerce tables are used as-is. First-party tables (prefix `kcpw_`) are created
 by migrations with versioned schema and `dbDelta`.
 
-> **As built so far:** only `kcpw_etsy_snapshot` (downloaded listings, inventory, images as JSON) and `kcpw_etsy_decision` (the owner's link / ignore / create-new decisions) exist, created by
-> `wordpress/kcpw-etsy/src/Wp/Schema.php`; tokens and settings are encrypted/plain options (`kcpw_etsy_tokens`, `kcpw_etsy_settings`, `kcpw_etsy_run_state`). The mapping, change-log, policy and order tables
-> below are the design for the apply phase; the Etsy IDs that matter are also read from product/variation meta (`_kcpw_etsy_listing_id`, `_kcpw_etsy_product_id`).
+> **As built:** one table, `{prefix}kcpw_handoff` (pending cart handoffs; created by `Wp/Schema.php`). Everything else lives in standard WooCommerce structures:
+> product meta `_kcpw_option_schema` (personalization setup, JSON), optional `_kcpw_made_to_order`, and order-item meta (readable lines + `_kcpw_personalization`).
 
 | Table | Purpose | Key constraints |
 |---|---|---|
-| `kcpw_etsy_connection` | Single row: shop ID, granted scopes, encrypted tokens, expiry, status | One row per site |
-| `kcpw_etsy_listing_snapshot` | Last fetched Etsy listing JSON plus inventory and images | PK `(shop_id, listing_id)` |
-| `kcpw_etsy_listing_map` | Etsy listing ID ↔ WC product ID, match method, confidence, state, last base-hash | UNIQUE `(shop_id, listing_id)`; UNIQUE `wc_product_id` |
-| `kcpw_etsy_variant_map` | Etsy product ID, offering ID, SKU ↔ WC variation ID, property-value hash | UNIQUE `(shop_id, listing_id, etsy_product_id)` |
-| `kcpw_etsy_order_map` | Etsy receipt ID ↔ WC order ID, Etsy status, last synced | **UNIQUE `(shop_id, receipt_id)`** (idempotency) |
-| `kcpw_etsy_txn_map` | Etsy transaction ID ↔ WC order item ID | UNIQUE `(shop_id, transaction_id)` |
-| `kcpw_field_policy` | Field ownership policy, global and per-product | UNIQUE `(scope, scope_id, field)` |
-| `kcpw_inventory_rule` | Stock policy per product/variation | UNIQUE target |
-| `kcpw_sync_run` | One row per job run (type, trigger, mode, counts, status) | |
-| `kcpw_sync_change` | Per-field before/after for each applied change, enabling undo | FK run |
-| `kcpw_sync_plan` | Persisted import preview plans with plan hash and expiry | |
-| `kcpw_event_log` | Structured log lines (no secrets), 90-day retention | |
-| `kcpw_handoff` | Single-use cart handoff tokens (hashed) and payload, short TTL | |
-| `kcpw_webhook_event` | Processed external event IDs (Etsy, if used) for dedupe | UNIQUE event ID |
-
-The Etsy IDs on the mapping tables are also written to product/variation/order meta for
-discoverability in WC admin. The tables are the authority; meta is a convenience copy.
+| `kcpw_handoff` | Single-use cart handoff tokens (stored as a hash) and the validated line intents, TTL 10 minutes, purged daily | PK token hash |
 
 ## 7. Security
 
@@ -228,9 +204,8 @@ discoverability in WC admin. The tables are the authority; meta is a convenience
 | Secret | Lives in | Never in |
 |---|---|---|
 | Stripe API keys, webhook signing secret | The Stripe plugin's settings on the shop host (test keys on staging; live keys only at G6) | Git, storefront env, logs |
-| Etsy client ID / shared secret | `wp-config.php` constants or host env | DB, storefront, git |
-| Etsy access/refresh tokens | `kcpw_etsy_connection`, encrypted with libsodium; key in a `wp-config.php` constant outside the DB | Logs, admin UI, API responses |
-| Storefront ↔ `kcpw-core` HMAC secret | Host env on both sides | Browser, git |
+| WooCommerce read-only REST key | The storefront container's environment (VPS `.env`, mode 600) | Image, git, browser, logs |
+| Storefront ↔ `kcpw-core` HMAC secret (`KCPW_HANDOFF_SECRET`) | `wp-config.php` on the shop, container environment on the storefront | Browser, git, database |
 | Revalidation secret | Host env on both sides | Browser, git |
 
 Secrets are rotated at launch and on staff turnover. `.env*` is gitignored; secret scanning
@@ -242,41 +217,33 @@ runs in CI.
   or stored on our systems. The expected PCI self-assessment is SAQ A; confirm with Stripe's
   PCI questionnaire before launch. Keep third-party scripts off the checkout page and set a CSP
   limited to the Stripe domains.
-- **Server-to-server auth:** HMAC-SHA256 over method, path, timestamp, and body; ±5 minute
-  window; constant-time compare; per-request nonce stored briefly for replay protection.
-- **Webhook verification:** always on the raw body (Stripe signature; Etsy `webhook-*` HMAC headers with
-  replay protection, dedupe, and an SSRF guard on the payload URL; see ETSY §10.5). Do not rely on IP allowlists.
-- **Admin:** capability checks plus nonces on every REST action; custom capabilities
-  `kcpw_etsy_manage` and `kcpw_etsy_approve_writes`; 2FA required for admin accounts.
+- **Server-to-server auth:** HMAC-SHA256 over method, route, timestamp, nonce, and body hash; ±5 minute
+  window; constant-time compare; per-request nonce stored briefly for replay protection (`Auth\RequestSigner`; shared test vectors with the storefront).
+- **Webhook verification:** always on the raw body (Stripe's signature, handled by the official plugin; the storefront's refresh endpoint uses HMAC). Do not rely on IP allowlists.
+- **Admin:** capability checks plus nonces on every admin action (the product tab checks `edit_post` and a nonce); 2FA required for admin accounts.
 - **WordPress hardening:** file editing disabled, XML-RPC off, login rate limiting, WAF, automatic
   updates for core security releases only, off-site backups with a tested restore.
 - **Rate limiting** on `quote` and `handoff` route handlers.
-- **Privacy:** Etsy buyer data is limited to what fulfillment needs (shipping name/address).
-  Etsy's terms restrict how buyer data may be used, and I could not read the current terms from
-  this environment, so a review of those terms is a launch gate. WooCommerce privacy
-  export/erase tools cover imported orders.
+- **Privacy:** customer data stays in WooCommerce. The storefront stores nothing about shoppers except the cart in their own browser; the handoff table holds line intents (no names, addresses, or payment data).
+  Personalization text is customer-supplied content and is escaped everywhere it is shown.
 
 ## 8. Observability and operations
 
-- **Logging:** structured logs for sync runs and Etsy requests (method, path, status, duration,
-  remaining quota); tokens and PII are scrubbed.
-- **Alerts:** failed Stripe webhooks (Stripe Dashboard plus a daily WooCommerce check),
-  Etsy `needs_reauth`, repeated sync failures, job overdue, Stripe-versus-WooCommerce amount
+- **Logging:** the storefront logs why a handoff failed (no secrets, no customer data); WooCommerce keeps its own logs.
+- **Alerts:** failed Stripe webhooks (Stripe Dashboard plus a daily WooCommerce check), Stripe-versus-WooCommerce amount
   mismatch, uptime on storefront, checkout, and webhook endpoints.
-- **Reconciliation (nightly):** every WooCommerce order paid by Stripe has a matching
-  PaymentIntent with the same amount; every Etsy receipt in the lookback window has exactly one
-  WooCommerce order.
+- **Reconciliation (nightly, later):** every WooCommerce order paid by Stripe has a matching
+  PaymentIntent with the same amount.
 - **Runbooks** (written in Step 10): Stripe webhook failing; refund discrepancy; duplicate-order
-  investigation; Etsy token expired; Etsy rate-limited; revalidation not firing; rollback.
+  investigation; handoff link not working (secret mismatch, plugin inactive); revalidation not firing; rollback.
 
 ## 9. Repository layout (planned)
 
 ```
 apps/storefront/            Next.js app
 packages/contracts/         Shared DTO schemas and types (zod)
-wordpress/plugins/kcpw-core/
-wordpress/plugins/kcpw-etsy/
-wordpress/themes/kcpw-checkout/   Minimal block theme for the checkout host
+wordpress/kcpw-core/              Checkout link + personalization plugin (built)
+wordpress/themes/kcpw-checkout/   Minimal block theme for the checkout host (planned)
 environments/               Docker Compose, seed data, wp-env config
 docs/
 .github/workflows/
@@ -307,7 +274,7 @@ Rules that follow:
 3. Links are blue with an underline (not color alone). In the dark footer, links use the
    background cream or the accent, not blue.
 4. Error, success, and sync status are never conveyed by color alone (icon plus text).
-5. Target WCAG 2.2 AA for the storefront, the checkout theme, and the Etsy admin screens;
+5. Target WCAG 2.2 AA for the storefront, the checkout theme, and the plugin's admin screens;
    verified by axe-core in CI plus manual keyboard and screen-reader passes before launch.
 
 Hover, active, and disabled shades are derived tokens defined in Step 1 and checked against the

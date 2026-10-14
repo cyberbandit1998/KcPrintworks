@@ -54,6 +54,10 @@ export default defineConfig({
         // Long, so only the revalidation request (the thing under test) can refresh the catalog.
         CATALOG_REVALIDATE_SECONDS: '3600',
         REVALIDATE_SECRET: WOO_TEST.revalidateSecret,
+        // Checkout switched ON for this server only: it hands carts to the kcpw-core stand-in in the mock store.
+        CHECKOUT_ENABLED: 'true',
+        KCPW_API_URL: WOO_TEST.mockUrl,
+        KCPW_HANDOFF_SECRET: WOO_TEST.handoffSecret,
       },
     },
   ],

@@ -5,5 +5,6 @@ export * from './option-logic';
 export * from './product';
 export * from './cart';
 export * from './cart-logic';
+export * from './handoff';
 export * from './pricing';
 export * from './purchase-model';

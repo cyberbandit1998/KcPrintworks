@@ -43,8 +43,7 @@ const csv = [
     Published: '1',
     'Is featured?': '1',
     'Visibility in catalog': 'visible',
-    Description:
-      'Line one.\\n\\nLine two with a break.\\nSecond line.<br>Listed with ExportYourStore.com',
+    Description: 'Line one.\\n\\nLine two with a break.\\nSecond line.<br>Listed with SyncTool.com',
     'In stock?': '1',
     'Regular price': '13.24',
     'Sale price': '9.9',
@@ -159,11 +158,9 @@ describe('text helpers', () => {
     );
   });
   it('applies paragraphs to plain export text and drops a trailing import footer from display', () => {
-    const html = descriptionHtml(
-      'Line one.\\n\\nLine two.\\nSecond.<br>Listed with ExportYourStore.com',
-    );
+    const html = descriptionHtml('Line one.\\n\\nLine two.\\nSecond.<br>Listed with SyncTool.com');
     expect(html).toBe('<p>Line one.</p>\n<p>Line two.<br>Second.</p>');
-    expect(html).not.toContain('ExportYourStore');
+    expect(html).not.toContain('SyncTool');
     expect(descriptionHtml('<p>Already HTML</p>')).toBe('<p>Already HTML</p>');
   });
   it('turns bullet lines, numbered lines, and ALL-CAPS lines into lists and headings', () => {
@@ -209,7 +206,7 @@ describe('convertExport', () => {
       'https://example.com/a.jpg',
       'https://example.com/b.jpg',
     ]);
-    expect(p.descriptionHtml).not.toContain('ExportYourStore');
+    expect(p.descriptionHtml).not.toContain('SyncTool');
   });
 
   it('hides marketplace attributes from display and keeps shopper-facing ones', () => {

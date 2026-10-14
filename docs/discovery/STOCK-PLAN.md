@@ -57,7 +57,7 @@ made-to-order products and ignores stock for them.
 
 Etsy keeps its own quantity per listing. The Etsy plugin defaults every product to the `made_to_order` rule: **Etsy quantities are not imported into
 WooCommerce and WooCommerce quantities are never pushed to Etsy.** For the 4 tracked products, a "shared pool" rule can be switched on later (WooCommerce to Etsy
-needs write access and your approval). See ETSY-INTEGRATION.md section 12.
+needs write access and your approval). See SYNC-INDEPENDENCE.md (stock is WooCommerce's to decide; a sync service may overwrite it).
 
 ## Owner checkpoints
 
