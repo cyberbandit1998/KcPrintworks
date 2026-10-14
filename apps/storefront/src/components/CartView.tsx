@@ -9,7 +9,13 @@ import {
   type QuoteResponse,
 } from '@kcpw/contracts/client';
 import { cartActions, useCartLines } from '@/lib/cart/store';
+import {
+  estimateItemsSubtotal,
+  freeShippingProgress,
+  type FreeShippingRule,
+} from '@/lib/free-shipping';
 import { useIsClient } from '@/lib/use-is-client';
+import { FreeShippingProgress } from './FreeShippingProgress';
 import { ProductImage } from './ProductImage';
 
 type QuoteResult = { requestKey: string; quote?: QuoteResponse; failed?: boolean };
@@ -49,9 +55,12 @@ function isWebAddress(address: string): boolean {
 export function CartView({
   checkoutEnabled = false,
   handoffNotice,
+  freeShipping = null,
 }: {
   checkoutEnabled?: boolean;
   handoffNotice?: HandoffNotice;
+  /** The shop's free-shipping minimum, or null for no progress bar. Display only; WooCommerce decides at checkout. */
+  freeShipping?: FreeShippingRule | null;
 }) {
   const isClient = useIsClient();
   const lines = useCartLines();
@@ -182,6 +191,31 @@ export function CartView({
   const hasIssues =
     (quote?.issues.length ?? 0) > 0 || (quote?.lines.some((l) => l.issues.length > 0) ?? false);
 
+  // Free-shipping progress. Items only (the quote has no shipping in it), from the same prices as the Subtotal row. When the
+  // quote is for an older cart, the total is re-worked from its unit prices so quantity changes show at once. When the answer is
+  // not accurate (prices failed, an item has a problem, a discount that no longer matches the cart), nothing is shown or promised.
+  const quoteIsCurrent = result?.requestKey === requestKey;
+  const progressStatus = (() => {
+    if (!freeShipping || !quote || failed || hasIssues) return null;
+    if (!quoteIsCurrent && (quote.discount?.amount ?? 0) > 0) return null;
+    const subtotal = quoteIsCurrent
+      ? quote.subtotal
+      : estimateItemsSubtotal(
+          lines.map((line) => ({ key: lineKey(line), quantity: line.quantity })),
+          quote.lines,
+        );
+    if (!subtotal) return null;
+    return freeShippingProgress({
+      rule: freeShipping,
+      subtotal,
+      discount: quoteIsCurrent ? quote.discount : undefined,
+      reliable: true,
+    });
+  })();
+  // Until the first prices arrive a neutral placeholder holds the space, so the cart does not jump.
+  const showProgress =
+    freeShipping !== null && !failed && !hasIssues && (progressStatus !== null || quote === null);
+
   return (
     <div className="container">
       <div className="page-header">
@@ -197,8 +231,9 @@ export function CartView({
       <div role="status" aria-live="polite" className="visually-hidden">
         {announcement}
       </div>
-      <div className="cart-layout">
-        <section aria-label="Items in your cart">
+      <div className={showProgress ? 'cart-layout cart-layout--progress' : 'cart-layout'}>
+        {showProgress ? <FreeShippingProgress status={progressStatus} /> : null}
+        <section className="cart-items" aria-label="Items in your cart">
           <ul className="cart-lines">
             {lines.map((line, index) => {
               const key = lineKey(line);

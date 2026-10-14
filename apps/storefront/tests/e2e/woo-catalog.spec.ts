@@ -632,3 +632,50 @@ test.describe('checkout handoff', () => {
     await expect(page.getByText('Online checkout is not open on this site yet.')).toBeVisible();
   });
 });
+
+/**
+ * Free-shipping numbers come from the container's environment, per request. This server runs the same build as the default one
+ * (minimum $40.00, discounts counted) but is started with FREE_SHIPPING_THRESHOLD=25 and FREE_SHIPPING_BEFORE_DISCOUNTS=true.
+ */
+test.describe('the free-shipping bar uses the shop’s own numbers', () => {
+  test.beforeEach(async ({ page, request }) => {
+    await mockPost(request, 'reset', {});
+    expect((await revalidate(request)).status()).toBe(202);
+    await page.goto('/cart/');
+    await page.evaluate(() => window.localStorage.clear());
+  });
+
+  const message = (page: Page) => page.locator('.ship-progress__message');
+
+  async function addCardBoxes(page: Page, quantity: number) {
+    await page.goto('/product/synthetic-card-box/');
+    await page.getByRole('group', { name: /Color/ }).getByLabel('Red').check();
+    await page.getByRole('button', { name: 'Add to cart' }).click();
+    await expect(page.getByRole('status').getByText(/added to your cart/)).toBeVisible();
+    await page.goto('/cart/');
+    await page.getByLabel(/^Quantity/).fill(String(quantity));
+  }
+
+  test('a $25.00 minimum: $12.50 is half way, $25.00 unlocks', async ({ page }) => {
+    await addCardBoxes(page, 1);
+    await expect(message(page)).toHaveText("You're only $12.50 away from free shipping!");
+    await expect(page.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '50');
+    await page.getByLabel(/^Quantity/).fill('2');
+    await expect(message(page)).toHaveText("You've unlocked FREE shipping!");
+  });
+
+  test('with the minimum counted before discounts, a discount does not take it back', async ({
+    page,
+  }) => {
+    await page.route('**/api/cart/quote/', async (route) => {
+      const response = await route.fetch();
+      const json = await response.json();
+      await route.fulfill({
+        response,
+        json: { ...json, discount: { amount: 500, currency: 'USD' } },
+      });
+    });
+    await addCardBoxes(page, 2); // $25.00 of items, $5.00 off
+    await expect(message(page)).toHaveText("You've unlocked FREE shipping!");
+  });
+});

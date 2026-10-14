@@ -69,7 +69,7 @@ describe('image hosts', () => {
 
   it('optimizes this site and allowed https hosts only', () => {
     const hosts = DEFAULT_IMAGE_HOSTS;
-    expect(isOptimizableImage('/images/hero-banner.jpg', hosts)).toBe(true);
+    expect(isOptimizableImage('/images/kcprintworks-hero.webp', hosts)).toBe(true);
     expect(isOptimizableImage('https://kcprintworks.com/wp-content/uploads/a.jpg', hosts)).toBe(
       true,
     );

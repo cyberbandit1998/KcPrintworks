@@ -87,7 +87,7 @@ test.describe('home page photo banner', () => {
       'Michigan Made. Printed to Last.',
     );
     await expect(hero).toContainText('designed and 3D printed with care in Michigan');
-    await expect(hero.getByRole('link', { name: /Shop now/ })).toHaveAttribute('href', '/shop/');
+    await expect(hero.getByRole('link', { name: 'Shop Now' })).toHaveAttribute('href', '/shop/');
     await expect(hero.getByRole('link', { name: 'Our Story' })).toHaveAttribute('href', '/about/');
     // The photograph is decorative because all of its message is in the text.
     await expect(hero.getByRole('img')).toHaveCount(0);

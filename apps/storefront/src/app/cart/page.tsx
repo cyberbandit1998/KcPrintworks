@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { CartView, type HandoffNotice } from '@/components/CartView';
 import { currentCheckoutStatus } from '@/lib/checkout';
+import { readFreeShippingRule } from '@/lib/free-shipping-config';
 
 export const metadata: Metadata = {
   title: 'Your cart',
@@ -21,5 +22,11 @@ export default async function CartPage({
   const { handoff } = await searchParams;
   const word = Array.isArray(handoff) ? handoff[0] : handoff;
   const notice = NOTICES.find((n) => n === word);
-  return <CartView checkoutEnabled={currentCheckoutStatus().enabled} handoffNotice={notice} />;
+  return (
+    <CartView
+      checkoutEnabled={currentCheckoutStatus().enabled}
+      handoffNotice={notice}
+      freeShipping={readFreeShippingRule()}
+    />
+  );
 }

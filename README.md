@@ -17,6 +17,7 @@ prices, variations, and orders, and Stripe (the official WooCommerce plugin) for
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | System design: components, domains, caching, data model, security, brand/accessibility tokens |
 | [docs/PAYMENTS-STRIPE.md](docs/PAYMENTS-STRIPE.md) | Stripe payment design, cart-to-checkout handoff, personalization, duplicate protection, test plan, contingency design |
 | [docs/SYNC-INDEPENDENCE.md](docs/SYNC-INDEPENDENCE.md) | How the storefront stays independent of the Etsy sync service (ExportYourStore now, maybe Nembol later); switching checklist |
+| [docs/FREE-SHIPPING.md](docs/FREE-SHIPPING.md) | The cart's free-shipping progress bar: what it shows, its two settings, when it stays silent, and the staging test against WooCommerce's real rules |
 | [docs/CHECKOUT-STAGING-CHECKLIST.md](docs/CHECKOUT-STAGING-CHECKLIST.md) | Owner runbook: install `kcpw-core`, Stripe test mode, switch checkout on in staging, test matrix |
 | [docs/ETSY-INTEGRATION.md](docs/ETSY-INTEGRATION.md) | Superseded: Etsy is handled by a third-party sync service, not by us |
 | [docs/IMPLEMENTATION-PLAN.md](docs/IMPLEMENTATION-PLAN.md) | The 10-step build order with exit criteria, approval gates, risks, and launch checklist |

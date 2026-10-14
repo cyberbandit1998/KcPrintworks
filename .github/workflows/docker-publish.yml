@@ -142,6 +142,22 @@ jobs:
           run_case co-on on -e CHECKOUT_ENABLED=true -e KCPW_SHOP_URL=https://shop.invalid \
             -e "KCPW_HANDOFF_SECRET=$(openssl rand -hex 24)"
 
+      - name: The free-shipping setting follows the container's environment, with no rebuild
+        if: env.SITE_ENV == 'staging'
+        run: |
+          # Same image, three environments: the default ($40.00), a custom amount, and switched off. The cart page is rendered per
+          # request and carries the rule it was given as a prop, so this reads it from the page.
+          fs_case() {
+            name="$1"; expect="$2"; shift 2
+            docker run -d --name "$name" -p 127.0.0.1:3003:3000 "$@" kcprintworks-nextjs:smoke
+            for _ in $(seq 1 60); do curl -fsS -o /dev/null http://127.0.0.1:3003/api/health/ 2>/dev/null && break; sleep 1; done
+            curl -fsS http://127.0.0.1:3003/cart/ | grep -Eq "$expect" || { echo "free-shipping case $name: expected $expect"; docker logs "$name"; exit 1; }
+            docker rm -f "$name"
+          }
+          fs_case fs-default 'thresholdMinor[\\]*":4000'
+          fs_case fs-custom 'thresholdMinor[\\]*":2550' -e FREE_SHIPPING_THRESHOLD=25.50
+          fs_case fs-off 'freeShipping[\\]*":null' -e FREE_SHIPPING_THRESHOLD=off
+
       - name: Publish the tested image to GHCR
         id: push
         env:

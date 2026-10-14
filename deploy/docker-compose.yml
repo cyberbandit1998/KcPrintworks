@@ -44,6 +44,10 @@ services:
       KCPW_API_URL: ${KCPW_API_URL:-}
       KCPW_SHOP_URL: ${KCPW_SHOP_URL:-}
       KCPW_HANDOFF_SECRET: ${KCPW_HANDOFF_SECRET:-}
+      # The cart's free-shipping progress bar (display only; WooCommerce decides the shipping). Empty = the default, $40.00; "off" hides
+      # the bar. The number must match the minimum of the Free Shipping method in WooCommerce. See docs/FREE-SHIPPING.md.
+      FREE_SHIPPING_THRESHOLD: ${FREE_SHIPPING_THRESHOLD:-}
+      FREE_SHIPPING_BEFORE_DISCOUNTS: ${FREE_SHIPPING_BEFORE_DISCOUNTS:-false}
       # Keep V8's heap below the container's memory limit so it collects garbage instead of being OOM-killed.
       NODE_OPTIONS: --max-old-space-size=320
 

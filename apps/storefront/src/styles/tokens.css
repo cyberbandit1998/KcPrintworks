@@ -3,7 +3,7 @@
  *
  * RULES (enforced by tests/unit/contrast.test.ts):
  *  1. The four official brand values below never change.
- *  2. Components use ONLY the semantic tokens (--color-*, --button-*, --footer-*, --badge-*), never --kc-*.
+ *  2. Components use ONLY the semantic tokens (--color-*, --button-*, --footer-*, --badge-*, --progress-*), never --kc-*.
  *     Every foreground/background pairing is listed in the test and must meet WCAG 2.2 AA
  *     (4.5:1 for text, 3:1 for UI boundaries and focus indicators).
  *  3. Orange (#FF4A24) is never used as text or as the only boundary of a control on the cream background
@@ -50,12 +50,28 @@
   --badge-bg: var(--kc-ink);
   --badge-fg: var(--kc-bg);
 
+  /* Free-shipping progress (cart): near-black text on the paper background. Orange is 3.14:1 against the lighter track but only
+     2.83:1 against paper, so the bar is outlined in ink and the end of the fill carries an ink edge; the amount is also in words. */
+  --progress-bg: var(--kc-bg);
+  --progress-fg: var(--kc-ink);
+  --progress-fill: var(--kc-accent);
+  --progress-track: var(--kc-surface);
+  --progress-edge: var(--kc-ink);
+
   /* Photo banner: text sits on a dark scrim over the photograph. */
   --hero-bg: var(--kc-ink);
   --hero-fg: var(--kc-bg);
   --hero-accent: var(--kc-accent); /* large headline text on dark only: 5.58:1 on ink */
   --hero-focus: var(--kc-bg);
-  --hero-scrim: 80%; /* opacity of the scrim behind the text column */
+  /* The dark overlay is a gradient, strongest on the left and fading to the right so the printers stay visible:
+     start (left edge) >= scrim (the LEAST dark it may be anywhere behind text) >= mid >= end (right edge). */
+  --hero-scrim-start: 92%;
+  --hero-scrim: 80%;
+  --hero-scrim-mid: 35%;
+  --hero-scrim-end: 4%;
+  /* Where the wide photo is anchored when it has to be cropped (x y): the printers sit lower right, so keep the right and the bottom. */
+  --hero-focus-x: 100%;
+  --hero-focus-y: 90%;
 
   --footer-bg: var(--kc-ink);
   --footer-fg: var(--kc-bg);

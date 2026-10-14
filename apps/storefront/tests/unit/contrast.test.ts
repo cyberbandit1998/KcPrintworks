@@ -63,6 +63,7 @@ describe('text pairings meet WCAG AA (4.5:1)', () => {
     ['color-error', 'color-surface'],
     ['color-success', 'color-bg'],
     ['color-success', 'color-surface'],
+    ['progress-fg', 'progress-bg'], // free-shipping message and note on the paper card
   ];
   it.each(pairs)('%s on %s', (fg, bg) => {
     expect(contrastRatio(hex(fg), hex(bg))).toBeGreaterThanOrEqual(4.5);
@@ -80,6 +81,10 @@ describe('non-text pairings meet 3:1', () => {
     ['hero-focus', 'hero-bg'],
     ['hero-fg', 'hero-bg'], // the secondary button's border
     ['color-error', 'color-bg'],
+    ['progress-edge', 'progress-bg'], // the card's border and the bar's outline
+    ['progress-edge', 'progress-track'], // the ink edge on the end of the fill, seen against the empty track
+    ['progress-edge', 'progress-fill'], // ... and against the orange it closes
+    ['progress-fill', 'progress-track'], // the filled part against the empty part (3.14:1)
   ];
   it.each(pairs)('%s against %s', (fg, bg) => {
     expect(contrastRatio(hex(fg), hex(bg))).toBeGreaterThanOrEqual(3);
@@ -114,12 +119,57 @@ describe('photo banner text stays readable over any photograph', () => {
   });
 });
 
+describe('the photo banner overlay is a gradient: strongest on the left, fading toward the right', () => {
+  const percent = (token: string) => Number(/^(\d+(?:\.\d+)?)%$/.exec(resolve(token))?.[1]) / 100;
+  const heroCss = readFileSync(join(stylesDir, 'components.css'), 'utf8').replace(
+    /\/\*[\s\S]*?\*\//g,
+    '',
+  );
+
+  it('never gets lighter toward the right, and ends light enough for the printers to show', () => {
+    const [start, floor, mid, end] = [
+      'hero-scrim-start',
+      'hero-scrim',
+      'hero-scrim-mid',
+      'hero-scrim-end',
+    ].map(percent) as [number, number, number, number];
+    expect(start).toBeGreaterThanOrEqual(floor);
+    expect(floor).toBeGreaterThan(mid);
+    expect(mid).toBeGreaterThan(end);
+    expect(start).toBeLessThanOrEqual(1);
+    expect(floor).toBeGreaterThanOrEqual(0.8); // the least dark it may be behind text (white pixel: see below)
+    expect(mid).toBeLessThanOrEqual(0.6);
+    expect(end).toBeLessThanOrEqual(0.2);
+  });
+
+  it('is drawn left to right from those four tokens, in that order', () => {
+    const rule = /\.hero::before\s*\{[^}]*\}/.exec(heroCss)?.[0] ?? '';
+    expect(rule).toMatch(/linear-gradient\(\s*90deg/);
+    const order = [
+      'var(--hero-scrim-start)',
+      'var(--hero-scrim)',
+      'var(--hero-scrim-mid)',
+      'var(--hero-scrim-end)',
+    ].map((token) => rule.indexOf(token));
+    expect(order.every((i) => i >= 0)).toBe(true);
+    expect([...order].sort((a, b) => a - b)).toEqual(order);
+  });
+
+  it('keeps the whole banner in the page width: the photo box fills it and the picture covers the box', () => {
+    expect(heroCss).toMatch(/\.hero__photo\s*\{[^}]*position:\s*absolute;[^}]*inset:\s*0/);
+    expect(heroCss).toMatch(/\.hero__photo img\s*\{[^}]*object-fit:\s*cover/);
+  });
+});
+
 describe('documented unsafe pairings stay unsafe (so the rules above keep their reason)', () => {
   it('white text on orange fails AA for normal text', () => {
     expect(contrastRatio('#ffffff', hex('kc-accent'))).toBeLessThan(4.5);
   });
   it('orange text on cream fails AA and the 3:1 boundary rule', () => {
     expect(contrastRatio(hex('kc-accent'), hex('kc-bg'))).toBeLessThan(3);
+  });
+  it('orange directly on the paper background is too faint to be the only outline of the bar (so the ink outline stays)', () => {
+    expect(contrastRatio(hex('progress-fill'), hex('progress-bg'))).toBeLessThan(3);
   });
   it('blue links on the dark footer fail AA', () => {
     expect(contrastRatio(hex('kc-link'), hex('kc-ink'))).toBeLessThan(4.5);

@@ -44,7 +44,7 @@ fi
 
 # The image optimizer (sharp) must work inside the image: resize the home-page photo. A broken optimizer would show as
 # missing photos only after WooCommerce products are connected.
-optimized=$(curl -s -o /dev/null -w '%{http_code} %{content_type}' "$base/_next/image/?url=%2Fimages%2Fhero-banner.jpg&w=640&q=75")
+optimized=$(curl -s -o /dev/null -w '%{http_code} %{content_type}' "$base/_next/image/?url=%2Fimages%2Fkcprintworks-hero.webp&w=640&q=75")
 case "$optimized" in "200 image/"*) ;; *) fail "image optimizer did not resize a photo (got: $optimized)" ;; esac
 pass "image optimizer works"
 

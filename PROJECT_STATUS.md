@@ -56,9 +56,9 @@ anywhere, and the cutover (gate G6). Creating the WooCommerce Read-only REST key
 ## What exists in the code
 
 Verified on 2026-10-14: `npm run check` and `npm run test:e2e` pass locally: **108** contracts tests (incl. 33 shared personalization vectors,
-29 shared line-pricing vectors, 3 request-signing vectors, and a graph test that keeps zod out of the browser entry), **176** storefront unit tests
-(2 skip in CI because they read the gitignored export), **46** script tests, **66** PHP tests / 725 assertions for `kcpw-core`, and **82** Playwright
-e2e tests (axe WCAG 2.2 AA on every route, no horizontal scroll 320 to 1280 px, keyboard and focus flows, payload and script-size budgets, and 31 against
+29 shared line-pricing vectors, 3 request-signing vectors, and a graph test that keeps zod out of the browser entry), **212** storefront unit tests
+(2 skip in CI because they read the gitignored export), **46** script tests, **66** PHP tests / 725 assertions for `kcpw-core`, and **128** Playwright
+e2e tests (axe WCAG 2.2 AA on every route, no horizontal scroll 320 to 1280 px, keyboard and focus flows, payload and script-size budgets, and 33 against
 a mock WooCommerce store plus a `kcpw-core` stand-in with checkout switched on). The CI-style run with the export moved aside is recorded in the session log.
 Images: `sha-e2d7c3a` (CI run 38559572272 and image run 38559572315 green; digest `sha256:513a9849…cff607`) and `sha-8529f95` (same code, docs only; the one deployed on staging when the checkout-config problem below was reported). The image for the checkout-config fix is the one from the next push; its tag is in that run's "Publish Docker image" summary.
 
@@ -102,8 +102,8 @@ Images: `sha-e2d7c3a` (CI run 38559572272 and image run 38559572315 green; diges
   bag tag's 169 become 1; 169 distinct are 4.5 KB instead of 31 KB), and browser code imports the zod-free
   `@kcpw/contracts/client` (page scripts 645 KB to 532 KB decoded; the quote schema loads lazily on the cart).
 - **Home page:** photo hero with the owner's headline and buttons as real text over a scrim whose worst-case contrast
-  is tested; `public/images/hero-banner.jpg` is a neutral placeholder (see `public/images/README.md`); placeholder
-  `/about/` page.
+  is tested; the banner now uses the owner's wide workshop photo (`public/images/kcprintworks-hero.webp` plus a phone crop; see
+  `public/images/README.md`); placeholder `/about/` page.
 - **Real-catalog preview:** `apps/storefront/src/lib/catalog/export/` converts the owner's export into DTOs
   (`CATALOG_SOURCE=export`, refused in production builds). Derived URLs and proposed personalization fields are flagged
   in a banner. Display-only cleanup of marketplace attributes, import footers, plain-text descriptions, long titles.
@@ -192,9 +192,9 @@ Full text in [docs/DECISIONS.md](docs/DECISIONS.md).
   is 3D-printed card-game, battery, and ammo storage cases plus personalized tags and keychains, so the design
   preview, categories, and copy do not yet look like the real store. The wordmark is text; there is no logo or
   favicon.
-- The home hero needs the owner's photograph (the pasted image was not available as a file); the committed
-  `hero-banner.jpg` is a neutral placeholder. The pasted banner has its headline and buttons baked in; the page needs the
-  photo **without** the text. "Our Story" links to a placeholder page.
+- The home banner uses the owner's wide photograph, **1916 px wide**: crisp up to a 1920 px screen, soft on 4K or very high-density displays.
+  An original 2800 to 3200 px wide would fix that with no code change (`public/images/README.md`). The type is the system bold sans (no
+  font download), not a brand typeface. "Our Story" links to a placeholder page.
 - In the real-catalog preview the product URLs are derived from titles (the export has no permalinks), image alt text
   and sizes are guesses, and the personalization fields are proposed.
 - The container image is a **staging** build: `SITE_ENV`, `NEXT_PUBLIC_SITE_URL`, and `IMAGE_HOSTS` are build-time. Set the repository
@@ -252,6 +252,16 @@ Full text in [docs/DECISIONS.md](docs/DECISIONS.md).
 3. Ask which blockers the owner has cleared before starting Step 2; do not guess at their site.
 
 ## Session log
+
+- **2026-10-14, session 1 (seventh part):** two requests. (1) **Free-shipping progress bar in the cart** ([docs/FREE-SHIPPING.md](docs/FREE-SHIPPING.md), ADR-015): a display of one
+  configured number (`FREE_SHIPPING_THRESHOLD`, default $40.00, `off` hides it; `FREE_SHIPPING_BEFORE_DISCOUNTS`), read at run time, worked out from the items total only (no shipping input exists, so
+  the flat rate cannot leak in), updating at once on quantity changes and removals, honoring an optional quote `discount`, and silent (no promise) whenever eligibility cannot be known accurately. Placed
+  above the order summary on desktop and at the top of the cart on phones; paper card, orange fill, near-black text, ink edges (orange on paper alone is 2.83:1). WooCommerce still decides and
+  charges the shipping; checkout, Stripe and the handoff were not touched. (2) **Home banner with the owner's photo:** the owner uploaded a 533 px photo and then a wider 1916 x 821 one
+  (`Wide Photo.png`); the wide one is used (a phone crop of the same photo for small screens, the original kept in `apps/storefront/assets/hero/`, outside `public/`). Full-width banner, 430 to
+  500 px on desktop, left-to-right gradient, two-line bold headline with an orange "Printed", `Shop Now` and a transparent `Our Story`. Found along the way: Next caches resized photos for four
+  hours keyed by address, so the e2e server now clears that cache first. Verified locally: `npm run check` (export aside), 128 e2e, the standalone build in every environment, and screenshots at
+  320, 390, 768, 1440 and 1920 px. Not verified: the bar against the real WooCommerce Free Shipping settings (staging row N), and the 4K look of a 1916 px photo (a larger original would be sharper).
 
 - **2026-10-14, session 1 (sixth part):** the owner reported that staging (`sha-8529f95`, `CHECKOUT_ENABLED=true`, `KCPW_SHOP_URL` and `WC_BASE_URL` set) still showed the disabled
   Checkout button with "not connected in this design preview". Cause: that text is the *checkout off* branch of `CartView`, and the container found checkout incomplete because the code

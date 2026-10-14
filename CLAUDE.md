@@ -127,7 +127,7 @@ ADRs updated if a decision changed.
   `staging` = noindex. A production image is a deliberate manual workflow run and needs the owner's approval.
 - Pages are **rendered per request** (`dynamic = 'force-dynamic'` in the root layout) because the catalog is read from WooCommerce at run time. Runtime-only settings: `CATALOG_SOURCE`
   (`fixtures` default | `woo`), `WC_BASE_URL`, `WC_CONSUMER_KEY`/`WC_CONSUMER_SECRET` (a **Read-only** key the owner creates), `CATALOG_REVALIDATE_SECONDS`, `REVALIDATE_SECRET`,
-  and for checkout `CHECKOUT_ENABLED` (default false), `KCPW_API_URL` (falls back to `KCPW_SHOP_URL`, then `WC_BASE_URL`), `KCPW_HANDOFF_SECRET`. They live only in the VPS `.env`.
+  and for checkout `CHECKOUT_ENABLED` (default false), `KCPW_API_URL` (falls back to `KCPW_SHOP_URL`, then `WC_BASE_URL`), `KCPW_HANDOFF_SECRET`; for the cart's free-shipping bar `FREE_SHIPPING_THRESHOLD` (default `$40.00`, `off` hides it) and `FREE_SHIPPING_BEFORE_DISCOUNTS`. They live only in the VPS `.env`.
   Never put them in the image, the repo, a test, or a chat. See [docs/WOOCOMMERCE-CATALOG.md](docs/WOOCOMMERCE-CATALOG.md).
 - Never touch WordPress, MariaDB, Nginx Proxy Manager, DNS, or Stripe from these files. `deploy.sh` only runs `docker compose` for this
   project; its test fails if it ever issues another kind of docker command.

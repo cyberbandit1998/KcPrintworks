@@ -1,4 +1,4 @@
-import Image from 'next/image';
+import { getImageProps } from 'next/image';
 import Link from 'next/link';
 import { toSummary } from '@kcpw/contracts';
 import { JsonLd } from '@/components/JsonLd';
@@ -6,8 +6,31 @@ import { ProductCard } from '@/components/ProductCard';
 import { getCatalog } from '@/lib/catalog';
 import { organizationJsonLd } from '@/lib/seo';
 
-/** The owner's banner photograph. Replace the file, keep the path. */
-const HERO_IMAGE = '/images/hero-banner.jpg';
+/**
+ * The owner's workshop photograph, in two crops of the same picture (the full-resolution original is kept in
+ * assets/hero, outside public/, and the commands that made these are in public/images/README.md):
+ * wide for desktop and tablet, and the printers' side of it for phones. Next resizes and re-encodes both per screen.
+ * To change the photo, replace these files (same names) or point these paths at new ones.
+ */
+const HERO_WIDE = { src: '/images/kcprintworks-hero.webp', width: 1916, height: 821 };
+const HERO_PHONE = { src: '/images/kcprintworks-hero-mobile.webp', width: 1100, height: 821 };
+
+/**
+ * Decorative (alt=""): the headline and buttons are real text, so the photo needs no description. It is the page's largest
+ * image, so it is fetched first (fetchpriority=high, never lazy) and sits in the server-rendered HTML where the browser finds it at once.
+ */
+function HeroPhoto() {
+  const common = { alt: '', sizes: '100vw', priority: true, fetchPriority: 'high' } as const;
+  const wide = getImageProps({ ...common, ...HERO_WIDE }).props;
+  const phone = getImageProps({ ...common, ...HERO_PHONE }).props;
+  return (
+    <picture className="hero__photo">
+      <source media="(min-width: 40em)" srcSet={wide.srcSet} sizes={wide.sizes} />
+      {/* Art direction: these props come from next/image's getImageProps, so the file is still resized and re-encoded by the optimizer. */}
+      <img {...phone} alt="" />
+    </picture>
+  );
+}
 
 // Placeholder marketing copy for design review. Real copy comes from the owner.
 const steps = [
@@ -22,20 +45,14 @@ export default async function HomePage() {
     <>
       <JsonLd data={organizationJsonLd()} />
       <section className="hero" aria-labelledby="hero-heading">
-        {/* Decorative: the headline and buttons are real text, so the photo needs no description. */}
-        <Image
-          className="hero__photo"
-          src={HERO_IMAGE}
-          alt=""
-          fill
-          priority
-          sizes="100vw"
-          unoptimized={HERO_IMAGE.endsWith('.svg')}
-        />
+        <HeroPhoto />
         <div className="container hero__content">
           <div className="hero__text">
             <h1 id="hero-heading">
-              Michigan Made. <span className="hero__accent">Printed</span> to Last.
+              <span className="hero__line">Michigan Made.</span>{' '}
+              <span className="hero__line">
+                <span className="hero__accent">Printed</span> to Last.
+              </span>
             </h1>
             <p className="hero__lead">
               Game cases, gifts, desk gear &amp; more — designed and 3D printed with care in
@@ -43,7 +60,7 @@ export default async function HomePage() {
             </p>
             <div className="hero__actions">
               <Link href="/shop/" className="button">
-                Shop now <span aria-hidden="true">→</span>
+                Shop Now
               </Link>
               <Link href="/about/" className="button button--on-photo">
                 Our Story

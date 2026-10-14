@@ -28,7 +28,9 @@ export default defineConfig({
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
   webServer: [
     {
-      command: `npm run build && npx next start -p ${PORT}`,
+      // The image cache is cleared first: Next keeps resized photos for hours keyed by address, so a replaced photo would otherwise be
+      // tested against the old pixels.
+      command: `node -e "require('fs').rmSync('.next/cache/images',{recursive:true,force:true})" && npm run build && npx next start -p ${PORT}`,
       url: `http://localhost:${PORT}/`,
       reuseExistingServer: !process.env.CI,
       timeout: 240_000,
@@ -58,6 +60,9 @@ export default defineConfig({
         CHECKOUT_ENABLED: 'true',
         KCPW_API_URL: WOO_TEST.mockUrl,
         KCPW_HANDOFF_SECRET: WOO_TEST.handoffSecret,
+        // The shop's own free-shipping numbers for this server ($25.00, minimum counted before discounts); the default server uses $40.00.
+        FREE_SHIPPING_THRESHOLD: '25',
+        FREE_SHIPPING_BEFORE_DISCOUNTS: 'true',
       },
     },
   ],

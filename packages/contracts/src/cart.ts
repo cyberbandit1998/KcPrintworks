@@ -66,6 +66,11 @@ export type QuoteLine = z.infer<typeof QuoteLineSchema>;
 export const QuoteResponseSchema = z.object({
   lines: z.array(QuoteLineSchema),
   subtotal: MoneySchema,
+  /**
+   * Discounts already applied to the items, when the server knows of any (today none: coupons are entered at WooCommerce's checkout).
+   * The cart's free-shipping progress takes it off the items total when the shop's minimum is counted after discounts.
+   */
+  discount: MoneySchema.optional(),
   issues: z.array(QuoteIssueSchema),
   /** True when every line is valid and checkout may be attempted. */
   checkoutReady: z.boolean(),

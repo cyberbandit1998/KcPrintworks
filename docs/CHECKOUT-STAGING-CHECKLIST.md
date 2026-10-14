@@ -105,6 +105,7 @@ Use Stripe's test cards: any future expiry, any 3-digit CVC, any postcode. **Nev
 | K | Set an item out of stock in WooCommerce, then press Checkout | The cart says it cannot be ordered; no checkout starts |
 | L | In the Stripe dashboard (test) resend a `payment_intent.succeeded` event | The order does not change twice (no second e-mail, no stock change) |
 | M | After paying, open WooCommerce > Orders > the order > the item | Visible lines for each choice; a hidden `_kcpw_personalization` record exists |
+| N | Free-shipping bar: carts a few cents under, exactly at, and above your minimum, then a coupon that drops one below ([FREE-SHIPPING.md](FREE-SHIPPING.md)) | The cart's message agrees with whether WooCommerce shows free shipping; any mismatch means the minimum in `.env` or one of the doc's assumptions is off |
 
 Not testable here and worth a look: your real shipping zones and tax settings (WooCommerce computes both), the look of the checkout page (it is WooCommerce's own),
 order e-mails, and what your Etsy sync service does with orders (we do not touch it).

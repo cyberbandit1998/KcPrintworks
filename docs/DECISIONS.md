@@ -20,6 +20,7 @@ Last updated 2026-10-14. **WooCommerce is the single source of truth; a third-pa
 | ADR-012 | Storefront runs as a Docker image published to GHCR; staging by default; rollback by image tag | **Implemented**, owner requested 2026-10-13. Revised 2026-10-14: pages are rendered per request; noindex and image hosts are still fixed at build |
 | ADR-013 | Etsy is the master product catalog, synchronized by our own plugin | **Superseded the same day by ADR-014** (owner decision) |
 | ADR-014 | **WooCommerce is the single source of truth; the Etsy sync service is external and interchangeable; no custom Etsy integration; the storefront is sync-neutral** | **Owner decision 2026-10-14. Implemented** |
+| ADR-015 | **The cart's free-shipping bar is a display of one configured number** (`FREE_SHIPPING_THRESHOLD`, default $40.00, runtime), computed from the items total only; WooCommerce decides and charges the shipping. When eligibility cannot be known accurately, nothing is shown or promised | **Owner request 2026-10-14. Implemented**, see [FREE-SHIPPING.md](FREE-SHIPPING.md) |
 
 ## 2. Inputs still needed
 
