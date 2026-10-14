@@ -179,4 +179,6 @@ curl -s  https://kcprintworks.com/api/checkout-status/               # {"enabled
   run by me. Step 6 is the proof.
 - That your shop's `wp-config.php`, security plugins or firewall allow the VPS to call `/wp-json/kcpw/v1/…` (the staging checklist covers this and, if staging works, production will too: same shop).
 - `shop.kcprintworks.com`'s real Stripe mode, plugin version and `KCPW_STOREFRONT_URL`: I cannot see them. The status page tells you.
-- The GitHub workflow's production steps run only when a production image is built; they were exercised here against a locally built production bundle, not Docker.
+- The production image's own checks ran in GitHub Actions on the real Docker image ([run 38620526270](https://github.com/cyberbandit1998/KcPrintworks/actions/runs/38620526270): checkout off, incomplete, refused settings, and on with a hostile `SITE_ENV` / `NEXT_PUBLIC_SITE_URL`), and
+  locally against a production bundle. They use a throwaway secret and an unreachable shop on purpose, so they prove the rules and the build-time fixing, not a working payment.
+- The VPS side (`docker-compose.production.yml`, `deploy.sh`'s production mode) was checked with `docker compose config` and a stubbed `docker`; it has not been run on your VPS.
