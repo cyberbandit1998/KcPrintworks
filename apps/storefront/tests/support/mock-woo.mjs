@@ -120,6 +120,10 @@ export function createMockWoo({ port = 0, key = MOCK_KEY, secret = MOCK_SECRET }
   const handoffs = new Map();
   // How the stand-in shop answers a handoff: normal | down (503) | foreign_redirect | wrong_path (a hostile or broken shop).
   let handoffMode = 'normal';
+  // What the stand-in plugin reports about the shop on GET /kcpw/v1/status: Stripe's mode, and (0.2.1+) the storefront address it
+  // returns shoppers to. `storefrontUrl` is left out entirely unless set, like the 0.2.0 plugin that does not know the field.
+  const DEFAULT_SHOP_STATUS = { stripeActive: true, stripeTestMode: true };
+  let shopStatus = { ...DEFAULT_SHOP_STATUS };
   // How the stand-in plugin answers a review submission: normal | closed | verification | notfound | limited | error | down.
   let reviewMode = 'normal';
   const expected = `Basic ${Buffer.from(`${key}:${secret}`).toString('base64')}`;
@@ -158,6 +162,7 @@ export function createMockWoo({ port = 0, key = MOCK_KEY, secret = MOCK_SECRET }
           log.core = [];
           handoffs.clear();
           handoffMode = 'normal';
+          shopStatus = { ...DEFAULT_SHOP_STATUS };
           reviewMode = 'normal';
           log.reviews = [];
           return json(res, 200, { ok: true });
@@ -245,6 +250,10 @@ export function createMockWoo({ port = 0, key = MOCK_KEY, secret = MOCK_SECRET }
           handoffMode = String(input.mode ?? 'normal');
           return json(res, 200, { ok: true });
         }
+        if (url.pathname === '/__mock/shop-status') {
+          shopStatus = { ...DEFAULT_SHOP_STATUS, ...input };
+          return json(res, 200, { ok: true });
+        }
         if (url.pathname === '/__mock/fail') {
           data.failing = Boolean(input.failing);
           return json(res, 200, { ok: true });
@@ -304,9 +313,8 @@ export function createMockWoo({ port = 0, key = MOCK_KEY, secret = MOCK_SECRET }
             plugin: '0.1.0-mock',
             woocommerce: '9.9.9',
             currency: 'USD',
-            storefrontUrlConfigured: true,
-            stripeActive: true,
-            stripeTestMode: true,
+            storefrontUrlConfigured: Boolean(shopStatus.storefrontUrl),
+            ...shopStatus,
           });
         }
         // A review submission. Only the fields the storefront may send are accepted. The review is only LOGGED here (for the test
@@ -479,6 +487,10 @@ export function createMockWoo({ port = 0, key = MOCK_KEY, secret = MOCK_SECRET }
       return host;
     },
     stop: () => new Promise((resolve) => server.close(() => resolve())),
+    /** What the stand-in plugin reports from now on (until reset): { stripeTestMode, stripeActive, storefrontUrl }. */
+    setShopStatus(fields) {
+      shopStatus = { ...DEFAULT_SHOP_STATUS, ...fields };
+    },
     edit(id, fields) {
       Object.assign(
         data.products.find((p) => p.id === id),

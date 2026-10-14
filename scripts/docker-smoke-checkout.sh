@@ -1,15 +1,21 @@
 #!/usr/bin/env bash
 # Prove, against a RUNNING storefront, that checkout availability follows the container's environment alone.
 #
-#   scripts/docker-smoke-checkout.sh <base-url> <off|incomplete|on>
+#   scripts/docker-smoke-checkout.sh <base-url> <off|incomplete|misconfigured|on> [word]
 #
-# The publish workflow starts the same image three times (no settings; CHECKOUT_ENABLED without a secret; everything set) and
-# runs this against each, so a change to .env + `docker compose up -d` is known to work without rebuilding. It never needs a
-# reachable shop: with "on" the shop address is deliberately unreachable and the check is only that checkout is switched on.
+# The publish workflow starts the same image several times (no settings; CHECKOUT_ENABLED without a secret; settings production
+# refuses; everything set) and runs this against each, so a change to .env + `docker compose up -d` is known to work without
+# rebuilding. It never needs a reachable shop: with "on" the shop address is deliberately unreachable and the check is only that
+# checkout is switched on.
+#
+#   misconfigured <word>   checkout was asked for with settings the image refuses; the status must be off and name <word>
+#   on <storefront-url>    (production images) the status must also report the production build and exactly this storefront address
+#                          even though the container was started with a hostile SITE_ENV / NEXT_PUBLIC_SITE_URL: both are baked in
 set -euo pipefail
 
 base="${1:?base url, e.g. http://127.0.0.1:3000}"
-expect="${2:?off, incomplete or on}"
+expect="${2:?off, incomplete, misconfigured or on}"
+word="${3:-}"
 base="${base%/}"
 
 fail() { echo "CHECKOUT SMOKE FAIL ($expect): $*" >&2; exit 1; }
@@ -41,8 +47,21 @@ case "$expect" in
     [ "$handoff" = "403" ] || fail "handoff endpoint answered $handoff, expected 403"
     pass "switched on but incomplete: stays off and names what is missing"
     ;;
+  misconfigured)
+    [ -n "$word" ] || fail "misconfigured needs the word the status must name"
+    echo "$status" | grep -q '"enabled":false' || fail "status says checkout is on: $status"
+    echo "$status" | grep -q "$word" || fail "status does not name '$word': $status"
+    [ "$prop" = "false" ] || fail "the cart page was told checkoutEnabled=$prop"
+    [ "$handoff" = "403" ] || fail "handoff endpoint answered $handoff, expected 403"
+    pass "refused settings: stays off and names '$word'"
+    ;;
   on)
     echo "$status" | grep -q '"enabled":true' || fail "status says checkout is off: $status"
+    if [ -n "$word" ]; then
+      echo "$status" | grep -q '"environment":"production"' || fail "status does not report the production build: $status"
+      echo "$status" | grep -q "\"storefront\":\"$word\"" || fail "status does not report the storefront address $word: $status"
+      curl -sI "$base/" | grep -iq '^x-robots-tag:.*noindex' && fail "a production image sent noindex"
+    fi
     [ "$prop" = "true" ] || fail "the cart page was told checkoutEnabled=$prop"
     # The strict body check runs before anything else once checkout is on: an empty cart is a 400, not a 403.
     [ "$handoff" = "400" ] || fail "handoff endpoint answered $handoff, expected 400"

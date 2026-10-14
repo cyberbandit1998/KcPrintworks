@@ -1,8 +1,9 @@
 # Deploying the storefront to the InterServer VPS (Docker)
 
 Status: ready to use. The image builds and is smoke-tested in GitHub Actions and published to GHCR; the compose file pulls it.
-This is a **staging** deployment: noindex, checkout disabled, and either the placeholder catalog (default) or, once you add a read-only key
+This describes the **staging** deployment: noindex, checkout disabled, and either the placeholder catalog (default) or, once you add a read-only key
 (section 9), your real WooCommerce products. Nothing here touches WordPress, MariaDB, Nginx Proxy Manager's configuration, DNS, or Stripe.
+The **production** instance (`kcprintworks.com`, real checkout) runs beside it from its own directory and is described in [CHECKOUT-PRODUCTION.md](CHECKOUT-PRODUCTION.md).
 
 ```
 git push ──> GitHub Actions ──build + smoke test──> ghcr.io/cyberbandit1998/kcprintworks-nextjs:sha-1a2b3c4
@@ -17,7 +18,7 @@ Browser ──https──> Nginx Proxy Manager ──http (proxy network)──>
 | Container                 | `kcprintworks-nextjs`, image `ghcr.io/<owner>/kcprintworks-nextjs:<tag>`, Next.js 16 standalone server, non-root, read-only root filesystem, all capabilities dropped                          |
 | Network                   | Joins the existing external Docker network `proxy`. Port 3000 is `expose`d to that network only; **nothing is published on the VPS** (`ports:` is absent)                                      |
 | Staging behavior          | `X-Robots-Tag: noindex, nofollow`, `robots.txt` disallows everything, `<meta name="robots" content="noindex">`. Fixed **when the image is built** (default `staging`), so it cannot drift       |
-| Checkout                  | **Off by default.** It is switched on only by `CHECKOUT_ENABLED=true` plus the shop address and a handoff secret in the VPS `.env` (section 10), and it can never be on in a production image (that is decided when the image is built). Turning it on for a production image is a code change that needs the owner's approval |
+| Checkout                  | **Off by default.** It is switched on only by `CHECKOUT_ENABLED=true` plus the shop address and a handoff secret in the VPS `.env` (section 10), and a staging image only hands carts to a shop that reports Stripe **test** mode. A production image (a separate build, tag ending `-production`) may take checkout under stricter rules: [CHECKOUT-PRODUCTION.md](CHECKOUT-PRODUCTION.md) |
 | Prices                    | Never accepted from the browser (the quote endpoint rejects them; checked on every build)                                                                                                       |
 | Data                      | Default: placeholder catalog baked into the image (no outbound calls). With `CATALOG_SOURCE=woo` (section 9): the published WooCommerce products, **read with GET requests only** using a Read-only key kept in the VPS `.env`. No database, no Stripe or Etsy credentials, no secrets in the image |
 | Health check              | `GET /api/health/` inside the container (30 s interval, 5 s timeout, 20 s start period, 3 retries). It never calls an upstream, so a WooCommerce outage cannot make the container look dead    |
@@ -54,7 +55,7 @@ image with `SITE_ENV=production` and checking it is still noindex. Going live ne
 | `<branch>`                  | Moves with each push to that branch. Convenient, not for production pinning.             |
 | `latest`                    | Latest build of the default branch only (staging builds).                                |
 | `1.2.3`                     | When a `v1.2.3` git tag is pushed.                                                       |
-| `...-production` suffix     | Only from a manual run with `site_env = production`. Never tagged `latest`. Not used yet. |
+| `...-production` suffix     | Only from a manual run with `site_env = production` (and `site_url`, default `https://kcprintworks.com`). Never tagged `latest`. Deployed only from `/opt/kcprintworks-production`. |
 
 Today the repository's only branch is `claude/hopeful-hamilton-lq8pw6`, and it is also the default branch, so every push to it publishes
 `sha-<7>`, the branch tag, **and** `latest`. Once a `main` branch exists and becomes the default, `latest` follows `main` instead.
@@ -232,9 +233,9 @@ To stop the storefront entirely (nothing else is affected): `cd /opt/kcprintwork
 
 ## 7. Going live later (not part of this; each step needs your approval)
 
-Staging stays noindex until you decide otherwise. Going live is a separate change: a production image (_Run workflow > site_env = production_,
-with `SITE_URL` set to the real address), checkout and Stripe in test mode (Step 3), and the DNS and
-Nginx Proxy Manager switch described in [MIGRATION-SHOP-DOMAIN.md](MIGRATION-SHOP-DOMAIN.md). None of it happens by deploying this image.
+Staging stays noindex until you decide otherwise. Going live is a separate change: a production image (_Run workflow > site_env = production_, `site_url` = the real address),
+its own container beside this one, the shop's `KCPW_STOREFRONT_URL`, and the DNS and Nginx Proxy Manager switch described in [MIGRATION-SHOP-DOMAIN.md](MIGRATION-SHOP-DOMAIN.md).
+The exact steps, including how to keep staging working and how to turn production checkout on, are in [CHECKOUT-PRODUCTION.md](CHECKOUT-PRODUCTION.md). None of it happens by deploying this image.
 
 ## 8. How it is tested
 
@@ -300,7 +301,7 @@ Then open `https://YOUR-STAGING-HOST/shop/`: the banner says it is a staging pre
 
 **F. Prove changes appear without a rebuild:** [WOOCOMMERCE-CATALOG.md](WOOCOMMERCE-CATALOG.md) section 3.
 
-## 10. Checkout on staging (off by default)
+## 10. Checkout on staging (off by default; production: [CHECKOUT-PRODUCTION.md](CHECKOUT-PRODUCTION.md))
 
 Checkout hands the cart to the WooCommerce shop that runs the `kcpw-core` plugin, which uses the official Stripe plugin in **test mode**. Nothing in this section
 is needed to browse the shop. Do the shop-side setup first ([CHECKOUT-STAGING-CHECKLIST.md](CHECKOUT-STAGING-CHECKLIST.md) sections 1 to 3: install the plugin on a **staging**
@@ -310,10 +311,11 @@ WordPress, set `KCPW_HANDOFF_SECRET`, Stripe test keys). Then, on the VPS:
 cd /opt/kcprintworks-nextjs
 nano .env      # set:  CHECKOUT_ENABLED=true   KCPW_HANDOFF_SECRET=<same value as wp-config.php>   (and KCPW_API_URL=https://YOUR-STAGING-WORDPRESS if it is not the WC_BASE_URL site)
 ./deploy.sh "$(grep '^IMAGE_TAG=' .env | cut -d= -f2-)"
-curl -s https://YOUR-STAGING-STOREFRONT/api/checkout-status/     # expect "enabled":true and "shop":{"reachable":true,... "stripeTestMode":true}
+curl -s https://YOUR-STAGING-STOREFRONT/api/checkout-status/     # expect "enabled":true,"allowed":true and "shop":{"reachable":true,... "stripeTestMode":true}
 ```
 
-The page banner then says checkout is for testing with Stripe test cards. To switch it off again: `CHECKOUT_ENABLED=false` and the same `deploy.sh` line.
+The page banner then says checkout is for testing with Stripe test cards. A staging container refuses to hand a cart over once the shop is in live Stripe mode
+(`"allowed":false,"blocked":"live_mode_blocked"`): that is the safeguard, not a fault. To switch it off again: `CHECKOUT_ENABLED=false` and the same `deploy.sh` line.
 If `reachable` is false the answer names the reason (secret mismatch, plugin not active, secret not set on the shop).
 If the cart still shows a disabled Checkout button, `"enabled":false` in the same answer names the missing setting; see the troubleshooting list in [CHECKOUT-STAGING-CHECKLIST.md](CHECKOUT-STAGING-CHECKLIST.md) section 4.
 

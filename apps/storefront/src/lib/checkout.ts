@@ -1,4 +1,4 @@
-import { isProduction } from './env';
+import { isProduction, siteUrl } from './env';
 
 /**
  * Whether the cart may hand a shopper over to WooCommerce checkout.
@@ -9,9 +9,15 @@ import { isProduction } from './env';
  *                               Falls back to KCPW_SHOP_URL, then to WC_BASE_URL (the shop is the WooCommerce site), so a
  *                               staging container that already reads the catalog needs only the secret.
  *   KCPW_HANDOFF_SECRET         32+ characters, the same value as KCPW_HANDOFF_SECRET in that site's wp-config.php
- * and it can NEVER be on in a production build (SITE_ENV is written into the build; the VPS environment cannot change it):
- * going live with checkout is a code change that needs the owner's approval. Read at request time, so a staging container
- * can be switched with its .env and no rebuild.
+ *
+ * A PRODUCTION build (SITE_ENV=production, written into the build: the VPS environment cannot change it) may also take
+ * checkout, but only with the stricter rules below, because real money can follow. Anything not met leaves it off and is named
+ * in `missing`; no rule is skipped to make production pass:
+ *   - the shop address is https with no exception for "local" hosts, and is not the storefront's own host;
+ *   - the storefront address baked into the build (NEXT_PUBLIC_SITE_URL) is a plain https origin, not local;
+ *   - CATALOG_SOURCE is `woo`, so the cart is priced from the live catalog and never from sample data.
+ * Whether the SHOP agrees (its Stripe mode, the storefront address it returns shoppers to) is checked per request in
+ * handoff/shop-guard.ts. Read at request time, so a container can be switched with its .env and no rebuild.
  */
 export interface CheckoutConfig {
   apiUrl: string;
@@ -42,15 +48,19 @@ export function shopAddress(env: Record<string, string | undefined>): {
 export function readCheckoutStatus(
   env: Record<string, string | undefined> = process.env,
   production: boolean = isProduction,
+  site: string = siteUrl,
 ): CheckoutStatus {
   if (env.CHECKOUT_ENABLED !== 'true') return { enabled: false, reason: 'not turned on' };
-  if (production) return { enabled: false, reason: 'not available in a production build' };
   const missing: string[] = [];
   let url: URL | undefined;
   const address = shopAddress(env);
   try {
     url = new URL(address.value);
-    if (url.protocol !== 'https:' && !(url.protocol === 'http:' && isLocal(url.hostname))) {
+    if (production) {
+      if (url.protocol !== 'https:' || isLocal(url.hostname)) {
+        missing.push(`${address.name} (must be https in production)`);
+      }
+    } else if (url.protocol !== 'https:' && !(url.protocol === 'http:' && isLocal(url.hostname))) {
       missing.push(`${address.name} (must be https)`);
     }
   } catch {
@@ -58,10 +68,30 @@ export function readCheckoutStatus(
   }
   const secret = (env.KCPW_HANDOFF_SECRET ?? '').trim();
   if (secret.length < 32) missing.push('KCPW_HANDOFF_SECRET (32 or more characters)');
+  if (production) {
+    // Fixed when the image was built, so these cannot be repaired from the container's .env: they name the build.
+    const storefront = httpsOrigin(site);
+    if (!storefront || isLocal(new URL(storefront).hostname) || site !== storefront) {
+      missing.push('NEXT_PUBLIC_SITE_URL (set when the image was built; must be an https origin)');
+    } else if (url && url.host === new URL(storefront).host) {
+      missing.push(`${address.name} (the shop must be a different host from the storefront)`);
+    }
+    if (env.CATALOG_SOURCE !== 'woo') missing.push('CATALOG_SOURCE (must be woo in production)');
+  }
   if (missing.length > 0 || !url) {
     return { enabled: false, reason: 'not fully configured', missing };
   }
   return { enabled: true, config: { apiUrl: url.origin, secret } };
+}
+
+/** `https://host[:port]` for an https address, else undefined. */
+function httpsOrigin(value: string): string | undefined {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' ? url.origin : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 const reported = new Set<string>();

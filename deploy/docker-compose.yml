@@ -5,7 +5,10 @@
 # - Port 3000 is only `expose`d to that network. There is no `ports:` entry, so nothing is published on the VPS.
 # - It does not create, modify, or depend on WordPress, MariaDB, or Nginx Proxy Manager.
 # - With CATALOG_SOURCE=woo it READS products from the WooCommerce REST API (GET only, a Read-only key). It never writes
-#   to WooCommerce and never talks to Stripe. Checkout is OFF unless the .env turns it on (CHECKOUT_ENABLED, staging only).
+#   to WooCommerce and never talks to Stripe. Checkout is OFF unless the .env turns it on (CHECKOUT_ENABLED).
+# - This file is the STAGING instance. A PRODUCTION instance runs beside it from its own directory with
+#   docker-compose.production.yml (a different project, container and service name), so the two never share a name or a DNS alias.
+#   See docs/CHECKOUT-PRODUCTION.md.
 #
 # Settings come from the .env file next to this one (see .env.example). IMAGE_TAG is required on purpose: the
 # server always runs an explicit, known image, never "whatever latest is today".
@@ -37,8 +40,9 @@ services:
       # How often (seconds) the catalog is re-read in the background, and the secret that signs refresh requests.
       CATALOG_REVALIDATE_SECONDS: ${CATALOG_REVALIDATE_SECONDS:-120}
       REVALIDATE_SECRET: ${REVALIDATE_SECRET:-}
-      # Checkout (Step 3). OFF unless CHECKOUT_ENABLED=true AND the shop address and handoff secret are set. It can never be
-      # on in a production build. The secret must equal KCPW_HANDOFF_SECRET in the shop's wp-config.php. Test mode only.
+      # Checkout. OFF unless CHECKOUT_ENABLED=true AND the shop address and handoff secret are set. A staging image only hands a cart to a
+      # shop that reports Stripe TEST mode; a production image (docker-compose.production.yml) has stricter rules (docs/CHECKOUT-PRODUCTION.md).
+      # The secret must equal KCPW_HANDOFF_SECRET in the shop's wp-config.php.
       CHECKOUT_ENABLED: ${CHECKOUT_ENABLED:-false}
       # The shop address is KCPW_API_URL, or KCPW_SHOP_URL, or (when both are empty) WC_BASE_URL above.
       KCPW_API_URL: ${KCPW_API_URL:-}

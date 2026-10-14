@@ -592,10 +592,47 @@ test.describe('checkout handoff', () => {
     const json = JSON.parse(text);
     expect(json).toMatchObject({
       enabled: true,
+      environment: 'development',
+      allowed: true,
       shop: { reachable: true, plugin: '0.1.0-mock', stripeTestMode: true },
     });
     expect(text).not.toContain(WOO_TEST.handoffSecret);
     expect(text).not.toContain(WOO_TEST.mockUrl);
+  });
+
+  test('once the shop is switched to LIVE Stripe mode this non-production build refuses, keeps the cart, and sends nothing', async ({
+    page,
+    request,
+  }) => {
+    await addCardBox(page);
+    await page.goto('/cart/');
+    await mockPost(request, 'shop-status', { stripeTestMode: false });
+
+    // The operator's page says so, plainly, without any secret.
+    const status = await (await request.get('/api/checkout-status/')).json();
+    expect(status).toMatchObject({
+      enabled: true,
+      allowed: false,
+      blocked: 'live_mode_blocked',
+      shop: { reachable: true, stripeTestMode: false },
+    });
+
+    const before = await shopCalls(request);
+    await page.getByRole('button', { name: 'Checkout' }).click();
+    await expect(page.locator('.notice[role="alert"]')).toContainText(
+      'Checkout is not available right now.',
+    );
+    await expect(page).toHaveURL(/\/cart\/$/);
+    await expect(page.getByRole('button', { name: 'Checkout' })).toHaveAttribute(
+      'aria-disabled',
+      'false',
+    );
+    expect(await shopCalls(request), 'no cart reached the shop').toBe(before);
+
+    // Back in test mode the very next press works: nothing about the shop is remembered.
+    await mockPost(request, 'shop-status', { stripeTestMode: true });
+    await page.getByRole('button', { name: 'Checkout' }).click();
+    await page.waitForURL(`${WOO_TEST.mockUrl}/?kcpw_handoff=*`);
   });
 
   test('cart page has no WCAG 2.2 AA violations with checkout switched on', async ({ page }) => {

@@ -8,7 +8,7 @@ namespace KcPrintworks\Core\Wp;
  * by a plugin that can read options, and must not appear in backups of the database alone).
  *
  *   KCPW_HANDOFF_SECRET   32+ random characters shared with the storefront server (its KCPW_HANDOFF_SECRET environment value)
- *   KCPW_STOREFRONT_URL   where the storefront lives, for example https://staging.kcprintworks.com (used to send a shopper back to the cart)
+ *   KCPW_STOREFRONT_URL   where the storefront lives, for example https://kcprintworks.com (used to send a shopper back to the cart; the storefront checks this against its own address)
  */
 final class Config
 {

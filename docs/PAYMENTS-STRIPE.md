@@ -8,7 +8,7 @@ the gates in [IMPLEMENTATION-PLAN.md](IMPLEMENTATION-PLAN.md) are approved. All 
 | Piece | State |
 |---|---|
 | Cart in the browser as line intents; no prices | Built (storefront) |
-| `POST /api/cart/handoff/` on the storefront server: strict request, local pre-check, signed call to the shop, validated single-use link | Built, **off by default** (`CHECKOUT_ENABLED`), never on in a production build |
+| `POST /api/cart/handoff/` on the storefront server: strict request, local pre-check, signed call to the shop, validated single-use link | Built, **off by default** (`CHECKOUT_ENABLED`); a production build may take it only under the stricter rules of [CHECKOUT-PRODUCTION.md](CHECKOUT-PRODUCTION.md) (ADR-018) |
 | `kcpw-core` plugin: `cart/quote`, `cart/handoff`, `/?kcpw_handoff=` redemption, WooCommerce cart rebuild, option charges, order-item meta (§4, §5) | Built; PHP logic proven by shared vectors; **WordPress/WooCommerce glue proven only against stand-ins** |
 | Official Stripe plugin on staging in test mode, webhooks, wallets | **Owner setup** ([CHECKOUT-STAGING-CHECKLIST.md](CHECKOUT-STAGING-CHECKLIST.md)); we write no payment code |
 | §6 order-status rules, §7 duplicate protection, §8 webhooks, §9 refunds | The official plugin's behavior; **to be verified** with the checklist's test matrix |

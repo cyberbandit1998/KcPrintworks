@@ -132,6 +132,8 @@ final class RestApiTest extends TestCase
         $this->assertSame('0.1.0', $response->data['plugin']);
         $this->assertSame('9.9.9', $response->data['woocommerce']);
         $this->assertTrue($response->data['storefrontUrlConfigured']);
+        // The stub's wp-config defines 'https://staging.example.com/': reported without the trailing slash, so the storefront can compare it.
+        $this->assertSame('https://staging.example.com', $response->data['storefrontUrl']);
         $this->assertFalse($response->data['stripeActive']);
     }
 

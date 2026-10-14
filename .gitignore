@@ -2,6 +2,7 @@
 .env
 .env.*
 !.env.example
+!.env.production.example
 wp-config.php
 wp-config-local.php
 *.pem

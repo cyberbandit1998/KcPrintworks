@@ -7,7 +7,8 @@ name: Publish Docker image
 #        <branch>        moving pointer per branch
 #        latest          default branch only
 #        <version>       when a v* git tag is pushed
-# A production build (manual run only) appends "-production" to every tag and never gets "latest".
+# A production build (manual run only) appends "-production" to every tag and never gets "latest", and bakes in the production
+# address (the site_url input, https://kcprintworks.com unless changed). The staging build uses the SITE_URL repository variable.
 #
 # The image that is smoke-tested is the exact image that is pushed (it is tagged and pushed from the local
 # daemon, not rebuilt), so a failing smoke test publishes nothing.
@@ -23,6 +24,10 @@ on:
         type: choice
         options: [staging, production]
         default: staging
+      site_url:
+        description: 'production only: the public address written into the image (NEXT_PUBLIC_SITE_URL). https, no path. Empty = https://kcprintworks.com.'
+        type: string
+        default: ''
 
 # Least privilege by default. The publish job below asks for `packages: write` explicitly, which is the
 # only extra permission needed to push to GHCR with the built-in GITHUB_TOKEN (no personal token stored).
@@ -30,7 +35,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: docker-publish-${{ github.ref }}
+  # One group per environment, so a production build started while a staging build runs (or the other way round) does not cancel it.
+  group: docker-publish-${{ github.ref }}-${{ inputs.site_env || 'staging' }}
   cancel-in-progress: true
 
 jobs:
@@ -49,13 +55,26 @@ jobs:
       - name: Resolve image name and settings
         id: vars
         env:
-          # Optional repository variable (Settings > Secrets and variables > Actions > Variables).
+          # Optional repository variable (Settings > Secrets and variables > Actions > Variables). Staging builds only.
           SITE_URL_VAR: ${{ vars.SITE_URL }}
+          SITE_URL_INPUT: ${{ inputs.site_url }}
         run: |
           owner="${GITHUB_REPOSITORY_OWNER,,}"            # GHCR requires lowercase
           echo "image=ghcr.io/${owner}/kcprintworks-nextjs" >> "$GITHUB_OUTPUT"
-          echo "site_url=${SITE_URL_VAR:-http://localhost:3000}" >> "$GITHUB_OUTPUT"
-          if [ "$SITE_ENV" = "production" ]; then echo "suffix=-production" >> "$GITHUB_OUTPUT"; else echo "suffix=" >> "$GITHUB_OUTPUT"; fi
+          if [ "$SITE_ENV" = "production" ]; then
+            # The address a production image is built with is the address it will answer to and return shoppers to. It must be a plain
+            # https origin (no path, no credentials, not a local or numeric host) or checkout would refuse to start (lib/checkout.ts).
+            site_url="${SITE_URL_INPUT:-https://kcprintworks.com}"
+            site_url="${site_url%/}"
+            if ! printf '%s' "$site_url" | grep -Eq '^https://([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$'; then
+              echo "::error::site_url must be an https address with no path, for example https://kcprintworks.com (got: $site_url)"; exit 1
+            fi
+            echo "suffix=-production" >> "$GITHUB_OUTPUT"
+          else
+            site_url="${SITE_URL_VAR:-http://localhost:3000}"
+            echo "suffix=" >> "$GITHUB_OUTPUT"
+          fi
+          echo "site_url=${site_url}" >> "$GITHUB_OUTPUT"
 
       - uses: docker/setup-buildx-action@v3
 
@@ -142,6 +161,29 @@ jobs:
           run_case co-on on -e CHECKOUT_ENABLED=true -e KCPW_SHOP_URL=https://shop.invalid \
             -e "KCPW_HANDOFF_SECRET=$(openssl rand -hex 24)"
 
+      - name: A production image is fixed at build time, and checkout follows the container's environment
+        if: env.SITE_ENV == 'production'
+        env:
+          EXPECT_SITE_URL: ${{ steps.vars.outputs.site_url }}
+        run: |
+          # The same production image, started with different environments. The shop address is deliberately unreachable and every
+          # key/secret is a throwaway made here; only whether checkout is switched on, and under which rules, is checked.
+          run_case() {
+            name="$1"; expect="$2"; word="$3"; shift 3
+            docker run -d --name "$name" -p 127.0.0.1:3002:3000 "$@" kcprintworks-nextjs:smoke
+            ./scripts/docker-smoke-checkout.sh http://127.0.0.1:3002 "$expect" "$word" || { docker logs "$name"; exit 1; }
+            docker rm -f "$name"
+          }
+          secret="$(openssl rand -hex 24)"
+          woo="-e CATALOG_SOURCE=woo -e WC_BASE_URL=https://shop.invalid -e WC_CONSUMER_KEY=ck_throwaway -e WC_CONSUMER_SECRET=cs_throwaway"
+          run_case pco-off off ""
+          run_case pco-incomplete incomplete "" $woo -e CHECKOUT_ENABLED=true -e KCPW_API_URL=https://shop.invalid
+          run_case pco-sample misconfigured CATALOG_SOURCE -e CHECKOUT_ENABLED=true -e KCPW_API_URL=https://shop.invalid -e "KCPW_HANDOFF_SECRET=$secret"
+          run_case pco-http misconfigured "must be https" $woo -e CHECKOUT_ENABLED=true -e KCPW_API_URL=http://shop.invalid -e "KCPW_HANDOFF_SECRET=$secret"
+          # Hostile environment on top of valid settings: the build's own environment and address must win.
+          run_case pco-on on "$EXPECT_SITE_URL" $woo -e CHECKOUT_ENABLED=true -e KCPW_API_URL=https://shop.invalid \
+            -e "KCPW_HANDOFF_SECRET=$secret" -e SITE_ENV=staging -e NEXT_PUBLIC_SITE_URL=http://evil.example
+
       - name: The free-shipping setting follows the container's environment, with no rebuild
         if: env.SITE_ENV == 'staging'
         run: |
@@ -180,6 +222,8 @@ jobs:
             echo "### Published to GHCR"
             echo
             echo "Environment: \`$SITE_ENV\`"
+            echo
+            echo "Public address built in: \`${{ steps.vars.outputs.site_url }}\`"
             echo
             echo "Tags:"
             for tag in $TAGS; do echo "- \`$tag\`"; done

@@ -6,11 +6,12 @@
 #   docker build --build-arg SITE_ENV=production \
 #                --build-arg NEXT_PUBLIC_SITE_URL=https://kcprintworks.com -t ... .   # production image
 #
-# SITE_ENV, NEXT_PUBLIC_SITE_URL and IMAGE_HOSTS are BUILD-time settings: next.config.ts writes them into the build, so
-# robots/noindex, canonical URLs and the image optimizer's host list cannot be changed from the container's environment.
+# SITE_ENV, NEXT_PUBLIC_SITE_URL and IMAGE_HOSTS are BUILD-time settings: next.config.ts / Next write them into the build, so
+# robots/noindex, canonical URLs, the image optimizer's host list, and whether this image is a production image (which may take
+# real checkout payments, with stricter rules than staging) cannot be changed from the container's environment.
 # The default is staging (noindex), so an image built without arguments can never be indexed by accident. Pages are
-# rendered per request (the catalog is read from WooCommerce at run time, never frozen into the image). Checkout is a
-# compile-time constant (apps/storefront/src/lib/checkout.ts) and stays off.
+# rendered per request (the catalog is read from WooCommerce at run time, never frozen into the image). Checkout is OFF unless
+# the container's environment turns it on (CHECKOUT_ENABLED, see apps/storefront/src/lib/checkout.ts and docs/CHECKOUT-PRODUCTION.md).
 # Secrets are never baked in: the WooCommerce read-only key and the revalidation secret are RUNTIME variables from the
 # VPS .env (see deploy/.env.example); this image contains none.
 

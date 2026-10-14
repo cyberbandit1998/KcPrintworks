@@ -20,9 +20,12 @@ The overall architecture was approved on 2026-10-13.
    DNS.** Work on local/staging only; Stripe stays in **test mode**. Each such change is an approval gate in
    [docs/IMPLEMENTATION-PLAN.md](docs/IMPLEMENTATION-PLAN.md) §2. Creating a staging DNS record or registering a Stripe webhook each counts as a change that needs
    approval. **Installing `kcpw-core` (or adding a constant/key) on the live site is itself a change**: staging first, unless the owner says otherwise.
-2. **Checkout is off until the owner turns it on.** `CHECKOUT_ENABLED` defaults to off, works only in staging containers (never in a production build), and
-   needs the shop address and handoff secret (`src/lib/checkout.ts`). Do not change those rules, publish a checkout-enabled production image, or enable it in a
-   default deployment file without the owner's approval. The owner's standing instruction is to keep checkout disabled until integration testing is complete.
+2. **Checkout is off until the owner turns it on.** `CHECKOUT_ENABLED` defaults to off in every build and needs the shop address and handoff secret
+   (`src/lib/checkout.ts`). Since 2026-10-14 (ADR-018, owner request) a **production build may take checkout**, but only with the stricter validation in that file
+   (https shop with no local exception, https storefront address baked into the image, `CATALOG_SOURCE=woo`, shop host different from the storefront's) plus the per-press
+   shop guard (`lib/handoff/shop-guard.ts`): a non-production build hands a cart over only to a shop that reports Stripe TEST mode; a production build only to a shop that
+   returns shoppers to its own address. Do not loosen any of that, switch checkout on in a default deployment file or `.env.example`, or touch Stripe mode/credentials without the
+   owner's approval. Never skip a check to make a production run pass.
 3. **Never store card data.** Only Stripe object IDs. Never treat a redirect or client callback as proof of
    payment; payment truth is a server-verified Stripe event.
 4. **No Etsy integration, no sync-service dependency.** Nothing we ship (storefront, packages, `wordpress/kcpw-core`, deploy files, workflows) calls Etsy,
@@ -70,7 +73,7 @@ scripts/discovery/          analyze-wc-export.mjs: read-only analysis of a WooCo
 docs/                       architecture, payments, sync independence, checkout checklist, plan, migration, discovery, decisions
 Dockerfile, deploy/         Docker image (Next.js standalone, multi-stage) and the VPS compose + deploy.sh; see docs/DEPLOYMENT-VPS.md
 .github/workflows/          ci.yml (checks) and docker-publish.yml (build, smoke-test, publish to GHCR)
-wordpress/kcpw-core/        WordPress plugin (v0.2.0): checkout link (quote + single-use handoff), personalization editor/validation/order-item meta, and pending-review intake (`src/Reviews`).
+wordpress/kcpw-core/        WordPress plugin (v0.2.1; `/status` also reports `storefrontUrl`): checkout link (quote + single-use handoff), personalization editor/validation/order-item meta, and pending-review intake (`src/Reviews`).
                             Pure PHP core (no WP calls; tested with shared vectors) + thin `src/Wp` layer (tested with stubs); `php tests/run.php`
 ```
 
@@ -133,12 +136,13 @@ ADRs updated if a decision changed.
   (the tested image is the pushed image). Runs on the VPS via `deploy/docker-compose.yml` on the existing external `proxy`
   network, `expose: 3000` only (never `ports:`), container `kcprintworks-nextjs`. Install, update, rollback: `docs/DEPLOYMENT-VPS.md`.
 - `SITE_ENV`, `NEXT_PUBLIC_SITE_URL` and `IMAGE_HOSTS` are **build-time** (next.config.ts `env` writes them into the build; a container's environment cannot change them): default
-  `staging` = noindex. A production image is a deliberate manual workflow run and needs the owner's approval.
+  `staging` = noindex. A production image is a deliberate manual workflow run (`site_env=production`, `site_url` default `https://kcprintworks.com`) and needs the owner's approval; it is
+  deployed from its own directory as a second container (`deploy/docker-compose.production.yml`, `.env.production.example`, `DEPLOY_KIND=production`) beside staging, never over it. See [docs/CHECKOUT-PRODUCTION.md](docs/CHECKOUT-PRODUCTION.md).
 - Pages are **rendered per request** (`dynamic = 'force-dynamic'` in the root layout) because the catalog is read from WooCommerce at run time. Runtime-only settings: `CATALOG_SOURCE`
   (`fixtures` default | `woo`), `WC_BASE_URL`, `WC_CONSUMER_KEY`/`WC_CONSUMER_SECRET` (a **Read-only** key the owner creates), `CATALOG_REVALIDATE_SECONDS`, `REVALIDATE_SECRET`,
   and for header/content/reviews `NAV_GAME_CASES`, `NAV_PERSONALIZED_GIFTS`, `HIDDEN_CATEGORY_SLUGS`, `WP_BASE_URL` (defaults to `WC_BASE_URL`), `OUR_STORY_SLUG`, `CONTACT_PAGE_SLUG`, `BLOG_PER_PAGE`,
   `HOME_REVIEWS_MIN_RATING`, `REVIEWS_SUBMIT_ENABLED` (default false), `REVIEWS_RATE_LIMIT`, `REVIEWS_RATE_LIMIT_ALL` (see [docs/WORDPRESS-CONTENT-AND-REVIEWS.md](docs/WORDPRESS-CONTENT-AND-REVIEWS.md)),
-  and for checkout `CHECKOUT_ENABLED` (default false), `KCPW_API_URL` (falls back to `KCPW_SHOP_URL`, then `WC_BASE_URL`), `KCPW_HANDOFF_SECRET`; for the cart's free-shipping bar `FREE_SHIPPING_THRESHOLD` (default `$40.00`, `off` hides it) and `FREE_SHIPPING_BEFORE_DISCOUNTS`. They live only in the VPS `.env`.
+  and for checkout `CHECKOUT_ENABLED` (default false; production builds need extra settings, see `lib/checkout.ts`), `KCPW_API_URL` (falls back to `KCPW_SHOP_URL`, then `WC_BASE_URL`), `KCPW_HANDOFF_SECRET`; for the cart's free-shipping bar `FREE_SHIPPING_THRESHOLD` (default `$40.00`, `off` hides it) and `FREE_SHIPPING_BEFORE_DISCOUNTS`. They live only in the VPS `.env`.
   Never put them in the image, the repo, a test, or a chat. See [docs/WOOCOMMERCE-CATALOG.md](docs/WOOCOMMERCE-CATALOG.md).
 - Never touch WordPress, MariaDB, Nginx Proxy Manager, DNS, or Stripe from these files. `deploy.sh` only runs `docker compose` for this
   project; its test fails if it ever issues another kind of docker command.

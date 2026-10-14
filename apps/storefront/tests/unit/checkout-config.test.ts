@@ -19,11 +19,6 @@ describe('checkout is off unless an operator deliberately turns it on', () => {
     }
   });
 
-  it('can never be on in a production build', () => {
-    const status = readCheckoutStatus(on, true);
-    expect(status).toEqual({ enabled: false, reason: 'not available in a production build' });
-  });
-
   it('needs the shop address (https) and a long secret, and names what is missing without echoing values', () => {
     expect(readCheckoutStatus({ CHECKOUT_ENABLED: 'true' }, false)).toMatchObject({
       enabled: false,
@@ -115,6 +110,116 @@ describe('checkout is off unless an operator deliberately turns it on', () => {
     expect(
       readCheckoutStatus({ ...on, KCPW_API_URL: 'http://localhost:8080' }, false).enabled,
     ).toBe(true);
+  });
+});
+
+/** What a production container needs, on top of the staging rules. SITE is what the image was built with (NEXT_PUBLIC_SITE_URL). */
+describe('checkout in a production build', () => {
+  const SITE = 'https://kcprintworks.com';
+  const production = {
+    CHECKOUT_ENABLED: 'true',
+    CATALOG_SOURCE: 'woo',
+    KCPW_API_URL: 'https://shop.kcprintworks.com',
+    KCPW_HANDOFF_SECRET: SECRET,
+  };
+  const read = (env: Record<string, string | undefined>, site = SITE) =>
+    readCheckoutStatus(env, true, site);
+
+  it('is off by default in production, with or without the other settings', () => {
+    expect(read({})).toEqual({ enabled: false, reason: 'not turned on' });
+    expect(read({ ...production, CHECKOUT_ENABLED: undefined }).enabled).toBe(false);
+    for (const value of ['', 'false', '1', 'yes', 'TRUE']) {
+      expect(read({ ...production, CHECKOUT_ENABLED: value }).enabled, value).toBe(false);
+    }
+  });
+
+  it('is on when CHECKOUT_ENABLED=true and everything is valid (https shop, https storefront, woo catalog, long secret)', () => {
+    expect(read(production)).toEqual({
+      enabled: true,
+      config: { apiUrl: 'https://shop.kcprintworks.com', secret: SECRET },
+    });
+    // The shop address may come from the WooCommerce address, as on staging.
+    expect(
+      read({
+        ...production,
+        KCPW_API_URL: undefined,
+        WC_BASE_URL: 'https://shop.kcprintworks.com/',
+      }).enabled,
+    ).toBe(true);
+  });
+
+  it('names a missing secret, a short secret and a missing shop address without echoing any value', () => {
+    const none = read({ CHECKOUT_ENABLED: 'true', CATALOG_SOURCE: 'woo' });
+    expect(none).toMatchObject({
+      enabled: false,
+      reason: 'not fully configured',
+      missing: ['KCPW_API_URL', 'KCPW_HANDOFF_SECRET (32 or more characters)'],
+    });
+    const short = read({ ...production, KCPW_HANDOFF_SECRET: 'short-secret-value' });
+    expect(short).toMatchObject({
+      enabled: false,
+      missing: ['KCPW_HANDOFF_SECRET (32 or more characters)'],
+    });
+    expect(JSON.stringify(short)).not.toContain('short-secret-value');
+  });
+
+  it('refuses a plain-http shop, including a local one (staging may test against localhost, production may not)', () => {
+    for (const apiUrl of [
+      'http://shop.kcprintworks.com',
+      'http://localhost:3200',
+      'http://127.0.0.1:3200',
+      'https://localhost',
+      'https://127.0.0.1',
+    ]) {
+      expect(read({ ...production, KCPW_API_URL: apiUrl }), apiUrl).toMatchObject({
+        enabled: false,
+        missing: ['KCPW_API_URL (must be https in production)'],
+      });
+    }
+    expect(
+      readCheckoutStatus({ ...production, KCPW_API_URL: 'http://127.0.0.1:3200' }, false, SITE)
+        .enabled,
+    ).toBe(true);
+  });
+
+  it('needs the build to carry an https, non-local storefront address, and says that it is a build setting', () => {
+    for (const site of [
+      'http://kcprintworks.com',
+      'http://localhost:3000',
+      'https://localhost:3000',
+      'not a url',
+      '',
+      'https://kcprintworks.com/store',
+    ]) {
+      const status = read(production, site);
+      expect(status, site).toMatchObject({ enabled: false });
+      expect(JSON.stringify(status), site).toContain('NEXT_PUBLIC_SITE_URL');
+    }
+  });
+
+  it('refuses a shop that is the storefront itself (a miswired KCPW_API_URL)', () => {
+    expect(read({ ...production, KCPW_API_URL: 'https://kcprintworks.com' })).toMatchObject({
+      enabled: false,
+      missing: ['KCPW_API_URL (the shop must be a different host from the storefront)'],
+    });
+  });
+
+  it('needs the live WooCommerce catalog so the cart is never priced from sample data', () => {
+    for (const source of [undefined, '', 'fixtures', 'export']) {
+      expect(read({ ...production, CATALOG_SOURCE: source }), String(source)).toMatchObject({
+        enabled: false,
+        missing: ['CATALOG_SOURCE (must be woo in production)'],
+      });
+    }
+  });
+
+  it('reports every problem at once', () => {
+    const status = read(
+      { CHECKOUT_ENABLED: 'true', KCPW_API_URL: 'http://shop.example.com' },
+      'http://x',
+    );
+    expect(status).toMatchObject({ enabled: false });
+    expect(status.enabled ? [] : status.missing).toHaveLength(4);
   });
 });
 

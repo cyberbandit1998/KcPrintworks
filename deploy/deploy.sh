@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Deploy, update, or roll back the KCPrintWorks storefront container (kcprintworks-nextjs).
+# Deploy, update, or roll back a KCPrintWorks storefront container: staging (kcprintworks-nextjs) or, from its own directory,
+# production (kcprintworks-production).
 #
 #   ./deploy.sh sha-1a2b3c4     deploy exactly this published image (first install and every update)
 #   ./deploy.sh --rollback      return to the previously deployed image
@@ -7,16 +8,19 @@
 #   ./deploy.sh --list          deploy history
 #
 # Safe by construction:
-#   * It only runs `docker compose` for THIS project and inspects/execs the kcprintworks-nextjs container.
+#   * It only runs `docker compose` for THIS directory's project and inspects/execs that project's one container
+#     (CONTAINER_NAME in .env, default kcprintworks-nextjs; kcprintworks-production when DEPLOY_KIND=production).
 #     It never stops, removes, or restarts any other container, network, volume, or image (no `prune`, no `down`),
-#     so WordPress, MariaDB, and Nginx Proxy Manager are never touched.
+#     so WordPress, MariaDB, Nginx Proxy Manager, and the OTHER storefront instance are never touched.
+#   * A directory is either staging or production (DEPLOY_KIND in .env, default staging). It refuses an image of the other kind
+#     (production tags end in -production), and a production directory that is not using docker-compose.production.yml, so a
+#     production image can never replace the staging container or the other way round.
 #   * It pulls the new image BEFORE replacing anything; if the pull fails, the running container is left alone.
 #   * If the new container does not become healthy, it puts the previous image back automatically.
 set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
-CONTAINER=kcprintworks-nextjs
 ENV_FILE=.env
 HISTORY=.deploy-history
 WAIT_SECONDS="${DEPLOY_WAIT_SECONDS:-120}"
@@ -27,9 +31,37 @@ die() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 
 valid_tag() { [[ "$1" =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$ ]]; }
 
-current_tag() {
+env_value() {
   [ -f "$ENV_FILE" ] || return 0
-  { grep -E '^IMAGE_TAG=' "$ENV_FILE" || true; } | tail -n1 | cut -d= -f2-
+  { grep -E "^$1=" "$ENV_FILE" || true; } | tail -n1 | cut -d= -f2-
+}
+
+current_tag() { env_value IMAGE_TAG; }
+
+# Which instance this directory is, from .env (read again after a first install creates it).
+KIND=staging
+CONTAINER=kcprintworks-nextjs
+load_instance() {
+  KIND=$(env_value DEPLOY_KIND)
+  KIND=${KIND:-staging}
+  case "$KIND" in
+    staging) CONTAINER=$(env_value CONTAINER_NAME); CONTAINER=${CONTAINER:-kcprintworks-nextjs} ;;
+    production) CONTAINER=$(env_value CONTAINER_NAME); CONTAINER=${CONTAINER:-kcprintworks-production} ;;
+    *) die "DEPLOY_KIND in $ENV_FILE must be staging or production, not '$KIND'." ;;
+  esac
+  [[ "$CONTAINER" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]{0,62}$ ]] || die "CONTAINER_NAME in $ENV_FILE is not a valid container name."
+}
+
+# An image of the wrong kind in this directory would put a production build on the staging container, or the other way round.
+check_instance() {
+  local tag="$1"
+  if [ "$KIND" = production ]; then
+    [[ "$tag" == *-production ]] || die "This is a PRODUCTION directory (DEPLOY_KIND=production) and '$tag' is not a production image. Production tags end in -production."
+    [ "$(env_value COMPOSE_FILE)" = docker-compose.production.yml ] || die "A production directory must set COMPOSE_FILE=docker-compose.production.yml in $ENV_FILE (otherwise 'docker compose' would use the staging definition and replace the staging container)."
+    [ "$CONTAINER" != kcprintworks-nextjs ] || die "The production container must not be named kcprintworks-nextjs (that is the staging container)."
+  else
+    [[ "$tag" != *-production ]] || die "This is a STAGING directory and '$tag' is a production image. Deploy production images from the production directory (docs/CHECKOUT-PRODUCTION.md)."
+  fi
 }
 
 set_tag() {
@@ -67,7 +99,9 @@ deploy() {
     [ -f .env.example ] || die ".env and .env.example are both missing in $(pwd)."
     cp .env.example "$ENV_FILE"
     say "Created $ENV_FILE from .env.example. Edit NEXT_PUBLIC_SITE_URL later if needed."
+    load_instance
   fi
+  check_instance "$tag"
 
   previous=$(current_tag)
   set_tag "$tag"
@@ -114,9 +148,11 @@ previous_good_tag() {
   awk -v now="$now" '$3 != "failed" && $2 != now { tag = $2 } END { print tag }' "$HISTORY"
 }
 
+load_instance
+
 case "${1:-}" in
   ''|-h|--help)
-    sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'
     ;;
   --status)
     say "Configured image tag : $(current_tag)"

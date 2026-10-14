@@ -5,11 +5,14 @@ import { buildQuote } from '@/lib/quote-server';
 import { currentCheckoutStatus } from '@/lib/checkout';
 import { NO_STORE, readBodyLimited } from '@/lib/http';
 import { requestHandoff } from '@/lib/handoff/upstream';
+import { checkShop } from '@/lib/handoff/shop-guard';
+import { isProduction, siteUrl } from '@/lib/env';
 
 /**
  * "Take me to checkout." The browser sends line intents; this server (never the browser) asks kcpw-core on the shop host,
  * which validates every line against WooCommerce and returns a single-use checkout link. Prices are never read from the
- * request. This route re-checks that checkout is switched on, because the button being visible proves nothing.
+ * request. This route re-checks that checkout is switched on, because the button being visible proves nothing, and asks the shop
+ * who it is (handoff/shop-guard.ts) so a staging build cannot reach a shop in live Stripe mode.
  */
 export const dynamic = 'force-dynamic';
 
@@ -45,6 +48,14 @@ export async function POST(request: Request) {
     .filter((line) => line.issues.length > 0);
   if (problems.length > 0)
     return reply({ ok: false, error: 'invalid_lines', lines: problems }, 422);
+
+  const shop = await checkShop(checkout.config, { production: isProduction, siteUrl });
+  if (!shop.ok) {
+    console.error(`[checkout] handoff refused (${shop.kind}): ${shop.why}`);
+    return shop.kind === 'unreachable'
+      ? reply({ ok: false, error: 'unavailable' }, 503)
+      : reply({ ok: false, error: 'checkout_disabled' }, 403);
+  }
 
   const result = await requestHandoff(checkout.config, parsed.data.lines, quote.subtotal.amount);
   switch (result.kind) {

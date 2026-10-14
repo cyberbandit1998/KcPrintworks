@@ -118,12 +118,16 @@ final class RestApi
     public function status(\WP_REST_Request $request): \WP_REST_Response
     {
         $stripe = Readiness::stripe();
+        $storefront = Config::storefrontUrl();
         return $this->respond([
             'ok' => true,
             'plugin' => $this->version,
             'woocommerce' => function_exists('WC') ? (string) WC()->version : null,
             'currency' => function_exists('get_woocommerce_currency') ? (string) get_woocommerce_currency() : null,
-            'storefrontUrlConfigured' => Config::storefrontUrl() !== '',
+            'storefrontUrlConfigured' => $storefront !== '',
+            // Where this shop sends a shopper back to (an expired or already-used link). The storefront compares it with its own
+            // address and refuses to hand a cart over to a shop that would return shoppers to a different site (0.2.1).
+            'storefrontUrl' => $storefront !== '' ? $storefront : null,
             'stripeActive' => $stripe['active'],
             'stripeTestMode' => $stripe['testMode'],
             'reviewsRoute' => $this->reviews !== null,

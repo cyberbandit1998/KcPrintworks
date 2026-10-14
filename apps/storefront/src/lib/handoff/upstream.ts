@@ -134,6 +134,8 @@ const StatusSchema = z.object({
   storefrontUrlConfigured: z.boolean(),
   stripeActive: z.boolean(),
   stripeTestMode: z.boolean().nullable(),
+  /** Where the shop sends a shopper back after a problem (KCPW_STOREFRONT_URL). Plugin 0.2.1 and later; older ones omit it. */
+  storefrontUrl: z.string().nullable().optional(),
 });
 export type ShopStatus = z.infer<typeof StatusSchema>;
 

@@ -1,0 +1,35 @@
+# KCPrintWorks PRODUCTION storefront on the VPS: /opt/kcprintworks-production (its own directory, beside the staging one).
+#
+# It reuses the staging service definition (image, hardening, health check, limits, every setting name) through `extends`, so the
+# two cannot drift, and changes only what must differ so both can run on the same VPS and the same "proxy" network:
+#
+#   project name   kcprintworks-production   (staging: kcprintworks-nextjs)  a second project, so `up` here never touches staging
+#   service name   kcprintworks-production   (staging: kcprintworks-nextjs)  Docker adds the service name as a DNS alias on the
+#                                                                           network; the same name twice would send some of the
+#                                                                           staging traffic to this container and vice versa
+#   container      CONTAINER_NAME            default kcprintworks-production; Nginx Proxy Manager forwards to this name
+#
+# Use it by putting  COMPOSE_FILE=docker-compose.production.yml  in this directory's .env (.env.production.example already does), so
+# plain `docker compose ...` and deploy.sh pick it up. Copy docker-compose.yml into the same directory: this file extends it.
+#
+# Production needs an image built for production (its tag ends in "-production"): whether the site is indexable, its public address
+# and whether it may take checkout payments were fixed at build time and cannot be changed by this file or the .env.
+# It does not create, modify, or depend on WordPress, MariaDB, or Nginx Proxy Manager, and it never talks to Stripe.
+name: ${COMPOSE_PROJECT_NAME:-kcprintworks-production}
+
+services:
+  kcprintworks-production:
+    extends:
+      file: docker-compose.yml
+      service: kcprintworks-nextjs
+    container_name: ${CONTAINER_NAME:-kcprintworks-production}
+    environment:
+      # A label only (the build decides). Written so the container's own environment reads as production.
+      SITE_ENV: ${SITE_ENV:-production}
+      NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-https://kcprintworks.com}
+    networks:
+      - proxy
+
+networks:
+  proxy:
+    external: true

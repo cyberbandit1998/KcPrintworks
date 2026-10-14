@@ -14,7 +14,7 @@ describe('GET /api/health', () => {
 
 describe('checkout stays disabled until an operator turns it on', () => {
   // The default deployment sets none of CHECKOUT_ENABLED / KCPW_API_URL / KCPW_HANDOFF_SECRET. Turning checkout on is a
-  // deliberate act (see lib/checkout.ts) and is impossible in a production build.
+  // deliberate act (see lib/checkout.ts): a production build needs the same switch plus stricter settings.
   it('reports itself off, and the handoff endpoint refuses', async () => {
     expect(await (await checkoutStatus()).json()).toMatchObject({ enabled: false });
     const response = await handoff(

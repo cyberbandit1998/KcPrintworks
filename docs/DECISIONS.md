@@ -23,6 +23,7 @@ Last updated 2026-10-14. **WooCommerce is the single source of truth; a third-pa
 | ADR-015 | **The cart's free-shipping bar is a display of one configured number** (`FREE_SHIPPING_THRESHOLD`, default $40.00, runtime), computed from the items total only; WooCommerce decides and charges the shipping. When eligibility cannot be known accurately, nothing is shown or promised | **Owner request 2026-10-14. Implemented**, see [FREE-SHIPPING.md](FREE-SHIPPING.md) |
 | ADR-016 | **Navigation, categories as a tree, Featured / New Arrivals, and a WordPress-managed blog, Our Story and Contact** (header Shop \| Game Cases \| Personalized Gifts \| New Arrivals \| Blog \| Cart; categories are settings; content read from the public WordPress REST API through a hardened sanitizer) | **Approved by the owner and implemented 2026-10-14.** Tested against stand-ins; not yet run against the real WordPress |
 | ADR-017 | **Customer reviews are real, approved and moderated**: display only WooCommerce's approved reviews and its own ratings; writing a review is saved as pending by `kcpw-core` 0.2.0, never published by us, never able to claim "verified" | **Approved by the owner and implemented 2026-10-14.** Writing is **off by default** (`REVIEWS_SUBMIT_ENABLED`); the WordPress glue is proven only by the staging checklist |
+| ADR-018 | **Production checkout is allowed, behind strict validation, and a staging build can never reach real payments**: a production image may take checkout only with an https shop, an https storefront address built into the image, the live catalog and a handoff secret; staging only hands a cart to a shop that reports Stripe TEST mode; production only to a shop that returns shoppers to the same storefront. Off by default; a second container runs production beside staging | **Owner request 2026-10-14 (replaces the "never in a production build" rule of ADR-002). Implemented**; tested with stand-ins; the real chain is proven by [CHECKOUT-PRODUCTION.md](CHECKOUT-PRODUCTION.md) §6 |
 
 ## 2. Inputs still needed
 
@@ -333,3 +334,28 @@ Original proposal:
     discovery queries are in docs/WORDPRESS-CONTENT-AND-REVIEWS.md §5. A source label is added only from real data, on request.
 - **Consequences.** Unverified here: the plugin's behavior inside a real WordPress/WooCommerce (comment pipeline, verified meta, moderation email);
   docs/REVIEWS-STAGING-CHECKLIST.md proves it, and never approves a test review.
+
+### ADR-018 — Production checkout, with a guard that keeps staging away from real payments (Owner request 2026-10-14, implemented)
+
+- **Context.** ADR-002's build made checkout impossible in a production build (a deliberate safety while Stripe was unproven). The owner now has a production
+  storefront ready and asked for real checkout, without removing any checkout security. Staging (`dev.kcprintworks.com`) and production (`kcprintworks.com`) share one
+  WooCommerce/Stripe site (`shop.kcprintworks.com`), and the storefront's address is baked into each image.
+- **Decision.**
+  1. The "never in production" rule is replaced by validation. Checkout is **off by default** in every build. A production build turns it on only with
+     `CHECKOUT_ENABLED=true`, an https shop address (no local exception), a 32+ character handoff secret, `CATALOG_SOURCE=woo`, and an https, non-local,
+     path-free storefront address baked into the image that is not the shop's host. Missing settings leave it off and are named (never their values).
+  2. Everything that protects the handoff is unchanged: HMAC-signed requests with timestamp and nonce, replay protection, single-use hashed 10-minute links, the
+     redirect pinned to the shop's origin and one 43-character token, strict bodies with no prices, and a local re-quote before the shop is asked.
+  3. A **shop guard** runs on every checkout press (signed `GET /status`, no caching). A non-production build proceeds only if the shop positively reports Stripe in
+     **test** mode (live, unknown, or unreachable are refusals), so when the shared shop goes live a forgotten switch on staging cannot charge cards. A production
+     build proceeds only if the shop's reported `storefrontUrl` (kcpw-core 0.2.1) has the same origin as the image's address; a shop that does not report one
+     (0.2.0) is allowed but flagged in `/api/checkout-status/`, because it only changes where an error sends the shopper.
+  4. Production is a **separate image** (`...-production`, built by the manual workflow with `site_url`, default `https://kcprintworks.com`) and a **separate
+     container** from its own directory using `docker-compose.production.yml`, which extends the staging definition and renames the project, service and container
+     (a shared service name is a shared DNS alias on the `proxy` network). `deploy.sh` keeps the two apart (`DEPLOY_KIND`).
+  5. `KCPW_STOREFRONT_URL` on the shop must name the production storefront at go-live (one shop, one value).
+- **Alternatives rejected.** Keeping production checkout a code change per release (the request); letting a runtime `SITE_ENV` pick the rules (a staging image could
+  then be made "production"); making staging safe only by documentation (one forgotten `.env` line would charge cards); one container serving both hosts (the baked-in
+  address and indexing behavior differ).
+- **Consequences.** Staging checkout stops working by itself once Stripe is live (use test mode for staging tests or take a staging copy of the shop). Unverified here:
+  the real WordPress/WooCommerce/Stripe chain and the order-received page on the shop host; [CHECKOUT-PRODUCTION.md](CHECKOUT-PRODUCTION.md) §6 proves it.

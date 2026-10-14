@@ -2,7 +2,7 @@
 
 Living document. Update it at the end of every session (see [CLAUDE.md](CLAUDE.md)).
 
-- **Last updated:** 2026-10-14 (session 1, later the same day: after ADR-014 (**WooCommerce is the single source of truth**) the owner approved plan v2, now built: category tree and header, Featured / New Arrivals, WordPress blog + Our Story + Contact, approved reviews and moderated review writing (ADR-016, ADR-017))
+- **Last updated:** 2026-10-14 (session 1, tenth part: production checkout, ADR-018; earlier the same day: after ADR-014 (**WooCommerce is the single source of truth**) the owner approved plan v2, now built: category tree and header, Featured / New Arrivals, WordPress blog + Our Story + Contact, approved reviews and moderated review writing (ADR-016, ADR-017))
 - **Branch:** `claude/hopeful-hamilton-lq8pw6` (no pull request opened; owner has not asked for one)
 - **Environment:** staging only. The **staging** Docker image (noindex, **checkout off**) runs on the owner's VPS; it can read the real WooCommerce catalog
   once the owner adds a Read-only key (`docs/DEPLOYMENT-VPS.md` §9). The WordPress plugin `wordpress/kcpw-core` (cart handoff + personalization) is built
@@ -21,7 +21,8 @@ Living document. Update it at the end of every session (see [CLAUDE.md](CLAUDE.m
 | Independence from the sync service (ADR-014)                | **Done in code and guard.** No Etsy API, credentials, or sync-product names in shipped code; the storefront reads only standard WooCommerce data plus our own `_kcpw_*` meta (`docs/SYNC-INDEPENDENCE.md`). Behavior of ExportYourStore/Nembol toward product meta and IDs is **unverified** |
 | Custom Etsy plugin `kcpw-etsy`                              | **Withdrawn and removed** (built read-only earlier the same day, never installed; recoverable with `git show 29cc10f:wordpress/kcpw-etsy`) |
 | Step 3a: `kcpw-core` WordPress plugin (handoff + personalization) | **Built; logic proven by shared TS/PHP vectors; WordPress/WooCommerce glue verified with stubs only.** Not installed |
-| Step 3b: storefront cart handoff (`/api/cart/handoff/`)     | **Built and tested end to end against a stand-in shop.** Off by default; impossible in a production build |
+| Step 3b: storefront cart handoff (`/api/cart/handoff/`)     | **Built and tested end to end against a stand-in shop.** Off by default in every build; a production build may take it only under the stricter rules of ADR-018 |
+| Production checkout (ADR-018, owner request 2026-10-14)     | **Built; tested with stand-ins only; OFF by default; nothing deployed or changed on the VPS, WordPress, Stripe or DNS.** Production image (`-production` tag) + a second container (`docker-compose.production.yml`) beside staging; staging refuses a shop in live Stripe mode; production refuses a shop that returns shoppers elsewhere. Runbook [docs/CHECKOUT-PRODUCTION.md](docs/CHECKOUT-PRODUCTION.md); the real shop/Stripe chain is proven by its §6 |
 | Stripe checkout (official WooCommerce plugin, test mode)    | **Nothing of ours touches payment.** Owner configures the Stripe plugin on staging; runbook `docs/CHECKOUT-STAGING-CHECKLIST.md`. Not yet run |
 | Navigation, categories, Featured, New Arrivals (plan v2, ADR-016) | **Built and tested against a mock store using the owner's verified category ids/slugs.** Header Shop \| Game Cases \| Personalized Gifts \| New Arrivals \| Blog \| Cart (responsive, no-JS menu); Game Cases includes Card Games; header categories are settings; New Arrivals by publication date. **Not yet seen against the live catalog** |
 | Blog, Our Story, Contact from WordPress (ADR-016)          | **Built and tested against a WordPress stand-in** (hostile markup, protected/draft posts, outages, paging, sitemap, JSON-LD). **Not yet run against the real WordPress** (checks in `docs/WORDPRESS-CONTENT-AND-REVIEWS.md` §9) |
@@ -229,8 +230,11 @@ Full text in [docs/DECISIONS.md](docs/DECISIONS.md).
 - The Dockerfile cannot be built in this sandbox (no Docker daemon); CI verifies it. Only the amd64 architecture is built.
 - Open decisions that block personalization work: icons (curated list vs free emoji, because the validator rejects the
   zero-width joiner that many emoji contain), cable colors, the order sample (Q3).
-- Checkout is **off by default** and cannot be enabled in a production build (`lib/checkout.ts`); the handoff has only run against a stand-in shop. Coupons are rejected in the
+- Checkout is **off by default** in every build and may be enabled in a production build only under the ADR-018 rules (`lib/checkout.ts`, `lib/handoff/shop-guard.ts`); the handoff has only run against a stand-in shop.
+  One shop has one `KCPW_STOREFRONT_URL`: it must name the production storefront at go-live, after which a staging container's checkout refuses (live Stripe mode) by design. Coupons are rejected in the
   quote (the shopper can enter one on the WooCommerce checkout).
+- `/api/cart/handoff/` has the same body-size check and **no rate limiting** either (neither has an origin check; both are cookie-less and return only to the caller). Each checkout press now makes two signed
+  calls to the shop (status, then handoff), and every successful handoff leaves a short-lived row on the shop (purged daily): worth a limit before heavy traffic.
 - `/api/cart/quote/` has a body-size check but **no rate limiting** yet. No strict CSP with nonces yet (planned
   for Step 10; baseline security headers are set).
 - `sanitize-html` runs on the server at render time (`RichText`), so WooCommerce HTML is sanitized on every path; script/style text is also
@@ -251,6 +255,8 @@ Full text in [docs/DECISIONS.md](docs/DECISIONS.md).
 
 ## Next steps (suggested order)
 
+00. **Production checkout (owner, ADR-018):** build the production image (done by the workflow, tag `...-production`), then follow [docs/CHECKOUT-PRODUCTION.md](docs/CHECKOUT-PRODUCTION.md): second container in
+   `/opt/kcprintworks-production`, `kcpw-core` 0.2.1 and `KCPW_STOREFRONT_URL=https://kcprintworks.com` on the shop, then `CHECKOUT_ENABLED=true` and the §6 test purchase (Stripe test mode first, then one real low-value order).
 0. **Plan v2 (owner):** deploy the new staging image, then follow [docs/WORDPRESS-CONTENT-AND-REVIEWS.md](docs/WORDPRESS-CONTENT-AND-REVIEWS.md) §9: write the `our-story` and `contact` pages and a first
    post in WordPress, star the Featured products, check `/api/catalog-status/`. When ready to take reviews: update `kcpw-core` to 0.2.0 on **staging** and follow
    [docs/REVIEWS-STAGING-CHECKLIST.md](docs/REVIEWS-STAGING-CHECKLIST.md) (a test review is trashed, never approved). Send back the Etsy-reviews discovery query results (§5 of the WordPress guide) if you want imported reviews labelled.
@@ -280,6 +286,12 @@ Full text in [docs/DECISIONS.md](docs/DECISIONS.md).
 
 ## Session log
 
+- **2026-10-14, session 1 (tenth part): production checkout (ADR-018, owner request).** `lib/checkout.ts` no longer refuses production builds; it validates them (https shop with no local exception, https storefront address built into the image, `CATALOG_SOURCE=woo`, shop host different from the storefront's, 32+ character secret) and stays **off by default** everywhere.
+  A per-press **shop guard** (`lib/handoff/shop-guard.ts`, signed `GET /status`, never cached): a non-production build hands a cart over only to a shop that reports Stripe TEST mode (so staging cannot reach real payments once the shared shop goes live); a production build only to a shop whose reported `storefrontUrl`
+  (kcpw-core **0.2.1**, new) has the image's origin. `/api/checkout-status/` now reports `environment`, `allowed`, `blocked` and `returnAddress`. All signing, replay protection, single-use hashed 10-minute links, redirect pinning and strict-body rules are unchanged. Deploy: `docker-compose.production.yml` (extends the staging definition; separate project, service and container names, because a
+  shared service name is a shared DNS alias on the `proxy` network), `.env.production.example`, `deploy.sh` `DEPLOY_KIND` (refuses an image of the other kind, and a production directory not using the production compose file), workflow `site_url` input (production default `https://kcprintworks.com`, validated), per-environment concurrency, and production smoke steps.
+  Verified here: `npm run check` with the export aside (guard, format, lint, typecheck, 368 + 111 unit tests, 53 script tests, 98 PHP tests, build), 221 e2e, a locally built **production** standalone bundle run with a hostile `SITE_ENV=staging` / `NEXT_PUBLIC_SITE_URL=http://evil.example` (it stayed production and `https://kcprintworks.com`) through all five checkout smoke cases, `docker compose config` for both instances.
+  Caught on the way: `.env.production.example` was hidden by both `.gitignore` and `.dockerignore` (`.env.*`); fixed and tested. **Not verified (sandbox cannot reach them):** a real WordPress/WooCommerce running `kcpw-core`, Stripe, the order-received page, and Docker itself (CI builds the image). Nothing on the VPS, WordPress, Stripe or DNS was touched.
 - **2026-10-14, session 1 (ninth part): two small changes.** (1) Desktop header: the five links now sit against the Cart button, exactly 32px from Blog to Cart (`.site-nav` is end-aligned in the header grid with a margin that makes
   the 1.5rem grid gap 2rem); the logo and Cart did not move (measured before and after: brand x and cart right edge identical at 960 to 1920px); mobile menu and styling untouched; tested at 960, 1024, 1280, 1440 and 1920. (2) Contact page:
   a Contact Form 7 shortcode, or its rendered form (text included), is removed from WordPress content (`lib/wp/sanitize.ts`, applies to all WordPress pages and posts, with the empty wrappers it leaves); the page's words stay editable in

@@ -62,11 +62,13 @@ Then `./deploy.sh "$(grep '^IMAGE_TAG=' .env | cut -d= -f2-)"` (same image, new 
 
 ```bash
 curl -s https://YOUR-STAGING-STOREFRONT/api/checkout-status/
-# expect: {"enabled":true,"shop":{"reachable":true,"plugin":"0.1.0", ... "stripeActive":true,"stripeTestMode":true}}
+# expect: {"enabled":true,"environment":"staging","allowed":true,"returnAddress":"not_checked","shop":{"reachable":true,"plugin":"0.2.1", ... "stripeActive":true,"stripeTestMode":true}}
 ```
 
-`reachable:false` names the reason ("did not accept the signature" = the two secrets differ; "route not found" = the plugin is not active).
-A production image ignores these settings, by design.
+`allowed` is what the next shopper would get. `"allowed":false` names why: `unreachable` (the line below), or `live_mode_blocked`: a staging build only hands carts to a shop
+that reports Stripe in **test** mode, so this appears the moment the shop is switched to live (by design: staging must never reach real payments).
+The shop block's `reachable:false` names the reason ("did not accept the signature" = the two secrets differ; "route not found" = the plugin is not active).
+A production image is a different image with its own rules: [CHECKOUT-PRODUCTION.md](CHECKOUT-PRODUCTION.md).
 
 ### If the cart still says "Online checkout is not open on this site yet"
 

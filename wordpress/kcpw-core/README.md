@@ -1,6 +1,6 @@
 # KCPrintWorks Core (checkout link and personalization)
 
-Version 0.2.0. A WordPress plugin for the shop site (WooCommerce). It does four things and nothing else:
+Version 0.2.1. A WordPress plugin for the shop site (WooCommerce). It does four things and nothing else:
 
 1. **Checkout link.** The storefront (a separate Next.js site) sends the cart to this plugin, server to server, signed with a shared secret.
    The plugin validates every line against WooCommerce (product exists and is for sale, the chosen variation is valid including WooCommerce's
@@ -29,7 +29,7 @@ Two constants in `wp-config.php`:
 | Constant | Meaning |
 |---|---|
 | `KCPW_HANDOFF_SECRET` | 32+ random characters, the same value as the storefront's `KCPW_HANDOFF_SECRET`. Without it every request is refused (HTTP 503) |
-| `KCPW_STOREFRONT_URL` | The storefront's address, used only to send a shopper back to the cart if the cart changed or the link was already used |
+| `KCPW_STOREFRONT_URL` | The storefront's address, used only to send a shopper back to the cart if the cart changed or the link was already used. Reported by `GET /status` (0.2.1) so the storefront can refuse a shop that would return shoppers to a different site: **one shop serves one storefront**, so set it to `https://kcprintworks.com` when production checkout goes live (see [docs/CHECKOUT-PRODUCTION.md](../../docs/CHECKOUT-PRODUCTION.md)) |
 
 ## What it stores
 

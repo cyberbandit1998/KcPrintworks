@@ -19,6 +19,11 @@ export function createMockWoo(options?: { port?: number; key?: string; secret?: 
   readonly baseUrl: string;
   start(): Promise<string>;
   stop(): Promise<void>;
+  setShopStatus(fields: {
+    stripeTestMode?: boolean | null;
+    stripeActive?: boolean;
+    storefrontUrl?: string | null;
+  }): void;
   edit(id: number, fields: Record<string, unknown>): void;
   readonly data: ReturnType<typeof import('./woo-fixture.mjs').createFixture>;
 };

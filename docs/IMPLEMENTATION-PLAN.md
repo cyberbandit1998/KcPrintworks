@@ -33,7 +33,7 @@ Nothing below happens without your explicit go-ahead.
 | G0 | Any work against a real WordPress host | Discovery inventory reviewed; a staging clone exists; production is not touched |
 | G1 | Step 2 | Storefront design |
 | G2 | Step 10 | Payment readiness report (test mode only) |
-| G3 | Switching checkout on in any container | The owner turns it on in the staging `.env`, after the staging checklist; never in a production image |
+| G3 | Switching checkout on in any container | The owner turns it on in that container's `.env`: staging after the staging checklist; production only after the steps in [CHECKOUT-PRODUCTION.md](CHECKOUT-PRODUCTION.md) §6 (ADR-018) |
 | G3b | Letting shoppers write reviews | Update `kcpw-core` to 0.2.0 on **staging** first ([REVIEWS-STAGING-CHECKLIST.md](REVIEWS-STAGING-CHECKLIST.md)), then `REVIEWS_SUBMIT_ENABLED=true` in the staging `.env`; the live site's plugin is a separate approval (G6). Reviews are only ever saved as pending |
 | G6 | Any production change | Live Stripe keys and webhook, Apple Pay domain, DNS (including creating `shop.`), SSL, cutover per MIGRATION §9, redirects, launch checklist signed |
 
