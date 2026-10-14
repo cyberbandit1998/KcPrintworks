@@ -62,7 +62,7 @@ personalization vectors and a graph test that keeps zod out of the browser entry
 they read the gitignored export), **46** script tests (analyzer, duplicate/category/stock recommenders, read-only fetcher, variation comparison,
 deploy script, freshness script), **106** PHP tests / 5,610 assertions for `kcpw-etsy`, and **65** Playwright e2e tests (axe WCAG 2.2 AA on every
 route, no horizontal scroll 320 to 1280 px, keyboard and focus flows, payload and script-size budgets, and 14 against a mock WooCommerce store).
-CI-style run with the export moved aside also passes. GitHub Actions results for the pushed commit: see the session log below.
+CI-style run with the export moved aside also passes. GitHub Actions on `196a701`: **CI green** (run 38493443121, incl. PHP tests and the WooCommerce e2e suite) and **Publish Docker image green** (run 38493443156): tag **`sha-196a701`**, digest `sha256:028a2be5…db805`, smoke-tested normally and with a hostile `SITE_ENV=production` runtime environment.
 
 - **`packages/contracts`:** integer money; plugin-agnostic personalization option schema and `validateOptions`;
   strict product DTO (rejects Etsy fields); strict cart line intents (rejects client prices); `priceLine`
@@ -249,7 +249,7 @@ Full text in [docs/DECISIONS.md](docs/DECISIONS.md).
   `wordpress/kcpw-etsy` v0.1.0 (Seller App connection, read-only client, token vault, listing download, matching report + decisions, dry-run planner, admin screens,
   packaging, CI) with 106 PHP tests; built the storefront's WooCommerce read-only catalog source (cache, signed refresh, status endpoint, image-host allowlist, per-request
   rendering), the freshness script, a mock WooCommerce store, and 14 e2e tests; hardened the Docker/compose/CI path (SITE_ENV cannot be overridden at run time; optimizer
-  smoke test). Nothing on the live site, VPS, Nginx Proxy Manager, DNS, Etsy, or Stripe was touched.
+  smoke test). Published `sha-196a701` (CI and image workflows green). Nothing on the live site, VPS, Nginx Proxy Manager, DNS, Etsy, or Stripe was touched.
 
 - **2026-10-13, session 1 (continued, third part):** variation performance (compact purchase model, zod-free browser
   entry, budgets); photo hero; Docker image and GHCR workflow (built, smoke-tested, and published `sha-fe36462`),

@@ -62,6 +62,12 @@ Today the repository's only branch is `claude/hopeful-hamilton-lq8pw6`, and it i
 First verified build: **`sha-fe36462`** (digest `sha256:2a0959c0a5e76429bd6d4ba13ab447b00a7fcafc418cbd76de4c2d2500a39265`), built, smoke-tested, and pushed by
 [run 38485962263](https://github.com/cyberbandit1998/KcPrintworks/actions/runs/38485962263).
 
+Step 2 build (WooCommerce source, Etsy-master docs): **`sha-196a701`** (digest `sha256:028a2be5887c7bb9ab7de8161838c1f1652e205c26fe2f2dbb5430db015db805`), built, smoke-tested twice (normal, and
+with a hostile `SITE_ENV=production` run-time environment on a read-only, capability-free container), and pushed by
+[run 38493443156](https://github.com/cyberbandit1998/KcPrintworks/actions/runs/38493443156); CI
+[run 38493443121](https://github.com/cyberbandit1998/KcPrintworks/actions/runs/38493443121) passed (including the PHP plugin tests and the WooCommerce e2e suite).
+Later documentation-only commits publish new tags with identical code; `sha-196a701` is the one that was verified and handed over.
+
 Find the tag for a build in the run's **Summary** page (it lists every tag and the digest), or on the repository's **Packages** page.
 
 ## 2. One-time VPS setup (`/opt/kcprintworks-nextjs`)
