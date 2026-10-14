@@ -7,6 +7,12 @@ import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypt
 import { createServer } from 'node:http';
 import { pathToFileURL } from 'node:url';
 import { createFixture } from './woo-fixture.mjs';
+import {
+  answerStoreReviews,
+  answerWp,
+  createReviewsFixture,
+  createWpFixture,
+} from './wp-fixture.mjs';
 
 const SVG =
   '<svg xmlns="http://www.w3.org/2000/svg" width="400" height="400"><rect width="400" height="400" fill="#c7d2d6"/></svg>';
@@ -100,10 +106,22 @@ function resolveLine(data, line) {
 export function createMockWoo({ port = 0, key = MOCK_KEY, secret = MOCK_SECRET } = {}) {
   let host = `http://127.0.0.1:${port}`;
   let data = createFixture(host);
-  const log = { requests: [], writes: 0, unauthorized: 0, core: [] };
+  let wp = createWpFixture(host);
+  let reviews = createReviewsFixture();
+  const log = {
+    requests: [],
+    writes: 0,
+    unauthorized: 0,
+    core: [],
+    wp: [],
+    store: [],
+    reviews: [],
+  };
   const handoffs = new Map();
   // How the stand-in shop answers a handoff: normal | down (503) | foreign_redirect | wrong_path (a hostile or broken shop).
   let handoffMode = 'normal';
+  // How the stand-in plugin answers a review submission: normal | closed | verification | notfound | limited | error | down.
+  let reviewMode = 'normal';
   const expected = `Basic ${Buffer.from(`${key}:${secret}`).toString('base64')}`;
 
   const json = (res, status, body, headers = {}) => {
@@ -130,12 +148,18 @@ export function createMockWoo({ port = 0, key = MOCK_KEY, secret = MOCK_SECRET }
         if (url.pathname === '/__mock/log') return json(res, 200, log);
         if (url.pathname === '/__mock/reset') {
           data = createFixture(host);
+          wp = createWpFixture(host);
+          reviews = createReviewsFixture();
+          log.wp = [];
+          log.store = [];
           log.requests = [];
           log.writes = 0;
           log.unauthorized = 0;
           log.core = [];
           handoffs.clear();
           handoffMode = 'normal';
+          reviewMode = 'normal';
+          log.reviews = [];
           return json(res, 200, { ok: true });
         }
         if (url.pathname === '/__mock/product') {
@@ -144,6 +168,77 @@ export function createMockWoo({ port = 0, key = MOCK_KEY, secret = MOCK_SECRET }
           Object.assign(row, input.fields, {
             date_modified_gmt: new Date().toISOString().slice(0, 19),
           });
+          return json(res, 200, { ok: true });
+        }
+        // Add `count` published products to one category (for pagination tests); a reset removes them again.
+        if (url.pathname === '/__mock/bulk') {
+          const categoryId = Number(input.categoryId);
+          const found = data.categories.find((c) => c.id === categoryId);
+          if (!found) return json(res, 404, { error: 'no such category' });
+          for (let n = 1; n <= Number(input.count ?? 0); n += 1) {
+            const id = 1000 + n;
+            data.products.push({
+              ...data.products.find((p) => p.id === 109),
+              id,
+              name: `Synthetic Bulk ${String(n).padStart(2, '0')}`,
+              slug: `synthetic-bulk-${String(n).padStart(2, '0')}`,
+              price: '5.00',
+              regular_price: '5.00',
+              categories: [{ id: found.id, name: found.name, slug: found.slug }],
+              date_created_gmt: `2026-07-${String(n).padStart(2, '0')}T10:00:00`,
+              menu_order: 50,
+            });
+          }
+          return json(res, 200, { ok: true });
+        }
+        if (url.pathname === '/__mock/category') {
+          const row = data.categories.find((c) => c.id === input.id);
+          if (!row) return json(res, 404, { error: 'no such category' });
+          Object.assign(row, input.fields);
+          return json(res, 200, { ok: true });
+        }
+        // Reviews (WooCommerce Store API): { failing } switches it off; { add } adds an approved review row; { remove } deletes by id.
+        if (url.pathname === '/__mock/reviews') {
+          if ('failing' in input) reviews.failing = Boolean(input.failing);
+          if ('submitMode' in input) reviewMode = String(input.submitMode);
+          if (input.add) reviews.rows.push(input.add);
+          if (input.remove) reviews.rows = reviews.rows.filter((r) => r.id !== input.remove);
+          return json(res, 200, { ok: true });
+        }
+        // WordPress content: { failing } switches the REST API off; { bulkPosts } adds published posts (pagination);
+        // { addPage } / { removePage } manage pages by slug; { editPost } changes a post by id.
+        if (url.pathname === '/__mock/wp') {
+          if ('failing' in input) wp.failing = Boolean(input.failing);
+          for (let n = 1; n <= Number(input.bulkPosts ?? 0); n += 1) {
+            wp.posts.push(
+              wp.post(
+                100 + n,
+                `bulk-post-${String(n).padStart(2, '0')}`,
+                `Bulk post ${String(n).padStart(2, '0')}`,
+                `2026-08-${String(n).padStart(2, '0')}`,
+              ),
+            );
+          }
+          if (input.addPage) {
+            wp.pages.push({
+              ...wp.post(
+                900 + wp.pages.length,
+                input.addPage.slug,
+                input.addPage.title,
+                '2026-09-02',
+              ),
+              type: 'page',
+              categories: undefined,
+              tags: undefined,
+              content: { rendered: input.addPage.html, protected: false },
+            });
+          }
+          if (input.removePage) wp.pages = wp.pages.filter((p) => p.slug !== input.removePage);
+          if (input.editPost) {
+            const row = wp.posts.find((p) => p.id === input.editPost.id);
+            if (!row) return json(res, 404, { error: 'no such post' });
+            Object.assign(row, input.editPost.fields);
+          }
           return json(res, 200, { ok: true });
         }
         if (url.pathname === '/__mock/handoff') {
@@ -166,6 +261,33 @@ export function createMockWoo({ port = 0, key = MOCK_KEY, secret = MOCK_SECRET }
       return res.end(SVG);
     }
 
+    // ---- WordPress REST (wp/v2): public content, answered WITHOUT credentials like the real thing. The log records whether a
+    // credential was ever sent, because the storefront must not send one to read published posts.
+    if (url.pathname.startsWith('/wp-json/wp/v2/')) {
+      log.wp.push({
+        method: req.method,
+        path: url.pathname,
+        search: url.search,
+        credentialSent: Boolean(req.headers.authorization),
+      });
+      if (req.method !== 'GET') return json(res, 405, { code: 'mock_read_only' });
+      const answer = answerWp(url, wp);
+      return json(res, answer.status, answer.body, answer.headers);
+    }
+
+    // ---- WooCommerce Store API (public): approved reviews. Answered WITHOUT credentials like the real one.
+    if (url.pathname.startsWith('/wp-json/wc/store/v1/')) {
+      log.store.push({
+        method: req.method,
+        path: url.pathname,
+        search: url.search,
+        credentialSent: Boolean(req.headers.authorization),
+      });
+      if (req.method !== 'GET') return json(res, 405, { code: 'mock_read_only' });
+      const answer = answerStoreReviews(url, reviews);
+      return json(res, answer.status, answer.body, answer.headers);
+    }
+
     // ---- kcpw-core stand-in
     if (url.pathname.startsWith('/wp-json/kcpw/v1/')) {
       let raw = '';
@@ -186,6 +308,41 @@ export function createMockWoo({ port = 0, key = MOCK_KEY, secret = MOCK_SECRET }
             stripeActive: true,
             stripeTestMode: true,
           });
+        }
+        // A review submission. Only the fields the storefront may send are accepted. The review is only LOGGED here (for the test
+        // to inspect): it is never added to the Store API stand-in, so no test can ever publish a testimonial.
+        if (route === '/kcpw/v1/reviews' && req.method === 'POST') {
+          if (reviewMode === 'down')
+            return json(res, 503, { code: 'kcpw_not_ready', message: 'Not set up.' });
+          let review;
+          try {
+            review = JSON.parse(raw);
+          } catch {
+            return json(res, 400, { ok: false, status: 'invalid_request' });
+          }
+          const allowed = ['productId', 'rating', 'name', 'email', 'review', 'clientKey'];
+          const extra = Object.keys(review).filter((k) => !allowed.includes(k));
+          if (extra.length)
+            return json(res, 400, {
+              ok: false,
+              status: 'invalid_request',
+              problems: extra.map((field) => ({
+                field,
+                code: 'unknown_field',
+                message: 'Unknown field.',
+              })),
+            });
+          log.reviews.push(review);
+          const refusals = {
+            closed: [403, 'reviews_closed'],
+            verification: [403, 'verification_required'],
+            notfound: [404, 'product_not_found'],
+            limited: [429, 'rate_limited'],
+            error: [500, 'server_error'],
+          };
+          const refusal = refusals[reviewMode];
+          if (refusal) return json(res, refusal[0], { ok: false, status: refusal[1] });
+          return json(res, 200, { ok: true, status: 'received' });
         }
         if (route !== '/kcpw/v1/cart/handoff' || req.method !== 'POST')
           return json(res, 404, { code: 'rest_no_route' });
@@ -317,6 +474,7 @@ export function createMockWoo({ port = 0, key = MOCK_KEY, secret = MOCK_SECRET }
       if (actual !== port) {
         host = `http://127.0.0.1:${actual}`;
         data = createFixture(host); // photo addresses carry the real port
+        wp = createWpFixture(host);
       }
       return host;
     },

@@ -2,9 +2,9 @@
 
 The home page banner uses the owner's workshop photograph, in two crops of the same picture:
 
-| File | Size | Used for |
-|---|---|---|
-| `kcprintworks-hero.webp` | 1916 x 821 | desktop and tablet (full photograph) |
+| File                            | Size       | Used for                                           |
+| ------------------------------- | ---------- | -------------------------------------------------- |
+| `kcprintworks-hero.webp`        | 1916 x 821 | desktop and tablet (full photograph)               |
 | `kcprintworks-hero-mobile.webp` | 1100 x 821 | phones (the printers' side of the same photograph) |
 
 The full-resolution original is `apps/storefront/assets/hero/wide-photo-original.png` (kept **outside** `public/`, so it is not served

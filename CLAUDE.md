@@ -36,7 +36,12 @@ The overall architecture was approved on 2026-10-13.
    `docs/discovery/INVENTORY.md`; plugins, hosting, DNS, orders, and what either sync service does are unknown. Fixture data is synthetic and says so. Do not assume
    customers upload images. The live WooCommerce data, a real WordPress/WooCommerce running `kcpw-core`, and Stripe are **unverified** (the sandbox reaches none of them);
    tests use stand-ins and synthetic fixtures, and docs must say so.
-8. **No secrets in the repo.** `.env*` (except `.env.example`) is gitignored; secrets live in host env or
+8. **Reviews are real, approved, and moderated.** Never show an unapproved, invented, or store-wide rating; "verified" only from WooCommerce's own mark; a review submission is saved
+   PENDING by `kcpw-core` and never published by us; a request must never be able to carry "verified", "approved", or a status (the shared vectors in `packages/contracts/test/vectors/reviews.json`
+   keep the storefront and the plugin identical). Writing reviews is OFF unless `REVIEWS_SUBMIT_ENABLED=true`. A test review on the live WooCommerce is trashed, never approved.
+9. **We never create, rename, move, or assign WooCommerce categories**, and never write to WordPress. The blog and pages are read from the public REST API; HTML from WordPress is untrusted
+   (`lib/wp/sanitize.ts`).
+10. **No secrets in the repo.** `.env*` (except `.env.example`) is gitignored; secrets live in host env or
    `wp-config.php`. Never paste tokens into an AI session.
 
 ## Repository map
@@ -49,6 +54,10 @@ apps/storefront/            Next.js 16 App Router storefront (TypeScript)
   src/lib/catalog/          CatalogSource interface; fixtures; export (design preview); woo/ = the WooCommerce REST source (GET only, SWR cache)
   src/app/api/              cart/quote, cart/handoff (to kcpw-core), health, catalog-status, checkout-status, revalidate (signed "refresh now")
   src/lib/handoff/          request signing + the server-to-server client for kcpw-core (never in the browser)
+  src/lib/wp/               WordPress content (blog, Our Story, Contact): read-only wp/v2 client, zod schemas (loose), hardened HTML sanitizer, keyed SWR cache source,
+                            built-in sample content (fixture-client) used when CATALOG_SOURCE is not woo. src/lib/content-cache.ts = the cache + "refresh now" registry
+  src/lib/reviews/          approved reviews from WooCommerce's PUBLIC Store API (display) + the submission path (config, signed form token, rate limiter, handler, upstream)
+  src/lib/nav.ts, lib/catalog/queries.ts   header slots (runtime-configurable) and the pure category-tree / Featured / New Arrivals / sort / paginate logic
   src/lib/cart/             pure cart logic (cart-state.ts) + localStorage store (store.ts)
   src/styles/               tokens.css (brand + semantic tokens), base.css, components.css
   tests/unit/               Vitest;  tests/e2e/  Playwright + axe
@@ -61,7 +70,7 @@ scripts/discovery/          analyze-wc-export.mjs: read-only analysis of a WooCo
 docs/                       architecture, payments, sync independence, checkout checklist, plan, migration, discovery, decisions
 Dockerfile, deploy/         Docker image (Next.js standalone, multi-stage) and the VPS compose + deploy.sh; see docs/DEPLOYMENT-VPS.md
 .github/workflows/          ci.yml (checks) and docker-publish.yml (build, smoke-test, publish to GHCR)
-wordpress/kcpw-core/        WordPress plugin (v0.1.0): checkout link (quote + single-use handoff), personalization editor/validation/order-item meta.
+wordpress/kcpw-core/        WordPress plugin (v0.2.0): checkout link (quote + single-use handoff), personalization editor/validation/order-item meta, and pending-review intake (`src/Reviews`).
                             Pure PHP core (no WP calls; tested with shared vectors) + thin `src/Wp` layer (tested with stubs); `php tests/run.php`
 ```
 
@@ -127,6 +136,8 @@ ADRs updated if a decision changed.
   `staging` = noindex. A production image is a deliberate manual workflow run and needs the owner's approval.
 - Pages are **rendered per request** (`dynamic = 'force-dynamic'` in the root layout) because the catalog is read from WooCommerce at run time. Runtime-only settings: `CATALOG_SOURCE`
   (`fixtures` default | `woo`), `WC_BASE_URL`, `WC_CONSUMER_KEY`/`WC_CONSUMER_SECRET` (a **Read-only** key the owner creates), `CATALOG_REVALIDATE_SECONDS`, `REVALIDATE_SECRET`,
+  and for header/content/reviews `NAV_GAME_CASES`, `NAV_PERSONALIZED_GIFTS`, `HIDDEN_CATEGORY_SLUGS`, `WP_BASE_URL` (defaults to `WC_BASE_URL`), `OUR_STORY_SLUG`, `CONTACT_PAGE_SLUG`, `BLOG_PER_PAGE`,
+  `HOME_REVIEWS_MIN_RATING`, `REVIEWS_SUBMIT_ENABLED` (default false), `REVIEWS_RATE_LIMIT`, `REVIEWS_RATE_LIMIT_ALL` (see [docs/WORDPRESS-CONTENT-AND-REVIEWS.md](docs/WORDPRESS-CONTENT-AND-REVIEWS.md)),
   and for checkout `CHECKOUT_ENABLED` (default false), `KCPW_API_URL` (falls back to `KCPW_SHOP_URL`, then `WC_BASE_URL`), `KCPW_HANDOFF_SECRET`; for the cart's free-shipping bar `FREE_SHIPPING_THRESHOLD` (default `$40.00`, `off` hides it) and `FREE_SHIPPING_BEFORE_DISCOUNTS`. They live only in the VPS `.env`.
   Never put them in the image, the repo, a test, or a chat. See [docs/WOOCOMMERCE-CATALOG.md](docs/WOOCOMMERCE-CATALOG.md).
 - Never touch WordPress, MariaDB, Nginx Proxy Manager, DNS, or Stripe from these files. `deploy.sh` only runs `docker compose` for this
@@ -168,7 +179,10 @@ and the Ubuntu archive work. Consequences:
 - Use absolute paths in shell commands; the working directory can shift between calls.
 - Playwright `expect(bigString).not.toContain(x)` prints the whole string on failure (megabytes of page source): assert `.includes(x)` is `false` with a message instead.
 - Tests that read `docs/discovery/raw/products.csv` (gitignored) must skip **and** load lazily; simulate CI by moving it aside (`mv docs/discovery/raw/products.csv /tmp/...`) before pushing.
-- Playwright runs files in parallel: specs that share the mock store (`woo-catalog.spec.ts`) must stay in ONE file with `mode: 'serial'`.
+- Playwright runs files in parallel: specs that share the mock store (`woo-catalog.spec.ts`) must stay in ONE file with `mode: 'serial'`. That includes the blog / reviews / review-form tests that
+  use the mock WordPress, Store API and kcpw-core stand-in (`tests/support/wp-fixture.mjs`, `mock-woo.mjs`). Specs on the default server (fixtures, port 3100) are `blog.spec.ts` and `reviews.spec.ts`.
+- The review form needs 3 seconds after the page is drawn (a bot filter): e2e waits before sending. On the woo server a page-wide `getByRole('radio')` / `getByLabel('Name')` also matches the review form: scope to `.pdp`.
+- WordPress REST: `_fields` hides everything not listed, and `_embed` only appears if `_embedded`/`_links` are in `_fields` (the mock imitates this). `has_password=false` keeps protected posts out of counts.
 - A mid-load `invalidate()` must not be lost: `SwrCache` uses a generation counter; do not "simplify" it back to a boolean.
 - WordPress/PHP: the plugin core must not call WordPress functions (a test enforces it); anything needing WP goes in `src/Wp` behind an interface, with a fake in `tests/`.
 

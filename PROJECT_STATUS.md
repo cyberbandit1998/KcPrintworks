@@ -2,7 +2,7 @@
 
 Living document. Update it at the end of every session (see [CLAUDE.md](CLAUDE.md)).
 
-- **Last updated:** 2026-10-14 (session 1, after ADR-014: **WooCommerce is the single source of truth; the Etsy sync service is the owner's, interchangeable, and not ours**)
+- **Last updated:** 2026-10-14 (session 1, later the same day: after ADR-014 (**WooCommerce is the single source of truth**) the owner approved plan v2, now built: category tree and header, Featured / New Arrivals, WordPress blog + Our Story + Contact, approved reviews and moderated review writing (ADR-016, ADR-017))
 - **Branch:** `claude/hopeful-hamilton-lq8pw6` (no pull request opened; owner has not asked for one)
 - **Environment:** staging only. The **staging** Docker image (noindex, **checkout off**) runs on the owner's VPS; it can read the real WooCommerce catalog
   once the owner adds a Read-only key (`docs/DEPLOYMENT-VPS.md` §9). The WordPress plugin `wordpress/kcpw-core` (cart handoff + personalization) is built
@@ -23,6 +23,10 @@ Living document. Update it at the end of every session (see [CLAUDE.md](CLAUDE.m
 | Step 3a: `kcpw-core` WordPress plugin (handoff + personalization) | **Built; logic proven by shared TS/PHP vectors; WordPress/WooCommerce glue verified with stubs only.** Not installed |
 | Step 3b: storefront cart handoff (`/api/cart/handoff/`)     | **Built and tested end to end against a stand-in shop.** Off by default; impossible in a production build |
 | Stripe checkout (official WooCommerce plugin, test mode)    | **Nothing of ours touches payment.** Owner configures the Stripe plugin on staging; runbook `docs/CHECKOUT-STAGING-CHECKLIST.md`. Not yet run |
+| Navigation, categories, Featured, New Arrivals (plan v2, ADR-016) | **Built and tested against a mock store using the owner's verified category ids/slugs.** Header Shop \| Game Cases \| Personalized Gifts \| New Arrivals \| Blog \| Cart (responsive, no-JS menu); Game Cases includes Card Games; header categories are settings; New Arrivals by publication date. **Not yet seen against the live catalog** |
+| Blog, Our Story, Contact from WordPress (ADR-016)          | **Built and tested against a WordPress stand-in** (hostile markup, protected/draft posts, outages, paging, sitemap, JSON-LD). **Not yet run against the real WordPress** (checks in `docs/WORDPRESS-CONTENT-AND-REVIEWS.md` §9) |
+| Customer reviews: display (ADR-017)                         | **Built; approved reviews from WooCommerce's public Store API, real ratings only.** Tested against a Store API stand-in; not yet against the real shop |
+| Customer reviews: writing, moderated (ADR-017)              | **Built; OFF by default (`REVIEWS_SUBMIT_ENABLED`).** Needs `kcpw-core` 0.2.0 on the shop (not installed anywhere). Rules proven by shared TS/PHP vectors; the WordPress glue only by stubs: `docs/REVIEWS-STAGING-CHECKLIST.md` proves it |
 | Deployment of the storefront (staging container, VPS)       | **Image published; owner installs it** (`docs/DEPLOYMENT-VPS.md`). Needs the owner's DNS and Nginx Proxy Manager steps |
 | Step 4: personalized order + payment testing                | Not started (needs staging WordPress with `kcpw-core` and Stripe test keys)                              |
 | Step 10: full integration test and launch readiness         | Not started                                                                                               |
@@ -55,11 +59,14 @@ anywhere, and the cutover (gate G6). Creating the WooCommerce Read-only REST key
 
 ## What exists in the code
 
-Verified on 2026-10-14: `npm run check` and `npm run test:e2e` pass locally: **108** contracts tests (incl. 33 shared personalization vectors,
-29 shared line-pricing vectors, 3 request-signing vectors, and a graph test that keeps zod out of the browser entry), **212** storefront unit tests
-(2 skip in CI because they read the gitignored export), **46** script tests, **66** PHP tests / 725 assertions for `kcpw-core`, and **128** Playwright
-e2e tests (axe WCAG 2.2 AA on every route, no horizontal scroll 320 to 1280 px, keyboard and focus flows, payload and script-size budgets, and 33 against
-a mock WooCommerce store plus a `kcpw-core` stand-in with checkout switched on). The CI-style run with the export moved aside is recorded in the session log.
+Verified on 2026-10-14 (after plan v2): `npm run check` (run with the gitignored export moved aside, as CI sees it) and `npm run test:e2e` pass locally: **111** contracts tests (incl. 33 shared
+personalization vectors, 29 shared line-pricing vectors, **60+ shared review vectors**, 3 request-signing vectors, and a graph test that keeps zod out of the browser entry), **330** storefront unit tests
+(2 more skip in CI because they read the gitignored export), **46** script tests, **98** PHP tests / 1071 assertions for `kcpw-core`, and **219** Playwright e2e tests (axe WCAG 2.2 AA on every
+route including the blog, reviews and the review form, no horizontal scroll 320 to 1280 px, keyboard and focus flows, payload and script-size budgets, hostile-markup and outage tests, and the tests against a mock
+WooCommerce store, a WordPress REST stand-in, a Store API stand-in and a `kcpw-core` stand-in). The Docker smoke script (`scripts/docker-smoke.sh`) also passes against a standalone build here (the Dockerfile itself is verified by the GitHub run).
+Page weight (standalone build, fixtures): every page loads **472 KB of JavaScript decoded / 142 KB gzipped**, the blog and Our Story pages the same as the shop (they add none); a product page 495 KB (the bag tag with 169 variations is the same);
+HTML 13 to 59 KB (7 KB gzipped on the home page); warm server responses 10 to 50 ms; WordPress, the Store API and WooCommerce are asked **0 times** for a repeat view, and 4 times for the first view of a blog post however many links it has;
+the home page's hero keeps `fetchpriority=high` and every other picture is lazy.
 Images: `sha-e2d7c3a` (CI run 38559572272 and image run 38559572315 green; digest `sha256:513a9849…cff607`) and `sha-8529f95` (same code, docs only; the one deployed on staging when the checkout-config problem below was reported). The image for the checkout-config fix is the one from the next push; its tag is in that run's "Publish Docker image" summary.
 
 - **`packages/contracts`:** integer money; plugin-agnostic personalization option schema and `validateOptions`;
@@ -82,7 +89,15 @@ Images: `sha-e2d7c3a` (CI run 38559572272 and image run 38559572315 green; diges
 - **Sync-neutral display policy** `apps/storefront/src/lib/catalog/display-policy.ts`: marketplace-style attributes are hidden from shoppers (display only; list
   extendable with `CATALOG_HIDDEN_ATTRIBUTES`), a generic "Listed with ...com" footer is stripped by shape, and made-to-order is read from a
   tag/attribute/`_kcpw_made_to_order` meta. Nothing names a sync product; `npm run guard` fails if Etsy or a sync-service name appears in shipped code.
-- **`wordpress/kcpw-core` (v0.1.0)** the only first-party WordPress code: a pure PHP core (option validator ported from `validateOptions`, line resolver and
+- **Navigation and catalog browsing (plan v2):** `lib/catalog/queries.ts` (category tree by id with descendants and hidden slugs, sort, paginate, Featured, publication-date
+  New Arrivals), `lib/nav.ts` (header slots resolved per request from `NAV_*`), `components/SiteHeader.tsx` + `NavMenu.tsx` (inline links from 60em, native `<details>` menu below),
+  `/shop/`, `/new-arrivals/`, `/product-category/[...slug]` (nested WooCommerce URLs redirect to the flat canonical), home sections Featured / Shop by Category / New Arrivals.
+- **WordPress content (ADR-016):** `lib/wp/` (read-only wp/v2 client, loose zod schemas, sanitizer, keyed stale-while-revalidate source with a remembered failure and a 300-entry cap,
+  sample content for the preview), routes `/blog/`, `/blog/[slug]/`, `/blog/category|tag/[slug]/`, `/our-story/`, `/contact/`, `/about/` -> `/our-story/`; Article (BlogPosting) + breadcrumb
+  JSON-LD, canonical URLs, sitemap entries, tag pages noindex; `/api/revalidate/` and `/api/catalog-status/` cover it.
+- **Reviews (ADR-017):** `lib/reviews/` (Store API source, name shortening, stars, rating JSON-LD) and the submission path (`/api/reviews/`, signed form token, honeypot, same-site check, rate limits,
+  `kcpw-core` 0.2.0 `Reviews/` + `WcReviewGateway`); `packages/contracts` `review-logic.ts` with 60+ shared vectors.
+- **`wordpress/kcpw-core` (v0.2.0; checkout and personalization from v0.1.0)** the only first-party WordPress code: a pure PHP core (option validator ported from `validateOptions`, line resolver and
   pricing ported from `priceLine`, HMAC request verifier, single-use handoff tokens: 43 chars, SHA-256 hash stored, 10-minute TTL, intents stored not prices) and a thin
   `src/Wp` layer (REST routes `/kcpw/v1/cart/quote`, `/cart/handoff`, `/status`; cart rebuild on redemption through `WC()->cart->add_to_cart()`; a
   "Personalization" product tab; option charges recomputed from the schema at `woocommerce_before_calculate_totals`; readable order-item meta plus a hidden
@@ -103,7 +118,7 @@ Images: `sha-e2d7c3a` (CI run 38559572272 and image run 38559572315 green; diges
   `@kcpw/contracts/client` (page scripts 645 KB to 532 KB decoded; the quote schema loads lazily on the cart).
 - **Home page:** photo hero with the owner's headline and buttons as real text over a scrim whose worst-case contrast
   is tested; the banner now uses the owner's wide workshop photo (`public/images/kcprintworks-hero.webp` plus a phone crop; see
-  `public/images/README.md`); placeholder `/about/` page.
+  `public/images/README.md`); `/about/` now redirects to `/our-story/`, which shows the WordPress page.
 - **Real-catalog preview:** `apps/storefront/src/lib/catalog/export/` converts the owner's export into DTOs
   (`CATALOG_SOURCE=export`, refused in production builds). Derived URLs and proposed personalization fields are flagged
   in a banner. Display-only cleanup of marketplace attributes, import footers, plain-text descriptions, long titles.
@@ -165,6 +180,14 @@ Full text in [docs/DECISIONS.md](docs/DECISIONS.md).
 
 **Unverified or unknown**
 
+- **Plan v2 has not run against the real WordPress/WooCommerce.** Built and tested against stand-ins written from the documented WordPress REST API, WooCommerce Store API and comment behavior. Specifically unverified: the public
+  `wp/v2` posts/pages/categories/tags with `_embed` and `_fields` on the owner's site (security plugins can block the REST API); the Store API `products/reviews` answer shape and that it lists only approved reviews; that `wp_new_comment` with
+  our filters saves a pending review of type `review` with WooCommerce's `verified` meta on the owner's WooCommerce version; the moderation email; the category ids/slugs (taken from the owner's message, never read from the live site by us). Each has a
+  step in `docs/WORDPRESS-CONTENT-AND-REVIEWS.md` §9 or `docs/REVIEWS-STAGING-CHECKLIST.md`.
+- **Etsy reviews are not shown** (no legitimate data is known to exist in WooCommerce; nothing is scraped). The discovery queries are in the WordPress guide.
+- **Home page review/story sections wait at most 2.5 s** for WordPress/WooCommerce and are left out on a miss; a page of reviews can hold fewer than ten when a row has no star rating (those are never shown).
+- **A product's rating on cards is not shown** (only on the product page and in structured data).
+
 - **`kcpw-core` has never run inside WordPress/WooCommerce** (no PHP runtime with WordPress here; WordPress.org and WooCommerce downloads are blocked): the pure core is
   proven against the TypeScript reference with shared vectors (options, line pricing, request signing), and the glue (`src/Wp`: hooks, REST registration, the product tab,
   the handoff table, cart rebuild, order-item meta) is verified only with WordPress/WooCommerce **stubs**. Expect small fixes on the first staging run; the checklist lists the exact tests.
@@ -194,7 +217,7 @@ Full text in [docs/DECISIONS.md](docs/DECISIONS.md).
   favicon.
 - The home banner uses the owner's wide photograph, **1916 px wide**: crisp up to a 1920 px screen, soft on 4K or very high-density displays.
   An original 2800 to 3200 px wide would fix that with no code change (`public/images/README.md`). The type is the system bold sans (no
-  font download), not a brand typeface. "Our Story" links to a placeholder page.
+  font download), not a brand typeface. "Our Story" shows the WordPress page "our-story" (or "coming soon" until it is written).
 - In the real-catalog preview the product URLs are derived from titles (the export has no permalinks), image alt text
   and sizes are guesses, and the personalization fields are proposed.
 - The container image is a **staging** build: `SITE_ENV`, `NEXT_PUBLIC_SITE_URL`, and `IMAGE_HOSTS` are build-time. Set the repository
@@ -227,6 +250,9 @@ Full text in [docs/DECISIONS.md](docs/DECISIONS.md).
 
 ## Next steps (suggested order)
 
+0. **Plan v2 (owner):** deploy the new staging image, then follow [docs/WORDPRESS-CONTENT-AND-REVIEWS.md](docs/WORDPRESS-CONTENT-AND-REVIEWS.md) §9: write the `our-story` and `contact` pages and a first
+   post in WordPress, star the Featured products, check `/api/catalog-status/`. When ready to take reviews: update `kcpw-core` to 0.2.0 on **staging** and follow
+   [docs/REVIEWS-STAGING-CHECKLIST.md](docs/REVIEWS-STAGING-CHECKLIST.md) (a test review is trashed, never approved). Send back the Etsy-reviews discovery query results (§5 of the WordPress guide) if you want imported reviews labelled.
 1. Owner: answers to INVENTORY.md Q1 to Q9, the rest of the discovery checklist, and G1 design feedback.
 2. Update `docs/discovery/INVENTORY.md` with the answers; decide ADR-007; finalize the migration plan inputs
    (`docs/MIGRATION-SHOP-DOMAIN.md` §11).
@@ -253,6 +279,12 @@ Full text in [docs/DECISIONS.md](docs/DECISIONS.md).
 
 ## Session log
 
+- **2026-10-14, session 1 (eighth part): plan v2, approved by the owner with the verified category ids.** Built in five tested stages (details: ADR-016, ADR-017, `docs/WORDPRESS-CONTENT-AND-REVIEWS.md`): (1) the category tree, the new header (Shop | Game Cases |
+  Personalized Gifts | New Arrivals | Blog | Cart, responsive, native-`<details>` menu, categories configurable per request), Featured Products (WooCommerce star, never padded), New Arrivals by publication date; (2) the blog, Our Story, Contact from WordPress
+  with a hardened sanitizer, SEO, sitemap, JSON-LD, caching and outage behavior; (3) approved reviews, ratings and structured data from WooCommerce; (4) moderated review writing (`/api/reviews/` -> `kcpw-core` 0.2.0, pending only, shared vectors for validation,
+  off by default); (5) documentation, deploy settings, smoke-script updates, performance measurement. **No WooCommerce category, product, setting, DNS, Stripe, shipping, free-shipping, hero or checkout behavior was changed.** Bugs the tests caught on the way:
+  a "refresh now" did not clear a remembered WordPress outage (fixed, unit-tested); the Next link prefetch warms category pages (so outage tests use an unvisited page); `/about/` now redirects, so the smoke script was updated. Nothing was run against the live
+  site. The image tag is in the "Publish Docker image" run summary for the commit that follows this entry.
 - **2026-10-14, session 1 (seventh part):** two requests. (1) **Free-shipping progress bar in the cart** ([docs/FREE-SHIPPING.md](docs/FREE-SHIPPING.md), ADR-015): a display of one
   configured number (`FREE_SHIPPING_THRESHOLD`, default $40.00, `off` hides it; `FREE_SHIPPING_BEFORE_DISCOUNTS`), read at run time, worked out from the items total only (no shipping input exists, so
   the flat rate cannot leak in), updating at once on quantity changes and removals, honoring an optional quote `discount`, and silent (no promise) whenever eligibility cannot be known accurately. Placed

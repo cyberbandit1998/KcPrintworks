@@ -6,6 +6,9 @@ export function createMockWoo(options?: { port?: number; key?: string; secret?: 
     requests: { method: string; path: string; search: string }[];
     writes: number;
     unauthorized: number;
+    wp: { method: string; path: string; search: string; credentialSent: boolean }[];
+    reviews: Record<string, unknown>[];
+    store: { method: string; path: string; search: string; credentialSent: boolean }[];
     core: {
       method: string;
       route: string;

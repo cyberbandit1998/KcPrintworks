@@ -48,6 +48,23 @@ services:
       # the bar. The number must match the minimum of the Free Shipping method in WooCommerce. See docs/FREE-SHIPPING.md.
       FREE_SHIPPING_THRESHOLD: ${FREE_SHIPPING_THRESHOLD:-}
       FREE_SHIPPING_BEFORE_DISCOUNTS: ${FREE_SHIPPING_BEFORE_DISCOUNTS:-false}
+      # Header links and category browsing. The defaults match the shop's WooCommerce categories (slugs game-cases and
+      # personalized-gifts); set these only if a slug changes. A slug or a numeric category id. See docs/WORDPRESS-CONTENT-AND-REVIEWS.md.
+      NAV_GAME_CASES: ${NAV_GAME_CASES:-}
+      NAV_PERSONALIZED_GIFTS: ${NAV_PERSONALIZED_GIFTS:-}
+      HIDDEN_CATEGORY_SLUGS: ${HIDDEN_CATEGORY_SLUGS:-}
+      # The blog, Our Story, and Contact are read from WordPress (public posts and pages, GET only, no key). WP_BASE_URL defaults to WC_BASE_URL.
+      WP_BASE_URL: ${WP_BASE_URL:-}
+      OUR_STORY_SLUG: ${OUR_STORY_SLUG:-}
+      CONTACT_PAGE_SLUG: ${CONTACT_PAGE_SLUG:-}
+      BLOG_PER_PAGE: ${BLOG_PER_PAGE:-}
+      # Customer reviews are shown from WooCommerce's approved reviews. HOME_REVIEWS_MIN_RATING (1-5, default 1) is the lowest rating
+      # the home page shows. Writing a review is OFF unless REVIEWS_SUBMIT_ENABLED=true (needs the kcpw-core plugin 0.2.0 or newer and
+      # the checkout settings above for the shop address and secret); each review is saved as PENDING and approved by a person in WordPress.
+      HOME_REVIEWS_MIN_RATING: ${HOME_REVIEWS_MIN_RATING:-}
+      REVIEWS_SUBMIT_ENABLED: ${REVIEWS_SUBMIT_ENABLED:-false}
+      REVIEWS_RATE_LIMIT: ${REVIEWS_RATE_LIMIT:-}
+      REVIEWS_RATE_LIMIT_ALL: ${REVIEWS_RATE_LIMIT_ALL:-}
       # Keep V8's heap below the container's memory limit so it collects garbage instead of being OOM-killed.
       NODE_OPTIONS: --max-old-space-size=320
 

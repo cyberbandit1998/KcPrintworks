@@ -21,6 +21,8 @@ Last updated 2026-10-14. **WooCommerce is the single source of truth; a third-pa
 | ADR-013 | Etsy is the master product catalog, synchronized by our own plugin | **Superseded the same day by ADR-014** (owner decision) |
 | ADR-014 | **WooCommerce is the single source of truth; the Etsy sync service is external and interchangeable; no custom Etsy integration; the storefront is sync-neutral** | **Owner decision 2026-10-14. Implemented** |
 | ADR-015 | **The cart's free-shipping bar is a display of one configured number** (`FREE_SHIPPING_THRESHOLD`, default $40.00, runtime), computed from the items total only; WooCommerce decides and charges the shipping. When eligibility cannot be known accurately, nothing is shown or promised | **Owner request 2026-10-14. Implemented**, see [FREE-SHIPPING.md](FREE-SHIPPING.md) |
+| ADR-016 | **Navigation, categories as a tree, Featured / New Arrivals, and a WordPress-managed blog, Our Story and Contact** (header Shop \| Game Cases \| Personalized Gifts \| New Arrivals \| Blog \| Cart; categories are settings; content read from the public WordPress REST API through a hardened sanitizer) | **Approved by the owner and implemented 2026-10-14.** Tested against stand-ins; not yet run against the real WordPress |
+| ADR-017 | **Customer reviews are real, approved and moderated**: display only WooCommerce's approved reviews and its own ratings; writing a review is saved as pending by `kcpw-core` 0.2.0, never published by us, never able to claim "verified" | **Approved by the owner and implemented 2026-10-14.** Writing is **off by default** (`REVIEWS_SUBMIT_ENABLED`); the WordPress glue is proven only by the staging checklist |
 
 ## 2. Inputs still needed
 
@@ -284,3 +286,50 @@ Original proposal:
   blue links with underlines on cream; cream or orange (not blue) for links on the dark footer. Contrast ratios
   are asserted by an automated test in the storefront package (ARCHITECTURE §10).
 - **Consequences.** Any new color pairing must pass the test before it ships.
+
+### ADR-016 — Navigation, merchandising, and WordPress-managed content (Approved by the owner 2026-10-14, implemented)
+
+- **Context.** The owner chose the header Shop | Game Cases | Personalized Gifts | New Arrivals | Blog | Cart, supplied and verified the real
+  WooCommerce categories (Game Cases 417 with child Card Games 332; Personalized Gifts 418; New Arrivals 324 and Uncategorized 15 kept out of
+  browsing), and asked for a Featured section, a New Arrivals section, a blog, an Our Story page and a Contact page, all managed in WordPress
+  and WooCommerce. The owner manages categories and assignments by hand; the storefront must not create, rename, move, or assign any.
+- **Decision.**
+  - Categories are read as a tree by **id**. A parent's page lists its descendants' products once each; a parent with only children's
+    products is kept; hidden slugs (`uncategorized`, `new-arrivals`) are configurable. A WooCommerce URL with a parent in it is a redirect to the
+    flat canonical address.
+  - The header's two category links are **settings** (`NAV_GAME_CASES`, `NAV_PERSONALIZED_GIFTS`: slug or id), read per request, so a change
+    needs `docker compose up -d` and never a rebuild. A category that does not exist leaves its link out and is reported in
+    `/api/catalog-status/`; nothing is guessed or created.
+  - **Featured** is WooCommerce's own star, ordered by manual order then newest, at most 8; with none starred the section is not drawn (never
+    padded). **New Arrivals** is ordered strictly by publication date and never uses the New Arrivals category.
+  - The blog, Our Story, and Contact are read from the WordPress REST API (public, GET only, no credential). HTML from WordPress is treated as
+    untrusted: a strict allowlist sanitizer (`lib/wp/sanitize.ts`), YouTube (privacy-enhanced domain) and Vimeo embeds only, sandboxed frames,
+    prefixed ids, WordPress block classes only, links to known posts/pages rewritten to the storefront. Answers are cached with
+    stale-while-revalidate, a remembered failure (no visitor waits out a timeout), and a size cap; slugs WordPress never listed are never asked
+    about. The signed `/api/revalidate/` refreshes this content too. Sections that are a nicety wait at most 2.5 s on the home page.
+  - No text is invented: a missing Our Story or Contact page says "coming soon" and is kept out of search results.
+- **Alternatives.** A custom WordPress read-API plugin (more to maintain; the public REST API is enough); client-side fetching (slower, leaks the
+  WordPress address, no SEO); hard-coding header category ids (breaks if an id changes; a rebuild per change).
+- **Consequences.** The blog needs the WordPress REST API to be public; "disable REST API" plugins break it. Posts exist on two hosts, so the
+  WordPress copy should be noindex (owner's setting). Unverified here: behavior against the live WordPress (docs/WORDPRESS-CONTENT-AND-REVIEWS.md §9).
+
+### ADR-017 — Customer reviews: real, approved, and moderated (Approved by the owner 2026-10-14, implemented; writing is off by default)
+
+- **Decision.**
+  - **Display** uses only what WooCommerce publishes: its own average and count per product, and the approved reviews from the public Store API
+    (no credential, no email). Only whole 1-5 ratings with text are shown. Names are shortened ("Jane D."; an email-like name becomes "Customer").
+    "Verified purchase" only when WooCommerce says so. No store-wide rating and no invented review exist anywhere. Structured data (Product
+    aggregateRating and Review) is built from the same real values.
+  - **Submission** goes browser -> the storefront's own `/api/reviews/` -> `kcpw-core` 0.2.0 (signed, server to server) -> a **pending** WordPress
+    review. Nothing is published automatically, whatever the Discussion settings say. The browser never holds a credential, and a request cannot
+    carry "verified", "approved", or a status (refused as unknown fields; the shared vectors prove the storefront and the plugin agree on the rules).
+    "Verified" is WooCommerce's own call from the email. WooCommerce's "only verified owners" setting is respected. One review per email per product;
+    a repeat looks exactly like a first (no way to learn which emails reviewed what).
+  - **Spam and abuse**: same-site check, JSON only, 8 KB, a signed form token (3 s to 2 h old, bound to the product), a hidden field, no links in
+    the text, limits per visitor / per email / overall (storefront and plugin), invisible/bidi characters refused.
+  - **Privacy**: the email goes only to WordPress; the visitor's address is only ever a keyed hash; submissions are not logged.
+  - **Off by default** (`REVIEWS_SUBMIT_ENABLED`): it needs the plugin update on the shop site, which is a change to that site (staging first).
+  - **Etsy reviews** are not shown and not scraped. If the owner's sync tool already imported reviews they are ordinary approved reviews; the
+    discovery queries are in docs/WORDPRESS-CONTENT-AND-REVIEWS.md §5. A source label is added only from real data, on request.
+- **Consequences.** Unverified here: the plugin's behavior inside a real WordPress/WooCommerce (comment pipeline, verified meta, moderation email);
+  docs/REVIEWS-STAGING-CHECKLIST.md proves it, and never approves a test review.

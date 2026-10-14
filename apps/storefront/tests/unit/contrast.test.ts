@@ -85,6 +85,10 @@ describe('non-text pairings meet 3:1', () => {
     ['progress-edge', 'progress-track'], // the ink edge on the end of the fill, seen against the empty track
     ['progress-edge', 'progress-fill'], // ... and against the orange it closes
     ['progress-fill', 'progress-track'], // the filled part against the empty part (3.14:1)
+    ['rating-edge', 'color-bg'], // the star outline on the page
+    ['rating-edge', 'color-surface'], // ... and on a review card
+    ['rating-edge', 'rating-fill'], // the outline against the filled part
+    ['rating-edge', 'rating-empty'], // ... and against the empty part
   ];
   it.each(pairs)('%s against %s', (fg, bg) => {
     expect(contrastRatio(hex(fg), hex(bg))).toBeGreaterThanOrEqual(3);

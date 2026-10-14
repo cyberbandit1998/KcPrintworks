@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server';
 import { catalogSourceName } from '@/lib/env';
 import { getWooCatalogService, WooNotConfiguredError } from '@/lib/catalog/woo/source';
+import { buildNav, readNavConfig } from '@/lib/nav';
+import { reviewsStatus } from '@/lib/reviews';
+import { contentStatus } from '@/lib/wp';
 
 /**
  * What the storefront currently shows and how fresh it is, for the freshness check in docs/DEPLOYMENT-VPS.md. It lists
@@ -33,10 +36,16 @@ export async function GET() {
           loads: status.loads,
           failures: status.failures,
         },
+        // The blog and the WordPress-managed pages (Our Story, Contact): how many answers are cached and whether any is failing.
+        content: contentStatus(),
+        reviews: reviewsStatus(),
+        // Which WooCommerce category each header link resolved to (by slug or id), so a missing one is visible here.
+        nav: snapshot ? buildNav(snapshot.categories, readNavConfig()).slots : null,
         counts: snapshot
           ? {
               products: snapshot.products.length,
               categories: snapshot.categories.length,
+              featured: snapshot.products.filter((p) => p.featured).length,
               skipped: snapshot.skipped.length,
               rejected: snapshot.rejected.length,
               proposedPersonalization: snapshot.proposedPersonalization,

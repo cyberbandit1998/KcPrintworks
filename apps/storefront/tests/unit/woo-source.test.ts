@@ -202,13 +202,32 @@ describe('loading the whole catalog', () => {
     expect(snapshot.proposedPersonalization).toBeGreaterThan(0);
   });
 
-  it('lists real categories with products and names decoded', () => {
+  it('keeps EVERY category with its parent (an empty parent still exists), and decodes names', () => {
     const slugs = snapshot.categories.map((c) => c.slug);
     expect(slugs).toContain('gifts-keepsakes');
-    expect(slugs).not.toContain('empty-category');
+    expect(slugs).toContain('empty-category'); // kept; the browsing list leaves it out (see the catalog source tests)
     expect(snapshot.categories.find((c) => c.slug === 'gifts-keepsakes')?.name).toBe(
       'Gifts & Keepsakes',
     );
+    const gameCases = snapshot.categories.find((c) => c.slug === 'game-cases');
+    const cardGames = snapshot.categories.find((c) => c.slug === 'card-games');
+    expect(gameCases).toMatchObject({ id: 417, parentId: 0 });
+    expect(cardGames).toMatchObject({ id: 332, parentId: 417 });
+  });
+
+  it("reads Featured, the publication date, the manual order and WooCommerce's own rating", () => {
+    const alpha = snapshot.products.find((p) => p.id === 201)!;
+    expect(alpha).toMatchObject({
+      featured: true,
+      menuOrder: 2,
+      publishedAt: '2026-10-10T10:00:00Z',
+      rating: { average: 4.5, count: 2 },
+      reviewsAllowed: true,
+    });
+    const keychain = snapshot.products.find((p) => p.id === 101)!;
+    expect(keychain.featured).toBe(false);
+    expect(keychain.rating).toBeUndefined(); // no ratings: nothing is shown or invented
+    expect(snapshot.products.find((p) => p.id === 206)?.reviewsAllowed).toBe(false);
   });
 });
 

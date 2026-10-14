@@ -1,10 +1,23 @@
 import { getImageProps } from 'next/image';
 import Link from 'next/link';
-import { toSummary } from '@kcpw/contracts';
 import { JsonLd } from '@/components/JsonLd';
-import { ProductCard } from '@/components/ProductCard';
+import { toSummary } from '@kcpw/contracts';
+import { CategoryTiles } from '@/components/home/CategoryTiles';
+import { FeaturedSection } from '@/components/home/FeaturedSection';
+import { LatestPostsSection } from '@/components/home/LatestPostsSection';
+import { NewArrivalsSection } from '@/components/home/NewArrivalsSection';
+import { OurStorySection } from '@/components/home/OurStorySection';
+import { ReviewsSection } from '@/components/home/ReviewsSection';
 import { getCatalog } from '@/lib/catalog';
+import { categoryTiles } from '@/lib/catalog/home';
+import { featuredProducts, newArrivals } from '@/lib/catalog/queries';
+import { homeMinRating, latestReviews } from '@/lib/reviews';
 import { organizationJsonLd } from '@/lib/seo';
+import { withTimeout } from '@/lib/with-timeout';
+import { getContent, getContentConfig } from '@/lib/wp';
+
+/** Story and blog sections are a nicety: if WordPress is slow or down they are left out, and the page does not wait for them. */
+const CONTENT_WAIT_MS = 2500;
 
 /**
  * The owner's workshop photograph, in two crops of the same picture (the full-resolution original is kept in
@@ -40,7 +53,26 @@ const steps = [
 ];
 
 export default async function HomePage() {
-  const products = (await getCatalog().listProducts()).slice(0, 4).map(toSummary);
+  const catalog = getCatalog();
+  const [products, categories] = await Promise.all([
+    catalog.listProducts(),
+    catalog.listAllCategories(),
+  ]);
+  const content = getContent();
+  const [ourStory, latest, recentReviews] = await Promise.all([
+    withTimeout(content.getPage(getContentConfig().ourStorySlug), CONTENT_WAIT_MS, null),
+    withTimeout(content.listPosts({ page: 1, perPage: 3 }), CONTENT_WAIT_MS, null),
+    withTimeout(latestReviews(12, homeMinRating()), CONTENT_WAIT_MS, null),
+  ]);
+  // Only reviews of products the shop lists are shown (and each links to its product), newest first.
+  const bySlug = new Map(products.map((p) => [p.id, p.slug]));
+  const homeReviews = (recentReviews ?? [])
+    .filter((review) => bySlug.has(review.productId))
+    .slice(0, 3)
+    .map((review) => ({ review, slug: bySlug.get(review.productId)! }));
+  const featured = featuredProducts(products);
+  const fresh = newArrivals(products).slice(0, 8);
+  const tiles = categoryTiles(categories, products);
   return (
     <>
       <JsonLd data={organizationJsonLd()} />
@@ -62,7 +94,7 @@ export default async function HomePage() {
               <Link href="/shop/" className="button">
                 Shop Now
               </Link>
-              <Link href="/about/" className="button button--on-photo">
+              <Link href="/our-story/" className="button button--on-photo">
                 Our Story
               </Link>
             </div>
@@ -70,21 +102,9 @@ export default async function HomePage() {
         </div>
       </section>
 
-      <section className="section" aria-labelledby="featured-heading">
-        <div className="container">
-          <div className="section__header">
-            <h2 id="featured-heading">Featured</h2>
-            <Link href="/shop/">View all products</Link>
-          </div>
-          <ul className="product-grid">
-            {products.map((product) => (
-              <li key={product.id}>
-                <ProductCard product={product} />
-              </li>
-            ))}
-          </ul>
-        </div>
-      </section>
+      <FeaturedSection products={featured.map(toSummary)} />
+      <CategoryTiles tiles={tiles} />
+      <NewArrivalsSection products={fresh.map(toSummary)} />
 
       <section className="section" id="how-it-works" aria-labelledby="how-heading">
         <div className="container">
@@ -99,6 +119,10 @@ export default async function HomePage() {
           </ol>
         </div>
       </section>
+
+      <ReviewsSection reviews={homeReviews} />
+      <OurStorySection page={ourStory} />
+      <LatestPostsSection posts={latest?.posts ?? []} />
     </>
   );
 }

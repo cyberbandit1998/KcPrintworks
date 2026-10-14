@@ -48,6 +48,15 @@ export const WooProductSchema = z.object({
   variations: z.array(z.number()).catch([]),
   date_modified_gmt: str,
   meta_data: z.array(WooMetaSchema).catch([]),
+  /** The Featured star in Products. */
+  featured: z.boolean().catch(false),
+  /** Publication date. Whichever of the two WooCommerce sends first is used; both are the product's created date. */
+  date_created_gmt: str,
+  date_created: str,
+  menu_order: z.number().catch(0),
+  average_rating: str,
+  rating_count: z.number().catch(0),
+  reviews_allowed: z.boolean().catch(false),
 });
 export type WooProduct = z.infer<typeof WooProductSchema>;
 
@@ -70,5 +79,9 @@ export const WooCategorySchema = z.object({
   slug: z.string(),
   description: str,
   count: z.number().catch(0),
+  /** Parent category id; 0 for a top-level category. */
+  parent: z.number().catch(0),
+  menu_order: z.number().catch(0),
+  image: z.object({ src: str }).nullable().catch(null),
 });
 export type WooCategory = z.infer<typeof WooCategorySchema>;

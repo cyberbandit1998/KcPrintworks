@@ -24,11 +24,19 @@ done
 curl -fsS "$base/api/health/" | grep -q '"status":"ok"' || fail "health endpoint did not report ok"
 pass "health endpoint"
 
-for path in / /shop/ /cart/ /about/; do
+for path in / /shop/ /new-arrivals/ /cart/ /blog/ /our-story/ /contact/ /sitemap.xml; do
   code=$(curl -s -o /dev/null -w '%{http_code}' "$base$path")
   [ "$code" = "200" ] || fail "$path returned $code"
 done
-pass "pages render (/, /shop/, /cart/, /about/)"
+pass "pages render (/, /shop/, /new-arrivals/, /cart/, /blog/, /our-story/, /contact/, sitemap)"
+# The old Our Story address moves permanently to the new one.
+code=$(curl -s -o /dev/null -w '%{http_code}' "$base/about/")
+[ "$code" = "308" ] || fail "/about/ returned $code (expected a permanent redirect)"
+# The header has the five links, in order, and the placeholder blog/reviews show up in the default (sample) deployment.
+header=$(curl -fsS "$base/" | tr -d '\n')
+echo "$header" | grep -Eq 'href="/shop/".*href="/product-category/game-cases/".*href="/product-category/personalized-gifts/".*href="/new-arrivals/".*href="/blog/"' || fail "header links are missing or out of order"
+curl -fsS "$base/blog/" | grep -q 'Sample post' || fail "the blog did not render the sample posts"
+pass "header links and sample blog"
 
 headers=$(curl -sI "$base/")
 if [ "$mode" = "staging" ]; then
@@ -54,6 +62,9 @@ curl -fsS "$base/api/catalog-status/" | grep -q '"source":"fixtures"' || fail "c
 curl -fsS "$base/api/checkout-status/" | grep -q '"enabled":false' || fail "checkout-status did not report checkout as off"
 code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$base/api/cart/handoff/" -H 'content-type: application/json' -d '{"lines":[{"productId":1,"quantity":1}]}')
 [ "$code" = "403" ] || fail "handoff endpoint answered $code with checkout off (expected 403)"
+# Writing a review is off in the default deployment, whatever the browser sends.
+code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$base/api/reviews/" -H "origin: $base" -H 'content-type: application/json' -d '{}')
+[ "$code" = "404" ] || fail "reviews endpoint answered $code with review submission off (expected 404)"
 code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$base/api/revalidate/" -d '{}')
 [ "$code" = "404" ] || fail "revalidate endpoint answered $code without a WooCommerce source (expected 404)"
 pass "catalog endpoints"

@@ -22,12 +22,16 @@ export type CheckoutStatus =
   | { enabled: true; config: CheckoutConfig }
   | { enabled: false; reason: string; missing?: string[] };
 
-const isLocal = (host: string) => host === 'localhost' || host === '127.0.0.1' || host === '[::1]';
+export const isLocal = (host: string) =>
+  host === 'localhost' || host === '127.0.0.1' || host === '[::1]';
 
 /** Where the shop address may come from, most specific first. An empty value counts as unset (compose passes unset names as empty). */
 const SHOP_ADDRESS_NAMES = ['KCPW_API_URL', 'KCPW_SHOP_URL', 'WC_BASE_URL'] as const;
 
-function shopAddress(env: Record<string, string | undefined>): { name: string; value: string } {
+export function shopAddress(env: Record<string, string | undefined>): {
+  name: string;
+  value: string;
+} {
   for (const name of SHOP_ADDRESS_NAMES) {
     const value = (env[name] ?? '').trim();
     if (value) return { name, value };

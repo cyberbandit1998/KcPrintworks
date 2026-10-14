@@ -74,7 +74,7 @@ test('the bag tag keeps 169 "Any" variations as two color pickers and adds to th
   page,
 }) => {
   await page.goto('/product/synthetic-bag-tag/');
-  await expect(page.getByRole('radio')).toHaveCount(26);
+  await expect(page.locator('.pdp').getByRole('radio')).toHaveCount(26);
   await page
     .getByRole('group', { name: /Tag Color/ })
     .getByLabel('Navy')
@@ -677,5 +677,943 @@ test.describe('the free-shipping bar uses the shop’s own numbers', () => {
     });
     await addCardBoxes(page, 2); // $25.00 of items, $5.00 off
     await expect(message(page)).toHaveText("You've unlocked FREE shipping!");
+  });
+});
+
+/**
+ * Categories, Featured and New Arrivals as WooCommerce defines them (the mock has the owner's verified structure: Game Cases 417 is a
+ * parent, Card Games 332 its child, Personalized Gifts 418, and the New Arrivals category 324 that a plugin rotates). Changes made
+ * "in WooCommerce" (through the mock's controls) appear after the cache refresh, with no rebuild.
+ */
+test.describe('categories, Featured and New Arrivals from WooCommerce', () => {
+  test.beforeEach(async ({ request }) => {
+    await mockPost(request, 'reset', {});
+    expect((await revalidate(request)).status()).toBe(202);
+  });
+
+  const titles = (page: Page, scope = '.product-grid') =>
+    page.locator(`${scope} .card__title`).allTextContents();
+
+  test('Game Cases shows products assigned to it and to its child Card Games, each once', async ({
+    page,
+  }) => {
+    await page.goto('/product-category/game-cases/');
+    // Recommended order = WooCommerce's manual order (menu_order), then newest. Beta is in BOTH categories and appears once.
+    expect(await titles(page)).toEqual([
+      'Synthetic Direct Game Case',
+      'Synthetic Card Case Beta',
+      'Synthetic Card Case Alpha',
+    ]);
+    await expect(page.getByText('3 products')).toBeVisible();
+    await page.goto('/product-category/card-games/');
+    expect(await titles(page)).toEqual(['Synthetic Card Case Beta', 'Synthetic Card Case Alpha']);
+  });
+
+  test('the parent works even when every product is in the child (Game Cases itself holds none)', async ({
+    page,
+    request,
+  }) => {
+    await mockPost(request, 'product', {
+      id: 202,
+      fields: { categories: [{ id: 332, name: 'Card Games', slug: 'card-games' }] },
+    });
+    await mockPost(request, 'product', {
+      id: 204,
+      fields: { categories: [{ id: 332, name: 'Card Games', slug: 'card-games' }] },
+    });
+    expect((await revalidate(request)).status()).toBe(202);
+    await page.goto('/product-category/game-cases/');
+    expect((await titles(page)).sort()).toEqual([
+      'Synthetic Card Case Alpha',
+      'Synthetic Card Case Beta',
+      'Synthetic Direct Game Case',
+    ]);
+  });
+
+  test('a category assignment made in WooCommerce shows up after the refresh', async ({
+    page,
+    request,
+  }) => {
+    await page.goto('/product-category/game-cases/');
+    expect(await titles(page)).not.toContain('Synthetic Gift Mug');
+    await mockPost(request, 'product', {
+      id: 203,
+      fields: { categories: [{ id: 417, name: 'Game Cases', slug: 'game-cases' }] },
+    });
+    expect((await revalidate(request)).status()).toBe(202);
+    await page.goto('/product-category/game-cases/');
+    expect(await titles(page)).toContain('Synthetic Gift Mug');
+    await page.goto('/product-category/personalized-gifts/');
+    expect(await titles(page)).not.toContain('Synthetic Gift Mug');
+  });
+
+  test('an existing but empty category is a calm page, not an error, and is not offered as a filter', async ({
+    page,
+  }) => {
+    const response = await page.goto('/product-category/empty-category/');
+    expect(response?.status()).toBe(200);
+    await expect(page.getByText('There are no products in Empty Category yet.')).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Browse all products' })).toHaveAttribute(
+      'href',
+      '/shop/',
+    );
+    await page.goto('/shop/');
+    await expect(page.getByRole('navigation', { name: 'Categories' })).not.toContainText(
+      'Empty Category',
+    );
+  });
+
+  test('the retired New Arrivals category and the catch-all send you to better pages', async ({
+    page,
+  }) => {
+    await page.goto('/product-category/new-arrivals/');
+    await expect(page).toHaveURL(/\/new-arrivals\/$/);
+    await page.goto('/product-category/uncategorized/');
+    await expect(page).toHaveURL(/\/shop\/$/);
+  });
+
+  test('Featured: exactly the starred, published products, in WooCommerce order; unstarring removes them; none = no section', async ({
+    page,
+    request,
+  }) => {
+    const featured = () => page.locator('[data-section="featured"] .card__title').allTextContents();
+    await page.goto('/');
+    // Beta (menu_order 1) before Alpha (menu_order 2). Nothing else is added.
+    expect(await featured()).toEqual(['Synthetic Card Case Beta', 'Synthetic Card Case Alpha']);
+
+    // A draft marked Featured is not published, so it never appears.
+    await mockPost(request, 'product', { id: 104, fields: { featured: true } });
+    // Unstar Beta.
+    await mockPost(request, 'product', { id: 202, fields: { featured: false } });
+    expect((await revalidate(request)).status()).toBe(202);
+    await page.goto('/');
+    expect(await featured()).toEqual(['Synthetic Card Case Alpha']);
+
+    // Star a new one: it joins in order.
+    await mockPost(request, 'product', { id: 101, fields: { featured: true, menu_order: 0 } });
+    expect((await revalidate(request)).status()).toBe(202);
+    await page.goto('/');
+    expect(await featured()).toEqual([
+      'Synthetic Personalized Keychain',
+      'Synthetic Card Case Alpha',
+    ]);
+
+    // Unstar everything: the whole section is gone, and nothing else takes its place.
+    await mockPost(request, 'product', { id: 101, fields: { featured: false } });
+    await mockPost(request, 'product', { id: 201, fields: { featured: false } });
+    expect((await revalidate(request)).status()).toBe(202);
+    await page.goto('/');
+    await expect(page.locator('[data-section="featured"]')).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: 'Featured Products' })).toHaveCount(0);
+    await expect(page.locator('[data-section="new-arrivals"]')).toBeVisible(); // a separate section, unaffected
+  });
+
+  test('New Arrivals: newest PUBLISHED first; the New Arrivals category plays no part', async ({
+    page,
+    request,
+  }) => {
+    await page.goto('/new-arrivals/');
+    const first = (await titles(page)).slice(0, 5);
+    expect(first).toEqual([
+      'Synthetic Card Case Beta', // 2026-10-12
+      'Synthetic Gift Mug', // 10-11
+      'Synthetic Card Case Alpha', // 10-10
+      'Synthetic Direct Game Case', // 10-09
+      'Synthetic Reviews Off', // 10-08
+    ]);
+    // "Synthetic Old Arrival" sits in the New Arrivals CATEGORY but was published in January: it comes last.
+    const all = await titles(page);
+    expect(all.at(-1)).toBe('Synthetic Old Arrival');
+
+    // Publishing something new (a newer publication date) puts it first after the refresh.
+    await mockPost(request, 'product', {
+      id: 109,
+      fields: { date_created_gmt: '2026-10-20T08:00:00' },
+    });
+    expect((await revalidate(request)).status()).toBe(202);
+    await page.goto('/new-arrivals/');
+    expect((await titles(page))[0]).toBe('Synthetic Uncategorized Thing');
+    // The home page strip agrees.
+    await page.goto('/');
+    expect((await titles(page, '[data-section="new-arrivals"]'))[0]).toBe(
+      'Synthetic Uncategorized Thing',
+    );
+  });
+
+  test('pagination: 24 per page, working links, a stable address for each page, and a too-high page is clamped', async ({
+    page,
+    request,
+  }) => {
+    await mockPost(request, 'bulk', { categoryId: 332, count: 26 });
+    expect((await revalidate(request)).status()).toBe(202);
+    await page.goto('/product-category/card-games/');
+    expect((await titles(page)).length).toBe(24);
+    await expect(page.getByText('28 products')).toBeVisible();
+    const pager = page.getByRole('navigation', { name: 'Pagination' });
+    await expect(pager.getByRole('link', { name: 'Page 1' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
+    await expect(page.locator('link[rel="canonical"]')).toHaveAttribute(
+      'href',
+      /\/product-category\/card-games\/$/,
+    );
+
+    await pager.getByRole('link', { name: 'Next page' }).click();
+    await expect(page).toHaveURL(/\/product-category\/card-games\/\?page=2$/);
+    expect((await titles(page)).length).toBe(4);
+    await expect(pager.getByRole('link', { name: 'Page 2' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
+    await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', /\?page=2$/);
+    await expect(pager.getByRole('link', { name: 'Previous page' })).toHaveAttribute(
+      'href',
+      '/product-category/card-games/',
+    );
+
+    await page.goto('/product-category/card-games/?page=99');
+    await expect(pager.getByRole('link', { name: 'Page 2' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
+    // The shop paginates too, with the same components; sorting keeps the page links.
+    await page.goto('/shop/?sort=price-asc');
+    await expect(
+      page.getByRole('navigation', { name: 'Pagination' }).getByRole('link', { name: 'Next page' }),
+    ).toHaveAttribute('href', '/shop/?sort=price-asc&page=2');
+  });
+
+  test('cards show the image, name, price, sale price and availability, for simple and variable products', async ({
+    page,
+  }) => {
+    await page.goto('/product-category/game-accessories/');
+    const sale = page.locator('.card', { hasText: 'Card Box' });
+    await expect(sale.locator('.card__price')).toContainText('From');
+    await expect(sale.locator('.card__price')).toContainText('$12.50');
+    // The sale applies to one variation (Red); a card for a variable product shows only "From", the struck price is on the page after the choice.
+    await expect(sale.locator('.card__price del')).toHaveCount(0);
+    await expect(
+      page.locator('.card', { hasText: 'Out Of Stock Stand' }).locator('.badges'),
+    ).toContainText('Sold out');
+    await expect(sale.locator('img')).toHaveCount(1);
+    await expect(sale.getByRole('link', { name: /Card Box/ })).toHaveAttribute(
+      'href',
+      '/product/synthetic-card-box/',
+    );
+  });
+
+  test('the header links resolve to the real categories (by their slugs), and a missing one is left out, never guessed', async ({
+    page,
+    request,
+  }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto('/');
+    await expect(page.locator('.site-nav__inline a')).toHaveText([
+      'Shop',
+      'Game Cases',
+      'Personalized Gifts',
+      'New Arrivals',
+      'Blog',
+    ]);
+    const status = await (await request.get('/api/catalog-status/')).json();
+    expect(status.nav).toEqual([
+      { key: 'game-cases', ref: 'game-cases', categoryId: 417, slug: 'game-cases' },
+      {
+        key: 'personalized-gifts',
+        ref: 'personalized-gifts',
+        categoryId: 418,
+        slug: 'personalized-gifts',
+      },
+    ]);
+    expect(status.counts.featured).toBe(2);
+
+    // If the category is renamed in WooCommerce, the link is left out (and reported), not pointed at a guess.
+    await mockPost(request, 'category', { id: 418, fields: { slug: 'gifts-for-you' } });
+    expect((await revalidate(request)).status()).toBe(202);
+    await page.goto('/');
+    await expect(page.locator('.site-nav__inline a')).toHaveText([
+      'Shop',
+      'Game Cases',
+      'New Arrivals',
+      'Blog',
+    ]);
+    const after = await (await request.get('/api/catalog-status/')).json();
+    expect(after.nav[1]).toEqual({
+      key: 'personalized-gifts',
+      ref: 'personalized-gifts',
+      categoryId: null,
+      slug: null,
+    });
+  });
+});
+
+/**
+ * The blog, Our Story and Contact read from WordPress (here the stand-in in tests/support/wp-fixture.mjs, which also holds hostile markup,
+ * protected and draft posts, and can be switched off). Same file as the rest of the mock-store tests so the shared mock is never reset
+ * under another test.
+ */
+test.describe('WordPress content: blog, Our Story, Contact', () => {
+  test.beforeEach(async ({ request }) => {
+    await mockPost(request, 'reset', {});
+    expect((await revalidate(request)).status()).toBe(202);
+  });
+
+  const wpLog = async (request: APIRequestContext) =>
+    (await (await request.get(`${WOO_TEST.mockUrl}/__mock/log`)).json()).wp as {
+      method: string;
+      path: string;
+      credentialSent: boolean;
+    }[];
+
+  test('the blog lists published posts only, with titles decoded and the picture and category shown', async ({
+    page,
+  }) => {
+    await page.goto('/blog/');
+    const titles = await page.locator('article.post-card h3').allTextContents();
+    expect(titles).toEqual([
+      'Hostile content – test & check',
+      'The second post',
+      'A post without a picture',
+    ]);
+    expect(titles.join('|')).not.toMatch(/Secret|Draft|&#|&amp;/);
+    await expect(page.locator('article.post-card').first()).toContainText('Updates & News');
+    await expect(page.locator('article.post-card img')).toHaveCount(1); // only the first post has a featured image
+    await expect(page.getByRole('navigation', { name: 'Blog categories' })).toContainText(
+      'Updates & News',
+    );
+    await expect(page.getByRole('navigation', { name: 'Blog categories' })).not.toContainText(
+      'Uncategorized',
+    );
+  });
+
+  test('hostile markup in a post is neutralized in a real browser', async ({ page }) => {
+    const dialogs: string[] = [];
+    page.on('dialog', (dialog) => {
+      dialogs.push(dialog.message());
+      void dialog.dismiss();
+    });
+    await page.goto('/blog/hostile-content-test/');
+    await page.waitForLoadState('networkidle');
+    expect(
+      await page.evaluate(() => (window as unknown as { __pwned?: boolean }).__pwned),
+    ).toBeUndefined();
+    expect(dialogs).toEqual([]);
+    const content = page.locator('.content');
+    await expect(content).toContainText('Safe paragraph');
+    for (const selector of [
+      'script',
+      'form',
+      'input',
+      'button',
+      'svg',
+      '[onerror]',
+      '[style]',
+      'iframe:not([src^="https://www.youtube-nocookie.com/"])',
+    ]) {
+      expect(await content.locator(selector).count(), selector).toBe(0);
+    }
+    expect(await page.locator('a[href^="javascript:"]').count()).toBe(0);
+    // The heading that asked for id="main" cannot take the page's own id.
+    expect(await page.locator('[id="main"]').count()).toBe(1);
+    expect(await page.locator('main h1').count()).toBe(1);
+    // Links: to another post and a product -> the storefront; to the checkout -> stays with the shop; external -> rel set.
+    await expect(content.locator('a', { hasText: 'Link to another post' })).toHaveAttribute(
+      'href',
+      '/blog/second-post/',
+    );
+    await expect(content.locator('a', { hasText: 'a product' })).toHaveAttribute(
+      'href',
+      '/product/synthetic-mug/',
+    );
+    expect(await content.locator('a', { hasText: 'the checkout' }).getAttribute('href')).toBe(
+      `${WOO_TEST.mockUrl}/checkout/`,
+    );
+    await expect(content.locator('a', { hasText: 'external link' })).toHaveAttribute(
+      'rel',
+      'noopener noreferrer',
+    );
+    await expect(content.locator('iframe')).toHaveCount(1);
+    await expect(content.locator('img')).toHaveAttribute('loading', 'lazy');
+    const results = await new AxeBuilder({ page })
+      .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'])
+      .analyze();
+    expect(results.violations.map((v) => `${v.id}: ${v.nodes[0]?.html}`)).toEqual([]);
+  });
+
+  test('protected, draft and unknown posts are 404, and the sitemap leaves them out', async ({
+    page,
+    request,
+  }) => {
+    for (const slug of ['protected-post', 'draft-post', 'does-not-exist']) {
+      expect((await page.goto(`/blog/${slug}/`))?.status(), slug).toBe(404);
+    }
+    const xml = await (await request.get('/sitemap.xml')).text();
+    expect(xml).toContain('/blog/second-post/');
+    expect(xml).toContain('/blog/category/updates/');
+    expect(xml).toContain('/our-story/');
+    expect(xml).not.toMatch(/protected-post|draft-post/);
+    expect(xml).not.toContain('/contact/'); // that page does not exist in this WordPress yet
+  });
+
+  test('Our Story shows the WordPress page; Contact says so plainly while its page is missing, then shows it', async ({
+    page,
+    request,
+  }) => {
+    await page.goto('/our-story/');
+    await expect(page.locator('.content')).toContainText('synthetic page stands in');
+    await expect(page.locator('article.post-card')).toHaveCount(3);
+    await page.goto('/');
+    await expect(page.locator('[data-section="our-story"]')).toContainText(
+      'The owner wrote this synthetic story',
+    );
+    await expect(page.locator('[data-section="latest-posts"] article')).toHaveCount(3);
+
+    await page.goto('/contact/');
+    await expect(page.getByRole('main')).toContainText('Contact details are coming soon');
+    expect(await page.locator('meta[name="robots"]').getAttribute('content')).toContain('noindex');
+
+    await mockPost(request, 'wp', {
+      addPage: {
+        slug: 'contact',
+        title: 'Contact',
+        html: '<p>Write to <a href="mailto:hello@example.org">hello@example.org</a>.</p>',
+      },
+    });
+    expect((await revalidate(request)).status()).toBe(202);
+    await page.goto('/contact/');
+    await expect(page.locator('.content a[href="mailto:hello@example.org"]')).toBeVisible();
+  });
+
+  test('a new post appears after the signed refresh, with paging, and a removed page leaves the home page', async ({
+    page,
+    request,
+  }) => {
+    await page.goto('/blog/');
+    await expect(page.locator('article.post-card')).toHaveCount(3);
+    await mockPost(request, 'wp', { bulkPosts: 12 });
+    await page.goto('/blog/');
+    await expect(page.locator('article.post-card')).toHaveCount(3); // not yet: the shop remembers the earlier answer
+    expect((await revalidate(request)).status()).toBe(202);
+    await page.goto('/blog/');
+    await expect(page.locator('article.post-card')).toHaveCount(9);
+    await page.getByRole('link', { name: 'Next page' }).click();
+    await expect(page).toHaveURL(/page=2/);
+    await expect(page.locator('article.post-card')).toHaveCount(6);
+
+    await mockPost(request, 'wp', { removePage: 'our-story' });
+    expect((await revalidate(request)).status()).toBe(202);
+    await page.goto('/');
+    expect(await page.locator('[data-section="our-story"]').count()).toBe(0);
+    await page.goto('/our-story/');
+    await expect(page.getByRole('main')).toContainText('Our story is coming soon');
+  });
+
+  test('when WordPress is down the last good pages keep working and others say so plainly', async ({
+    page,
+    request,
+  }) => {
+    await mockPost(request, 'wp', { bulkPosts: 12 }); // enough posts for a second page in the category
+    expect((await revalidate(request)).status()).toBe(202);
+    await page.goto('/blog/'); // remembered
+    await page.goto('/blog/second-post/'); // remembered
+    await mockPost(request, 'wp', { failing: true });
+    expect((await revalidate(request)).status()).toBe(202);
+
+    await page.goto('/blog/');
+    await expect(page.locator('article.post-card')).toHaveCount(9); // the remembered first page
+    await page.goto('/blog/second-post/');
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('The second post');
+
+    // Never seen before, so nothing to fall back on: a clear message, not a crash, and it asks not to be indexed. (Page 2 of a category:
+    // the first page may already be remembered because the browser prefetched the category link from the blog page.)
+    const response = await page.goto('/blog/category/updates/?page=2');
+    expect(response?.status()).toBe(200);
+    await expect(page.getByRole('status')).toContainText('unavailable right now');
+    const robots = page.locator('meta[name="robots"]');
+    await expect(robots).toHaveCount(1);
+    expect(await robots.getAttribute('content')).toContain('noindex');
+
+    // The rest of the shop is unaffected.
+    await page.goto('/shop/');
+    await expect(page.locator('article.card').first()).toBeVisible();
+    const status = await (await request.get('/api/catalog-status/')).json();
+    expect(status.content).toMatchObject({ configured: true });
+    expect(status.content.failing).toBeGreaterThan(0);
+    expect(JSON.stringify(status)).not.toContain('127.0.0.1');
+
+    await mockPost(request, 'wp', { failing: false });
+    expect((await revalidate(request)).status()).toBe(202);
+    await page.goto('/blog/category/updates/?page=2');
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Updates & News');
+  });
+
+  test('WordPress was only ever read, without a credential', async ({ page, request }) => {
+    await page.goto('/blog/');
+    await page.goto('/blog/hostile-content-test/');
+    await page.goto('/our-story/');
+    const log = await wpLog(request);
+    expect(log.length).toBeGreaterThan(0);
+    expect(log.every((entry) => entry.method === 'GET')).toBe(true);
+    expect(log.some((entry) => entry.credentialSent)).toBe(false);
+    expect(log.every((entry) => entry.path.startsWith('/wp-json/wp/v2/'))).toBe(true);
+  });
+});
+
+/**
+ * Reviews from WooCommerce's public Store API (the stand-in in tests/support/wp-fixture.mjs): approved rows only, no email, with an
+ * address-like reviewer name, a markup-bearing review, a rating-less reply, and a review of a product the shop does not list.
+ */
+test.describe('customer reviews from WooCommerce', () => {
+  test.beforeEach(async ({ request }) => {
+    await mockPost(request, 'reset', {});
+    expect((await revalidate(request)).status()).toBe(202);
+  });
+
+  const storeLog = async (request: APIRequestContext) =>
+    (await (await request.get(`${WOO_TEST.mockUrl}/__mock/log`)).json()).store as {
+      method: string;
+      path: string;
+      credentialSent: boolean;
+    }[];
+
+  test('a product page shows its approved reviews with shortened names, and WooCommerce’s own average', async ({
+    page,
+  }) => {
+    const dialogs: string[] = [];
+    page.on('dialog', (d) => {
+      dialogs.push(d.message());
+      void d.dismiss();
+    });
+    await page.goto('/product/synthetic-card-case-alpha/');
+    await expect(page.locator('.rating-summary a')).toContainText('4.5 out of 5 (2 reviews)');
+    const cards = page.locator('#reviews .review');
+    await expect(cards).toHaveCount(2); // the rating-less reply is not a review
+    await expect(cards.first()).toContainText('Alice S.');
+    await expect(cards.first()).toContainText('Verified purchase');
+    await expect(cards.first().locator('.review__body p')).toHaveText([
+      'Great case!',
+      'Fits & looks solid.',
+    ]);
+    await expect(cards.nth(1)).toContainText('Customer'); // the reviewer name was an email address
+    await expect(cards.nth(1)).not.toContainText('Verified purchase');
+    const html = await page.content();
+    for (const leak of ['bob@example.com', 'gravatar', 'Replier', 'window.__pwned']) {
+      expect(html.includes(leak), leak).toBe(false);
+    }
+    expect(dialogs).toEqual([]);
+    const ld = await page
+      .locator('script[type="application/ld+json"]')
+      .evaluateAll((els) => els.map((el) => JSON.parse(el.textContent ?? '{}')));
+    const product = ld.find((d) => d['@type'] === 'Product');
+    expect(product.aggregateRating).toMatchObject({ ratingValue: 4.5, reviewCount: 2 });
+    expect(product.review.map((r: { author: { name: string } }) => r.author.name)).toEqual([
+      'Alice S.',
+      'Customer',
+    ]);
+  });
+
+  test('a product with reviews switched off in WooCommerce shows no review section', async ({
+    page,
+  }) => {
+    await page.goto('/product/synthetic-reviews-off/');
+    await expect(page.locator('#reviews')).toHaveCount(0);
+    await expect(page.locator('.rating-summary')).toHaveCount(0);
+  });
+
+  test('the home page shows reviews of listed products only, linked to them', async ({ page }) => {
+    await page.goto('/');
+    const section = page.locator('[data-section="reviews"]');
+    await expect(section.locator('.review')).toHaveCount(2);
+    await expect(section).not.toContainText('Zed');
+    await expect(section).not.toContainText('does not list');
+    await expect(section.locator('.review a').first()).toHaveAttribute(
+      'href',
+      '/product/synthetic-card-case-alpha/',
+    );
+  });
+
+  test('more than ten reviews page through with plain links that return to the reviews', async ({
+    page,
+    request,
+  }) => {
+    // (A row without a rating is never shown, so a page can hold fewer than ten; remove that row to keep the counts exact.)
+    await mockPost(request, 'reviews', { remove: 503 });
+    for (let n = 1; n <= 12; n += 1) {
+      await mockPost(request, 'reviews', {
+        add: {
+          id: 600 + n,
+          date_created_gmt: `2026-09-${String(n).padStart(2, '0')}T10:00:00`,
+          product_id: 201,
+          product_name: 'Synthetic Card Case Alpha',
+          reviewer: `Reviewer ${n}`,
+          review: `<p>Review number ${n}</p>`,
+          rating: 5,
+          verified: false,
+        },
+      });
+    }
+    expect((await revalidate(request)).status()).toBe(202);
+    await page.goto('/product/synthetic-card-case-alpha/');
+    await expect(page.locator('#reviews .review')).toHaveCount(10);
+    const next = page.locator('#reviews').getByRole('link', { name: 'Next page' });
+    await expect(next).toHaveAttribute(
+      'href',
+      '/product/synthetic-card-case-alpha/?review_page=2#reviews',
+    );
+    await next.click();
+    await expect(page).toHaveURL(/review_page=2/);
+    await expect(page.locator('#reviews .review')).toHaveCount(4);
+    expect(await page.locator('link[rel="canonical"]').getAttribute('href')).toMatch(
+      /\/product\/synthetic-card-case-alpha\/$/,
+    );
+  });
+
+  test('a new review shows after the signed refresh, and a removed one disappears', async ({
+    page,
+    request,
+  }) => {
+    await page.goto('/product/synthetic-card-case-alpha/');
+    await expect(page.locator('#reviews .review')).toHaveCount(2);
+    await mockPost(request, 'reviews', { remove: 501 });
+    await page.goto('/product/synthetic-card-case-alpha/');
+    await expect(page.locator('#reviews .review')).toHaveCount(2); // remembered until the refresh
+    expect((await revalidate(request)).status()).toBe(202);
+    await page.goto('/product/synthetic-card-case-alpha/');
+    await expect(page.locator('#reviews .review')).toHaveCount(1);
+  });
+
+  test('when the reviews cannot be loaded the product page still works and says so', async ({
+    page,
+    request,
+  }) => {
+    await mockPost(request, 'reviews', { failing: true });
+    expect((await revalidate(request)).status()).toBe(202);
+    await page.goto('/product/synthetic-gift-mug/'); // never loaded, so nothing to fall back on
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Synthetic Gift Mug');
+    await expect(page.locator('#reviews')).toContainText('Reviews are not available right now');
+    await expect(page.getByRole('button', { name: /add to cart/i })).toBeVisible();
+    await page.goto('/');
+    // The reviews the home page remembered from earlier views are still shown (the last good copy); the rest of the page is unaffected.
+    // (A home page with nothing remembered leaves the section out: ReviewsSection draws nothing for an empty list, and the section's
+    // 2.5 second limit is covered in the unit tests.)
+    await expect(page.locator('[data-section="reviews"] .review')).toHaveCount(2);
+    await expect(page.locator('[data-section="new-arrivals"]')).toBeVisible();
+  });
+
+  test('reviews were only ever read, without a credential', async ({ page, request }) => {
+    await page.goto('/');
+    await page.goto('/product/synthetic-card-case-alpha/');
+    const log = await storeLog(request);
+    expect(log.length).toBeGreaterThan(0);
+    expect(log.every((entry) => entry.method === 'GET' && !entry.credentialSent)).toBe(true);
+    expect(log.every((entry) => entry.path === '/wp-json/wc/store/v1/products/reviews')).toBe(true);
+  });
+});
+
+/**
+ * Writing a review. This server has review submission switched on and talks to the kcpw-core stand-in, which only LOGS what it gets:
+ * it never adds a review to the Store API stand-in, so nothing here can publish a testimonial. The form refuses a submission made
+ * within three seconds of the page being drawn, so the tests wait that long before sending.
+ */
+test.describe('writing a review', () => {
+  test.beforeEach(async ({ request }) => {
+    await mockPost(request, 'reset', {});
+    expect((await revalidate(request)).status()).toBe(202);
+  });
+
+  const submitted = async (request: APIRequestContext) =>
+    (await (await request.get(`${WOO_TEST.mockUrl}/__mock/log`)).json()).reviews as Record<
+      string,
+      unknown
+    >[];
+
+  const PRODUCT = '/product/synthetic-card-case-alpha/';
+  const LONG_ENOUGH = 'I bought this for game night and it is sturdy and neat.';
+
+  async function fill(
+    page: Page,
+    values: { rating?: number; name?: string; email?: string; review?: string } = {},
+  ) {
+    const form = page.locator('.review-form');
+    const {
+      rating = 5,
+      name = 'Robin Hood',
+      email = 'Robin@Example.com',
+      review = LONG_ENOUGH,
+    } = values;
+    if (rating) await form.getByRole('radio', { name: new RegExp(`^${rating} stars?`) }).check();
+    await form.getByLabel(/^Your name/).fill(name);
+    await form.getByLabel(/^Your email/).fill(email);
+    await form.getByLabel(/^Your review/).fill(review);
+    return form;
+  }
+
+  // The form needs a few seconds after the page is drawn (a robot filter), so wait before sending.
+  const afterTheMinimumWait = (page: Page) => page.waitForTimeout(3300);
+
+  test('the form is there for a product with reviews on, and not for one with reviews off', async ({
+    page,
+  }) => {
+    await page.goto(PRODUCT);
+    await expect(page.getByRole('heading', { level: 3, name: 'Write a review' })).toBeVisible();
+    await page.goto('/product/synthetic-reviews-off/');
+    await expect(page.getByRole('heading', { name: 'Write a review' })).toHaveCount(0);
+    await expect(page.locator('.review-form')).toHaveCount(0);
+  });
+
+  test('a review is sent to the shop as the shopper typed it, and then waits for approval', async ({
+    page,
+    request,
+  }) => {
+    await page.goto(PRODUCT);
+    const before = await page.locator('#reviews .review').count();
+    const form = await fill(page, { name: '  Robin   Hood ' });
+    await afterTheMinimumWait(page);
+    await form.getByRole('button', { name: 'Send my review' }).click();
+
+    const done = page.getByRole('status').filter({ hasText: 'received your review' });
+    await expect(done).toBeVisible();
+    await expect(done).toBeFocused();
+    await expect(done).toContainText('once we’ve approved it');
+    await expect(page.locator('.review-form')).toHaveCount(0);
+
+    const log = await submitted(request);
+    expect(log).toHaveLength(1);
+    expect(log[0]).toMatchObject({
+      productId: 201,
+      rating: 5,
+      name: 'Robin Hood',
+      email: 'robin@example.com',
+      review: LONG_ENOUGH,
+    });
+    expect(Object.keys(log[0]!).sort()).toEqual([
+      'clientKey',
+      'email',
+      'name',
+      'productId',
+      'rating',
+      'review',
+    ]);
+    expect(String(log[0]!.clientKey)).toMatch(/^[0-9a-f]{64}$/);
+    expect(JSON.stringify(log[0])).not.toMatch(/127\.0\.0\.1|::1/); // no network address is passed on
+
+    // Not published: it is not on the page now, and not after the page and the shop's cache are refreshed either.
+    await expect(page.locator('#reviews .review')).toHaveCount(before);
+    expect((await revalidate(request)).status()).toBe(202);
+    await page.reload();
+    await expect(page.locator('#reviews .review')).toHaveCount(before);
+    await expect(page.locator('#reviews')).not.toContainText('game night');
+  });
+
+  test('mistakes are caught in the browser: nothing is sent, the problems are listed, and each links to its field', async ({
+    page,
+    request,
+  }) => {
+    await page.goto(PRODUCT);
+    const form = page.locator('.review-form');
+    await form.getByRole('button', { name: 'Send my review' }).click();
+    const summary = page.getByRole('alert').filter({ hasText: 'Please fix these' });
+    await expect(summary).toBeFocused();
+    await expect(summary.getByRole('listitem')).toHaveCount(4);
+    await summary.getByRole('link', { name: /Choose a rating/ }).click();
+    await expect(form.getByRole('radio', { name: /^1 star/ })).toBeFocused();
+    await summary.getByRole('link', { name: /Enter your name/ }).click();
+    await expect(form.getByLabel(/^Your name/)).toBeFocused();
+    await expect(form.getByLabel(/^Your name/)).toHaveAttribute('aria-invalid', 'true');
+    expect(await form.getByLabel(/^Your name/).getAttribute('aria-describedby')).toContain(
+      '-name-error',
+    );
+
+    await fill(page, { review: 'See https://spam.example for the best deals around' });
+    await form.getByRole('button', { name: 'Send my review' }).click();
+    await expect(page.locator('.review-form [role="alert"]')).toContainText('leave web addresses');
+    await fill(page, { email: 'not-an-email' });
+    await form.getByRole('button', { name: 'Send my review' }).click();
+    await expect(page.locator('.review-form [role="alert"]')).toContainText('valid email address');
+    expect(await submitted(request)).toHaveLength(0);
+  });
+
+  test('a robot that fills the hidden field is thanked and ignored; a request from another site or without the form token is refused', async ({
+    page,
+    request,
+  }) => {
+    await page.goto(PRODUCT);
+    await page.evaluate(() => {
+      (document.querySelector('input[name="website"]') as HTMLInputElement).value =
+        'http://spam.example';
+    });
+    await fill(page);
+    await afterTheMinimumWait(page);
+    await page.locator('.review-form').getByRole('button', { name: 'Send my review' }).click();
+    await expect(
+      page.getByRole('status').filter({ hasText: 'received your review' }),
+    ).toBeVisible();
+    expect(await submitted(request)).toHaveLength(0); // looked like success, sent nowhere
+
+    const origin = WOO_TEST.url;
+    const fields = {
+      productId: 201,
+      rating: 5,
+      name: 'Robin Hood',
+      email: 'robin@example.com',
+      review: LONG_ENOUGH,
+    };
+    const crossSite = await request.post('/api/reviews/', {
+      data: { ...fields, formToken: 'x', website: '' },
+      headers: { origin: 'https://evil.example' },
+    });
+    expect(crossSite.status()).toBe(403);
+    const noToken = await request.post('/api/reviews/', {
+      data: { ...fields, website: '' },
+      headers: { origin },
+    });
+    expect(noToken.status()).toBe(400);
+    const verifiedClaim = await request.post('/api/reviews/', {
+      data: { ...fields, verified: true, formToken: 'x', website: '' },
+      headers: { origin },
+    });
+    expect(verifiedClaim.status()).toBe(400);
+    const forged = await request.post('/api/reviews/', {
+      data: { ...fields, formToken: `1800000000.${'a'.repeat(64)}`, website: '' },
+      headers: { origin },
+    });
+    expect(forged.status()).toBe(400);
+    expect(await submitted(request)).toHaveLength(0);
+  });
+
+  const refusals: [string, string, RegExp][] = [
+    [
+      'verification',
+      'verification_required',
+      /Only customers who bought this product can review it/,
+    ],
+    ['closed', 'closed', /Reviews are closed for this product/],
+    ['limited', 'rate_limited', /Too many reviews were sent/],
+    ['error', 'unavailable', /could not save your review right now/],
+    ['down', 'unavailable', /could not save your review right now/],
+  ];
+  for (const [mode, , message] of refusals) {
+    test(`when the shop answers "${mode}" the shopper is told plainly and keeps what they typed`, async ({
+      page,
+      request,
+    }) => {
+      await mockPost(request, 'reviews', { submitMode: mode });
+      await page.goto(PRODUCT);
+      const form = await fill(page);
+      await afterTheMinimumWait(page);
+      await form.getByRole('button', { name: 'Send my review' }).click();
+      const alert = page.getByRole('alert').filter({ hasText: 'was not sent' });
+      await expect(alert).toContainText(message);
+      await expect(alert).toBeFocused();
+      await expect(form.getByLabel(/^Your review/)).toHaveValue(LONG_ENOUGH);
+      await expect(page.locator('.review-form')).toBeVisible();
+      expect(JSON.stringify(await alert.innerText())).not.toMatch(/kcpw|rest_|status/i);
+    });
+  }
+
+  test('the form and its messages have no WCAG 2.2 AA violations, and fit a phone', async ({
+    page,
+  }) => {
+    for (const size of [
+      { width: 1280, height: 900 },
+      { width: 375, height: 800 },
+    ]) {
+      await page.setViewportSize(size);
+      await page.goto(PRODUCT);
+      const scan = async (label: string) => {
+        const results = await new AxeBuilder({ page })
+          .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'])
+          .analyze();
+        expect(
+          results.violations.map((v) => `${label} ${size.width}: ${v.id} ${v.nodes[0]?.html}`),
+        ).toEqual([]);
+      };
+      await scan('form');
+      await page.locator('.review-form').getByRole('button', { name: 'Send my review' }).click();
+      await expect(page.locator('.review-form [role="alert"]')).toBeVisible();
+      await scan('errors');
+      expect(
+        await page.evaluate(
+          () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+        ),
+      ).toBeLessThanOrEqual(0);
+    }
+  });
+});
+
+test.describe('what pages cost once the shop’s answers are remembered', () => {
+  test.beforeEach(async ({ request }) => {
+    await mockPost(request, 'reset', {});
+    expect((await revalidate(request)).status()).toBe(202);
+  });
+
+  const remoteCalls = async (request: APIRequestContext) => {
+    const log = await (await request.get(`${WOO_TEST.mockUrl}/__mock/log`)).json();
+    return {
+      wp: log.wp.length as number,
+      store: log.store.length as number,
+      woo: log.requests.length as number,
+    };
+  };
+
+  test('repeat views of the blog, pages, product and home page make no request to WordPress, WooCommerce, or the Store API', async ({
+    page,
+    request,
+  }) => {
+    const paths = [
+      '/',
+      '/blog/',
+      '/blog/second-post/',
+      '/our-story/',
+      '/product/synthetic-card-case-alpha/',
+      '/shop/',
+    ];
+    for (const path of paths) await page.goto(path); // fills the caches
+    const before = await remoteCalls(request);
+    for (const path of [...paths, ...paths]) await page.goto(path);
+    expect(await remoteCalls(request)).toEqual(before);
+  });
+
+  test('one first request for a post asks WordPress four times, not once per link or picture', async ({
+    request,
+  }) => {
+    const before = await remoteCalls(request);
+    // A plain request, so the browser's prefetching of links on the page cannot add calls of its own.
+    expect((await request.get('/blog/hostile-content-test/')).status()).toBe(200);
+    const after = await remoteCalls(request);
+    // The list of posts, the managed pages' addresses (for rewriting links), the post itself, and the "more posts" list: four,
+    // however many links, pictures or videos the post has.
+    expect(after.wp - before.wp).toBe(4);
+    expect(after.store).toBe(before.store); // and a post needs nothing from the reviews API
+  });
+
+  test('the review form adds little JavaScript and never the validation library', async ({
+    page,
+  }) => {
+    const weigh = async (path: string) => {
+      let bytes = 0;
+      let text = '';
+      const pending: Promise<void>[] = [];
+      page.on('response', (response) => {
+        if ((response.headers()['content-type'] ?? '').includes('javascript')) {
+          pending.push(
+            response.body().then((body) => {
+              bytes += body.length;
+              text += body.toString('utf8');
+            }),
+          );
+        }
+      });
+      await page.goto(path);
+      await page.waitForLoadState('networkidle');
+      await Promise.all(pending);
+      page.removeAllListeners('response');
+      return { bytes, text };
+    };
+    const without = await weigh('/product/synthetic-reviews-off/'); // reviews off: no form
+    const withForm = await weigh('/product/synthetic-card-case-alpha/');
+    expect(withForm.bytes - without.bytes).toBeLessThan(25 * 1024);
+    expect(withForm.text.includes('ZodError')).toBe(false);
   });
 });

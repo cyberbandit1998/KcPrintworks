@@ -404,6 +404,8 @@ export function convertExport(rows: ExportRow[], options: ConvertOptions): Conve
     name: c.name,
     description: '',
     seo: { title: c.name, description: `Browse ${c.name} at KCPrintWorks.`, noindex: false },
+    parentId: 0,
+    menuOrder: 0,
   }));
 
   notes.unshift(

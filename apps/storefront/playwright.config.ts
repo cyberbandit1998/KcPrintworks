@@ -58,6 +58,11 @@ export default defineConfig({
         REVALIDATE_SECRET: WOO_TEST.revalidateSecret,
         // Checkout switched ON for this server only: it hands carts to the kcpw-core stand-in in the mock store.
         CHECKOUT_ENABLED: 'true',
+        // Review submission switched ON for this server only (it talks to the same kcpw-core stand-in); the default server has it off.
+        REVIEWS_SUBMIT_ENABLED: 'true',
+        // The tests all submit from one address; the real limits (3 per visitor, 60 overall per ten minutes) are proven by unit tests.
+        REVIEWS_RATE_LIMIT: '100',
+        REVIEWS_RATE_LIMIT_ALL: '1000',
         KCPW_API_URL: WOO_TEST.mockUrl,
         KCPW_HANDOFF_SECRET: WOO_TEST.handoffSecret,
         // The shop's own free-shipping numbers for this server ($25.00, minimum counted before discounts); the default server uses $40.00.

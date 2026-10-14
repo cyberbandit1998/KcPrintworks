@@ -146,7 +146,7 @@ test.describe('desktop banner', () => {
     const shop = hero.getByRole('link', { name: 'Shop Now', exact: true });
     const story = hero.getByRole('link', { name: 'Our Story', exact: true });
     await expect(shop).toHaveAttribute('href', '/shop/');
-    await expect(story).toHaveAttribute('href', '/about/');
+    await expect(story).toHaveAttribute('href', '/our-story/');
     const paint = (locator: typeof shop) =>
       locator.evaluate((el) => {
         const s = getComputedStyle(el);

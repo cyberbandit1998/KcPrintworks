@@ -1,11 +1,13 @@
 import { NextResponse } from 'next/server';
 import { catalogSourceName } from '@/lib/env';
 import { readBodyLimited } from '@/lib/http';
+import { invalidateContentCaches } from '@/lib/content-cache';
 import { checkSignature } from '@/lib/revalidate-auth';
 import { getWooCatalogService, WooNotConfiguredError } from '@/lib/catalog/woo/source';
 
 /**
- * "WooCommerce changed, refresh the catalog." Called by a WooCommerce webhook (product created/updated/deleted) or by
+ * "WooCommerce or WordPress changed, refresh." Called by a WooCommerce webhook (product created/updated/deleted), a WordPress
+ * webhook (post published), or by
  * scripts/verify-catalog-freshness.mjs. It does not change anything in WooCommerce; it only makes this server read the
  * catalog again. The body is never trusted for content: a valid signature is the whole request.
  */
@@ -36,6 +38,9 @@ export async function POST(request: Request) {
   if (result !== 'ok') {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401, headers: NO_STORE });
   }
+
+  // Blog posts and the WordPress pages are read again on the next view as well (a WordPress "post published" webhook can use this too).
+  invalidateContentCaches({ blocking: true });
 
   try {
     const service = getWooCatalogService();

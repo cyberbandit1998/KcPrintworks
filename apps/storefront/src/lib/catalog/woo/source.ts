@@ -1,5 +1,5 @@
-import type { Category, Product } from '@kcpw/contracts';
 import type { CatalogSource } from '../source';
+import { createCatalogSource } from '../derive';
 import { SwrCache, type CacheStatus } from './cache';
 import { readWooConfig } from './config';
 import { convertWooCatalog, type WooCatalogResult } from './convert';
@@ -102,32 +102,7 @@ export function createWooCatalogService(
   ttlSeconds: number,
 ): WooCatalogService {
   const cache = new SwrCache<WooCatalogSnapshot>(loader, { ttlMs: ttlSeconds * 1000 });
-  const inCategory = (product: Product, slug: string) =>
-    product.categories.some((c) => c.slug === slug);
-  const source: CatalogSource = {
-    async listProducts() {
-      return (await cache.get()).products;
-    },
-    async getProductBySlug(slug: string) {
-      return (await cache.get()).products.find((p) => p.slug === slug);
-    },
-    async getProductById(id: number) {
-      return (await cache.get()).products.find((p) => p.id === id);
-    },
-    async listCategories(): Promise<Category[]> {
-      const { products, categories } = await cache.get();
-      // Only categories that have products, and never the catch-all.
-      return categories.filter(
-        (c) => c.slug !== 'uncategorized' && products.some((p) => inCategory(p, c.slug)),
-      );
-    },
-    async getCategoryBySlug(slug: string) {
-      return (await cache.get()).categories.find((c) => c.slug === slug);
-    },
-    async listProductsInCategory(slug: string) {
-      return (await cache.get()).products.filter((p) => inCategory(p, slug));
-    },
-  };
+  const source: CatalogSource = createCatalogSource(() => cache.get());
   return { cache, source, status: () => cache.status() };
 }
 
@@ -165,6 +140,7 @@ export const wooCatalog: CatalogSource = {
   listProducts: async () => getWooCatalogService().source.listProducts(),
   getProductBySlug: async (slug) => getWooCatalogService().source.getProductBySlug(slug),
   getProductById: async (id) => getWooCatalogService().source.getProductById(id),
+  listAllCategories: async () => getWooCatalogService().source.listAllCategories(),
   listCategories: async () => getWooCatalogService().source.listCategories(),
   getCategoryBySlug: async (slug) => getWooCatalogService().source.getCategoryBySlug(slug),
   listProductsInCategory: async (slug) =>

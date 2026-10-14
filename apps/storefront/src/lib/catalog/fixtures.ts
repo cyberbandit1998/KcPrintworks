@@ -58,6 +58,44 @@ export const categories: Category[] = [
       noindex: false,
     },
   },
+  // The same shape the real shop has (verified by the owner): "Game Cases" is a parent with no products of its own, "Card Games" is
+  // its child, "Personalized Gifts" stands alone. Names, descriptions and what is placed in them here are placeholders.
+  {
+    id: 417,
+    slug: 'game-cases',
+    name: 'Game Cases',
+    description: 'Placeholder category: storage cases for games.',
+    seo: {
+      title: 'Game Cases',
+      description: 'Placeholder category description for game cases.',
+      noindex: false,
+    },
+    parentId: 0,
+  },
+  {
+    id: 332,
+    slug: 'card-games',
+    name: 'Card Games',
+    description: 'Placeholder category: cases for card games.',
+    seo: {
+      title: 'Card Games',
+      description: 'Placeholder category description for card games.',
+      noindex: false,
+    },
+    parentId: 417,
+  },
+  {
+    id: 418,
+    slug: 'personalized-gifts',
+    name: 'Personalized Gifts',
+    description: 'Placeholder category: gifts with your own text.',
+    seo: {
+      title: 'Personalized Gifts',
+      description: 'Placeholder category description for personalized gifts.',
+      noindex: false,
+    },
+    parentId: 0,
+  },
 ].map((c) => CategorySchema.parse(c));
 
 const cat = (slug: string) => {
@@ -584,5 +622,57 @@ const rawProducts = [
   },
 ];
 
+/**
+ * Placeholder merchandising so the design preview and the tests have something to show: extra category placement (a product can be
+ * in several), the Featured star, publication dates in an order different from the list order (so "newest first" is testable), and
+ * two synthetic ratings. None of it describes real products or real customers.
+ */
+const merchandising: Record<
+  string,
+  {
+    publishedAt: string;
+    categories?: string[];
+    featured?: boolean;
+    rating?: { average: number; count: number };
+  }
+> = {
+  'sample-bag-tag-as-imported': { publishedAt: '2026-10-13T12:00:00Z' },
+  'sample-bag-tag': { publishedAt: '2026-10-12T12:00:00Z', categories: ['personalized-gifts'] },
+  'sample-name-tag': {
+    publishedAt: '2026-10-11T12:00:00Z',
+    categories: ['personalized-gifts'],
+    featured: true,
+  },
+  'sample-card-set': {
+    publishedAt: '2026-10-10T12:00:00Z',
+    categories: ['card-games'],
+    featured: true,
+    rating: { average: 4.5, count: 4 },
+  },
+  'sample-mug': { publishedAt: '2026-10-09T12:00:00Z' },
+  'sample-tote-bag': { publishedAt: '2026-10-08T12:00:00Z' },
+  'sample-sticker-pack': {
+    publishedAt: '2026-10-07T12:00:00Z',
+    categories: ['game-cases'],
+    featured: true,
+    rating: { average: 5, count: 1 },
+  },
+  'sample-custom-poster': { publishedAt: '2026-10-06T12:00:00Z' },
+  'sample-personalized-print': {
+    publishedAt: '2026-10-05T12:00:00Z',
+    categories: ['personalized-gifts'],
+  },
+};
+
 /** Parsed through the same schema that WooCommerce data must satisfy, so fixtures cannot drift from it. */
-export const products: Product[] = rawProducts.map((p) => ProductSchema.parse(p));
+export const products: Product[] = rawProducts.map((p) => {
+  const extra = merchandising[p.slug];
+  return ProductSchema.parse({
+    ...p,
+    categories: [...p.categories, ...(extra?.categories ?? []).map(cat)],
+    featured: extra?.featured ?? false,
+    publishedAt: extra?.publishedAt ?? '2026-10-01T12:00:00Z',
+    rating: extra?.rating,
+    reviewsAllowed: true,
+  });
+});

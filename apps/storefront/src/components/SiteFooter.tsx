@@ -1,7 +1,15 @@
 import Link from 'next/link';
-import type { Category } from '@kcpw/contracts';
+import type { Category } from '@kcpw/contracts/client';
+import type { NavItem } from '@/lib/nav';
 
-export function SiteFooter({ categories }: { categories: Category[] }) {
+/** `categories` are the browsable ones (parents before children); only top-level ones are listed here, after the header's own links. */
+export function SiteFooter({ nav, categories }: { nav: NavItem[]; categories: Category[] }) {
+  const shown = new Set(nav.map((item) => item.href));
+  const ids = new Set(categories.map((c) => c.id));
+  const others = categories.filter(
+    (c) => (c.parentId === 0 || !ids.has(c.parentId)) && !shown.has(`/product-category/${c.slug}/`),
+  );
+  const shopLinks = nav.filter((item) => item.key !== 'blog' && item.key !== 'shop');
   return (
     <footer className="site-footer">
       <div className="container">
@@ -18,11 +26,30 @@ export function SiteFooter({ categories }: { categories: Category[] }) {
               <li>
                 <Link href="/shop/">All products</Link>
               </li>
-              {categories.map((category) => (
+              {shopLinks.map((item) => (
+                <li key={item.key}>
+                  <Link href={item.href}>{item.label}</Link>
+                </li>
+              ))}
+              {others.map((category) => (
                 <li key={category.slug}>
                   <Link href={`/product-category/${category.slug}/`}>{category.name}</Link>
                 </li>
               ))}
+            </ul>
+          </nav>
+          <nav aria-labelledby="footer-about">
+            <h2 id="footer-about">KCPrintWorks</h2>
+            <ul>
+              <li>
+                <Link href="/our-story/">Our Story</Link>
+              </li>
+              <li>
+                <Link href="/blog/">Blog</Link>
+              </li>
+              <li>
+                <Link href="/contact/">Contact</Link>
+              </li>
             </ul>
           </nav>
           <nav aria-labelledby="footer-help">

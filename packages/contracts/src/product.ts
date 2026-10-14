@@ -80,6 +80,15 @@ export const SeoSchema = z
   })
   .strict();
 
+/** WooCommerce's own average and count of APPROVED ratings. Present only when there is at least one; never computed or invented here. */
+export const RatingSummarySchema = z
+  .object({
+    average: z.number().min(0).max(5),
+    count: z.number().int().positive(),
+  })
+  .strict();
+export type RatingSummary = z.infer<typeof RatingSummarySchema>;
+
 export const ProductSchema = z
   .object({
     id: z.number().int(),
@@ -101,6 +110,15 @@ export const ProductSchema = z
     availability: AvailabilitySchema,
     seo: SeoSchema,
     updatedAt: z.string(),
+    /** WooCommerce's native "Featured" star. Controls the home page Featured section and nothing else. */
+    featured: z.boolean().default(false),
+    /** When the product was published (ISO, UTC). New Arrivals sort by this, never by a category. */
+    publishedAt: z.string().default('1970-01-01T00:00:00Z'),
+    /** WooCommerce's manual product order (Products > Sorting). 0 for all products unless the owner arranged them. */
+    menuOrder: z.number().int().default(0),
+    rating: RatingSummarySchema.optional(),
+    /** WooCommerce's "Enable reviews" checkbox on this product. */
+    reviewsAllowed: z.boolean().default(false),
   })
   .strict()
   .superRefine((product, ctx) => {
@@ -166,6 +184,11 @@ export const CategorySchema = z
     name: z.string().min(1),
     description: z.string(),
     seo: SeoSchema,
+    /** WooCommerce parent category id; 0 for a top-level category. */
+    parentId: z.number().int().default(0),
+    /** WooCommerce's manual category order. */
+    menuOrder: z.number().int().default(0),
+    imageUrl: z.string().optional(),
   })
   .strict();
 export type Category = z.infer<typeof CategorySchema>;

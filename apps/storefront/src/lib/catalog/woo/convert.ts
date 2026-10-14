@@ -89,6 +89,25 @@ function prices(source: {
   };
 }
 
+const isoUtc = (value: string) => (value.endsWith('Z') ? value : `${value}Z`);
+
+/** The product's published (created) date as ISO UTC, or the epoch when WooCommerce sent none. */
+function publishedAt(row: WooProduct): string {
+  const gmt = row.date_created_gmt.trim();
+  if (gmt) return isoUtc(gmt);
+  const local = row.date_created.trim(); // no timezone given: treated as UTC, only the ORDER matters
+  return local ? isoUtc(local) : new Date(0).toISOString();
+}
+
+/** WooCommerce's own average and count, only when there is at least one rating. Nothing is computed or invented here. */
+function ratingSummary(row: WooProduct): Product['rating'] {
+  const average = Number.parseFloat(row.average_rating);
+  if (row.rating_count < 1 || !Number.isFinite(average) || average < 0 || average > 5) {
+    return undefined;
+  }
+  return { average: Math.round(average * 100) / 100, count: row.rating_count };
+}
+
 export function convertWooCatalog(
   input: WooCatalogInput,
   hiddenAttributes: ReadonlySet<string> = readHiddenAttributes(),
@@ -259,6 +278,11 @@ export function convertWooCatalog(
           ? row.date_modified_gmt
           : `${row.date_modified_gmt}Z`
         : new Date(0).toISOString(),
+      featured: row.featured,
+      publishedAt: publishedAt(row),
+      menuOrder: row.menu_order,
+      rating: ratingSummary(row),
+      reviewsAllowed: row.reviews_allowed,
     };
     const parsed = ProductSchema.safeParse(candidate);
     if (!parsed.success) {
@@ -272,25 +296,27 @@ export function convertWooCatalog(
     products.push(parsed.data);
   }
 
-  const used = new Set(products.flatMap((p) => p.categories.map((c) => c.slug)));
-  const categories: Category[] = input.categories
-    .filter((c) => used.has(c.slug))
-    .map((c) => {
-      const description = plainText(c.description);
-      return {
-        id: c.id,
-        slug: c.slug,
-        name: decodeEntities(c.name),
-        description,
-        seo: {
-          title: decodeEntities(c.name),
-          description: excerpt(
-            description || `Browse ${decodeEntities(c.name)} at KCPrintWorks.`,
-            155,
-          ),
-          noindex: false,
-        },
-      };
-    });
+  // EVERY WooCommerce category is kept, with its parent: a parent such as "Game Cases" may hold no product of its own and still
+  // has to exist (its children's products belong to it). Which categories are shown where is decided by the catalog queries.
+  const categories: Category[] = input.categories.map((c) => {
+    const description = plainText(c.description);
+    return {
+      id: c.id,
+      slug: c.slug,
+      name: decodeEntities(c.name),
+      description,
+      seo: {
+        title: decodeEntities(c.name),
+        description: excerpt(
+          description || `Browse ${decodeEntities(c.name)} at KCPrintWorks.`,
+          155,
+        ),
+        noindex: false,
+      },
+      parentId: c.parent,
+      menuOrder: c.menu_order,
+      imageUrl: c.image?.src || undefined,
+    };
+  });
   return { products, categories, skipped, proposedPersonalization };
 }

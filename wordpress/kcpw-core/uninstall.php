@@ -1,8 +1,9 @@
 <?php
 /**
  * Runs when the plugin is deleted from the Plugins screen. Removes only what this plugin created: its handoff table.
- * Product personalization setups (_kcpw_option_schema) and the choices saved on past orders are KEPT on purpose,
- * because orders must stay readable and a reinstall should find the setups again.
+ * Product personalization setups (_kcpw_option_schema), the choices saved on past orders, and the reviews customers wrote
+ * (WordPress comments) are KEPT on purpose, because orders and reviews must stay readable and a reinstall should find the setups again.
+ * The short-lived review-flood counters (transients) expire by themselves.
  */
 
 declare(strict_types=1);

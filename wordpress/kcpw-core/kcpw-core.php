@@ -1,8 +1,8 @@
 <?php
 /**
  * Plugin Name:       KCPrintWorks Core (checkout link and personalization)
- * Description:       Lets the KCPrintWorks storefront hand a validated cart to WooCommerce checkout, and saves each customer's personalization choices on the order item. Works with whatever tool fills WooCommerce with products. It never creates, edits, or deletes products, and it contains no payment code (the official Stripe plugin takes payments).
- * Version:           0.1.0
+ * Description:       Lets the KCPrintWorks storefront hand a validated cart to WooCommerce checkout, saves each customer's personalization choices on the order item, and receives customer reviews from the storefront as pending reviews that wait for your approval. Works with whatever tool fills WooCommerce with products. It never creates, edits, or deletes products, and it contains no payment code (the official Stripe plugin takes payments).
+ * Version:           0.2.0
  * Requires at least: 6.4
  * Requires PHP:      8.1
  * Requires Plugins:  woocommerce
@@ -17,7 +17,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('KCPW_CORE_VERSION', '0.1.0');
+define('KCPW_CORE_VERSION', '0.2.0');
 define('KCPW_CORE_FILE', __FILE__);
 
 if (PHP_VERSION_ID < 80100 || !function_exists('mb_strlen')) {

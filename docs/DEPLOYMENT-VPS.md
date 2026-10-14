@@ -318,3 +318,17 @@ If `reachable` is false the answer names the reason (secret mismatch, plugin not
 If the cart still shows a disabled Checkout button, `"enabled":false` in the same answer names the missing setting; see the troubleshooting list in [CHECKOUT-STAGING-CHECKLIST.md](CHECKOUT-STAGING-CHECKLIST.md) section 4.
 
 Deploying a new image keeps all of this: it lives in `.env`, not in the image.
+
+## 11. The blog, Our Story, Contact, categories, and reviews
+
+Nothing here needs a new key. The blog, Our Story, Contact page, and the reviews are read from the same WordPress/WooCommerce site as the products
+(`WC_BASE_URL`), using public, read-only addresses. They work as soon as the new image runs with `CATALOG_SOURCE=woo`; the defaults already match your
+categories (`game-cases`, `personalized-gifts`) and pages (`our-story`, `contact`). **This version's compose file has new variables: refresh
+`docker-compose.yml` from the image before deploying it (section 4), otherwise the optional settings below cannot reach the container.**
+
+```bash
+curl -s https://YOUR-STAGING-STOREFRONT/api/catalog-status/ | head -c 1500     # nav: both header categories resolved; content / reviews: failing 0
+```
+
+Every setting, and what to do in the WordPress admin, is in [WORDPRESS-CONTENT-AND-REVIEWS.md](WORDPRESS-CONTENT-AND-REVIEWS.md). Letting shoppers write reviews
+is **off** (`REVIEWS_SUBMIT_ENABLED=false`) until you update the `kcpw-core` plugin on staging and follow [REVIEWS-STAGING-CHECKLIST.md](REVIEWS-STAGING-CHECKLIST.md).

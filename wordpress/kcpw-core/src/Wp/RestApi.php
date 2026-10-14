@@ -7,12 +7,16 @@ use KcPrintworks\Core\Auth\RequestVerifier;
 use KcPrintworks\Core\Cart\RequestError;
 use KcPrintworks\Core\Handoff\HandoffRequest;
 use KcPrintworks\Core\Handoff\HandoffService;
+use KcPrintworks\Core\Reviews\ReviewResult;
+use KcPrintworks\Core\Reviews\ReviewService;
+use KcPrintworks\Core\Support\Json;
 
 /**
  * Server-to-server endpoints for the storefront (never called from a browser):
  *
  *   POST /wp-json/kcpw/v1/cart/quote     validate and price line intents; stores nothing
  *   POST /wp-json/kcpw/v1/cart/handoff   validate, store, return the single-use checkout URL
+ *   POST /wp-json/kcpw/v1/reviews        save a customer review as PENDING (never published here; see Reviews\ReviewService)
  *   GET  /wp-json/kcpw/v1/status         is the link set up (no secrets, no customer data)
  *
  * Every request must carry the signature headers described in Auth\RequestSigner.
@@ -25,6 +29,7 @@ final class RestApi
         private readonly HandoffService $service,
         private readonly RequestVerifier $verifier,
         private readonly string $version,
+        private readonly ?ReviewService $reviews = null,
     ) {
     }
 
@@ -42,6 +47,13 @@ final class RestApi
         ];
         register_rest_route(self::NAMESPACE, '/cart/quote', $post(false));
         register_rest_route(self::NAMESPACE, '/cart/handoff', $post(true));
+        if ($this->reviews !== null) {
+            register_rest_route(self::NAMESPACE, '/reviews', [
+                'methods' => 'POST',
+                'callback' => [$this, 'review'],
+                'permission_callback' => [$this, 'authorize'],
+            ]);
+        }
         register_rest_route(self::NAMESPACE, '/status', [
             'methods' => 'GET',
             'callback' => [$this, 'status'],
@@ -85,6 +97,24 @@ final class RestApi
         return $this->respond($result->toArray(), $result->httpStatus());
     }
 
+    public function review(\WP_REST_Request $request): \WP_REST_Response
+    {
+        if ($this->reviews === null) {
+            return $this->respond(['ok' => false, 'status' => 'server_error'], 500);
+        }
+        try {
+            $body = Json::decode((string) $request->get_body());
+        } catch (\JsonException $e) {
+            return $this->respond(['ok' => false, 'status' => ReviewResult::INVALID, 'problems' => [['field' => '', 'code' => 'invalid_type', 'message' => 'The request is not valid JSON.']]], 400);
+        }
+        try {
+            $result = $this->reviews->submit($body);
+        } catch (\Throwable $e) {
+            return $this->respond(['ok' => false, 'status' => ReviewResult::ERROR], 500);
+        }
+        return $this->respond($result->toArray(), $result->httpStatus());
+    }
+
     public function status(\WP_REST_Request $request): \WP_REST_Response
     {
         $stripe = Readiness::stripe();
@@ -96,6 +126,7 @@ final class RestApi
             'storefrontUrlConfigured' => Config::storefrontUrl() !== '',
             'stripeActive' => $stripe['active'],
             'stripeTestMode' => $stripe['testMode'],
+            'reviewsRoute' => $this->reviews !== null,
         ], 200);
     }
 

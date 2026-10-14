@@ -32,7 +32,8 @@ test.describe('navigation and keyboard', () => {
 
   test('a product card has one tab stop and opens its product', async ({ page }) => {
     await page.goto('/shop/');
-    const card = page.locator('article.card').first();
+    // The shop lists products in WooCommerce's order (newest first by default), so pick the card by name rather than by position.
+    const card = page.locator('article.card', { hasText: 'Sample Personalized Print' });
     await expect(card.getByRole('link')).toHaveCount(1);
     await card.getByRole('link').click();
     await expect(page).toHaveURL(/\/product\/sample-personalized-print\/$/);
@@ -88,7 +89,10 @@ test.describe('home page photo banner', () => {
     );
     await expect(hero).toContainText('designed and 3D printed with care in Michigan');
     await expect(hero.getByRole('link', { name: 'Shop Now' })).toHaveAttribute('href', '/shop/');
-    await expect(hero.getByRole('link', { name: 'Our Story' })).toHaveAttribute('href', '/about/');
+    await expect(hero.getByRole('link', { name: 'Our Story' })).toHaveAttribute(
+      'href',
+      '/our-story/',
+    );
     // The photograph is decorative because all of its message is in the text.
     await expect(hero.getByRole('img')).toHaveCount(0);
   });

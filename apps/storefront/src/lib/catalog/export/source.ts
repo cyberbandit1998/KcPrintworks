@@ -1,5 +1,6 @@
 import { readFileSync, existsSync } from 'node:fs';
 import path from 'node:path';
+import { createCatalogSource } from '../derive';
 import type { CatalogSource } from '../source';
 import { convertExport, type ConvertResult } from './convert';
 import { readExport } from './csv';
@@ -72,31 +73,4 @@ export function loadExportCatalog(
   return cached;
 }
 
-export const exportCatalog: CatalogSource = {
-  async listProducts() {
-    return loadExportCatalog().products;
-  },
-  async getProductBySlug(slug) {
-    return loadExportCatalog().products.find((p) => p.slug === slug);
-  },
-  async getProductById(id) {
-    return loadExportCatalog().products.find((p) => p.id === id);
-  },
-  async listCategories() {
-    const { products, categories } = loadExportCatalog();
-    // Only categories that have products, and never the catch-all.
-    return categories.filter(
-      (c) =>
-        c.slug !== 'uncategorized' &&
-        products.some((p) => p.categories.some((pc) => pc.slug === c.slug)),
-    );
-  },
-  async getCategoryBySlug(slug) {
-    return loadExportCatalog().categories.find((c) => c.slug === slug);
-  },
-  async listProductsInCategory(categorySlug) {
-    return loadExportCatalog().products.filter((p) =>
-      p.categories.some((c) => c.slug === categorySlug),
-    );
-  },
-};
+export const exportCatalog: CatalogSource = createCatalogSource(() => loadExportCatalog());

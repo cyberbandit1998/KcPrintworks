@@ -5,6 +5,7 @@ import '@/styles/components.css';
 import { SiteHeader } from '@/components/SiteHeader';
 import { SiteFooter } from '@/components/SiteFooter';
 import { getCatalog } from '@/lib/catalog';
+import { buildNav, readNavConfig } from '@/lib/nav';
 import { currentCheckoutStatus } from '@/lib/checkout';
 import { catalogSourceName, isProduction, siteUrl } from '@/lib/env';
 import { SITE_NAME } from '@/lib/seo';
@@ -35,9 +36,12 @@ export const viewport: Viewport = {
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   // If the catalog cannot be loaded (WooCommerce down before anything was cached), still draw the page frame;
   // the page itself reports the problem through error.tsx.
-  const categories = await getCatalog()
-    .listCategories()
-    .catch(() => []);
+  const catalog = getCatalog();
+  const [allCategories, categories] = await Promise.all([
+    catalog.listAllCategories().catch(() => []),
+    catalog.listCategories().catch(() => []),
+  ]);
+  const { items: nav } = buildNav(allCategories, readNavConfig());
   return (
     <html lang="en">
       <body>
@@ -62,11 +66,11 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         <a className="skip-link" href="#main">
           Skip to main content
         </a>
-        <SiteHeader categories={categories} />
+        <SiteHeader nav={nav} />
         <main id="main" tabIndex={-1}>
           {children}
         </main>
-        <SiteFooter categories={categories} />
+        <SiteFooter nav={nav} categories={categories} />
       </body>
     </html>
   );

@@ -8,3 +8,4 @@ export * from './cart-logic';
 export * from './handoff';
 export * from './pricing';
 export * from './purchase-model';
+export * from './review-logic';

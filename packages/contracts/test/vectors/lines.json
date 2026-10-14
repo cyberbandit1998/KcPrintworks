@@ -39,7 +39,11 @@
         "description": "d",
         "noindex": false
       },
-      "updatedAt": "2026-10-14T00:00:00Z"
+      "updatedAt": "2026-10-14T00:00:00Z",
+      "featured": false,
+      "publishedAt": "1970-01-01T00:00:00Z",
+      "menuOrder": 0,
+      "reviewsAllowed": false
     },
     "personalized": {
       "id": 11,
@@ -117,7 +121,11 @@
         "description": "d",
         "noindex": false
       },
-      "updatedAt": "2026-10-14T00:00:00Z"
+      "updatedAt": "2026-10-14T00:00:00Z",
+      "featured": false,
+      "publishedAt": "1970-01-01T00:00:00Z",
+      "menuOrder": 0,
+      "reviewsAllowed": false
     },
     "limited": {
       "id": 12,
@@ -157,7 +165,11 @@
         "description": "d",
         "noindex": false
       },
-      "updatedAt": "2026-10-14T00:00:00Z"
+      "updatedAt": "2026-10-14T00:00:00Z",
+      "featured": false,
+      "publishedAt": "1970-01-01T00:00:00Z",
+      "menuOrder": 0,
+      "reviewsAllowed": false
     },
     "soldout": {
       "id": 13,
@@ -196,7 +208,11 @@
         "description": "d",
         "noindex": false
       },
-      "updatedAt": "2026-10-14T00:00:00Z"
+      "updatedAt": "2026-10-14T00:00:00Z",
+      "featured": false,
+      "publishedAt": "1970-01-01T00:00:00Z",
+      "menuOrder": 0,
+      "reviewsAllowed": false
     },
     "hidden": {
       "id": 14,
@@ -235,7 +251,11 @@
         "description": "d",
         "noindex": false
       },
-      "updatedAt": "2026-10-14T00:00:00Z"
+      "updatedAt": "2026-10-14T00:00:00Z",
+      "featured": false,
+      "publishedAt": "1970-01-01T00:00:00Z",
+      "menuOrder": 0,
+      "reviewsAllowed": false
     },
     "fixed": {
       "id": 20,
@@ -350,7 +370,11 @@
         "description": "d",
         "noindex": false
       },
-      "updatedAt": "2026-10-14T00:00:00Z"
+      "updatedAt": "2026-10-14T00:00:00Z",
+      "featured": false,
+      "publishedAt": "1970-01-01T00:00:00Z",
+      "menuOrder": 0,
+      "reviewsAllowed": false
     },
     "anyBoth": {
       "id": 30,
@@ -453,7 +477,11 @@
         "description": "d",
         "noindex": false
       },
-      "updatedAt": "2026-10-14T00:00:00Z"
+      "updatedAt": "2026-10-14T00:00:00Z",
+      "featured": false,
+      "publishedAt": "1970-01-01T00:00:00Z",
+      "menuOrder": 0,
+      "reviewsAllowed": false
     },
     "mixed": {
       "id": 40,
@@ -531,7 +559,11 @@
         "description": "d",
         "noindex": false
       },
-      "updatedAt": "2026-10-14T00:00:00Z"
+      "updatedAt": "2026-10-14T00:00:00Z",
+      "featured": false,
+      "publishedAt": "1970-01-01T00:00:00Z",
+      "menuOrder": 0,
+      "reviewsAllowed": false
     },
     "backorder": {
       "id": 50,
@@ -571,7 +603,11 @@
         "description": "d",
         "noindex": false
       },
-      "updatedAt": "2026-10-14T00:00:00Z"
+      "updatedAt": "2026-10-14T00:00:00Z",
+      "featured": false,
+      "publishedAt": "1970-01-01T00:00:00Z",
+      "menuOrder": 0,
+      "reviewsAllowed": false
     }
   },
   "cases": [

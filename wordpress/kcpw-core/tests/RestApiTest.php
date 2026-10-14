@@ -7,6 +7,7 @@ use KcPrintworks\Core\Auth\MemoryNonceStore;
 use KcPrintworks\Core\Auth\RequestSigner;
 use KcPrintworks\Core\Auth\RequestVerifier;
 use KcPrintworks\Core\Handoff\MemoryHandoffStore;
+use KcPrintworks\Core\Reviews\ReviewService;
 use KcPrintworks\Core\Wp\RestApi;
 
 final class RestApiTest extends TestCase
@@ -132,5 +133,73 @@ final class RestApiTest extends TestCase
         $this->assertSame('9.9.9', $response->data['woocommerce']);
         $this->assertTrue($response->data['storefrontUrlConfigured']);
         $this->assertFalse($response->data['stripeActive']);
+    }
+
+    private function setUpReviewApi(?FakeReviewGateway $gateway = null): FakeReviewGateway
+    {
+        \WpStub::reset();
+        $gateway ??= new FakeReviewGateway();
+        $this->api = new RestApi(
+            GlueFixtures::service(null, new MemoryHandoffStore()),
+            new RequestVerifier(GlueFixtures::SECRET, new MemoryNonceStore()),
+            '0.2.0',
+            new ReviewService($gateway),
+        );
+        $this->api->routes();
+        return $gateway;
+    }
+
+    public function testTheReviewRouteExistsOnlyWhenReviewsAreWiredAndIsSignedLikeTheOthers(): void
+    {
+        $this->setUpApi();
+        $this->assertFalse(isset(\WpStub::$routes['kcpw/v1/reviews']));
+        $this->setUpReviewApi();
+        $route = \WpStub::$routes['kcpw/v1/reviews'];
+        $this->assertSame('POST', $route['methods']);
+        $this->assertTrue(is_callable($route['permission_callback']) && $route['permission_callback'] !== '__return_true');
+        $body = '{"productId":10,"rating":5}';
+        $unsigned = $this->api->authorize($this->request('POST', '/kcpw/v1/reviews', $body, null));
+        $this->assertSame(401, $unsigned->data['status']);
+        $this->assertTrue($this->api->authorize($this->request('POST', '/kcpw/v1/reviews', $body)) === true);
+    }
+
+    public function testAGoodReviewIsReceivedAndSavedPendingNothingElseIsReturned(): void
+    {
+        $gateway = $this->setUpReviewApi();
+        $body = '{"productId":10,"rating":4,"name":"Robin Hood","email":"robin@example.com","review":"A really lovely case, thank you.","clientKey":"' . str_repeat('a', 64) . '"}';
+        $response = $this->api->review($this->request('POST', '/kcpw/v1/reviews', $body));
+        $this->assertSame(200, $response->status);
+        $this->assertSame('no-store', $response->headers['Cache-Control']);
+        $this->assertSame(['ok' => true, 'status' => 'received'], $response->data);
+        $this->assertCount(1, $gateway->inserted);
+        $this->assertStringNotContains('robin@example.com', (string) json_encode($response->data), 'no customer detail in the answer');
+    }
+
+    public function testBadJsonAndBadReviewsAreRefusedWithTheProblemsListed(): void
+    {
+        $gateway = $this->setUpReviewApi();
+        $notJson = $this->api->review($this->request('POST', '/kcpw/v1/reviews', 'not json'));
+        $this->assertSame(400, $notJson->status);
+        $this->assertSame('invalid_request', $notJson->data['status']);
+        $claims = $this->api->review($this->request('POST', '/kcpw/v1/reviews', '{"productId":10,"rating":5,"name":"Robin Hood","email":"robin@example.com","review":"A really lovely case.","verified":true}'));
+        $this->assertSame(400, $claims->status);
+        $this->assertSame('unknown_field', $claims->data['problems'][0]['code']);
+        $this->assertCount(0, $gateway->inserted);
+    }
+
+    public function testRefusalsMapToTheirHttpStatuses(): void
+    {
+        $gateway = $this->setUpReviewApi();
+        $body = '{"productId":10,"rating":5,"name":"Robin Hood","email":"robin@example.com","review":"A really lovely case."}';
+        $gateway->state = 'unknown';
+        $this->assertSame(404, $this->api->review($this->request('POST', '/kcpw/v1/reviews', $body))->status);
+        $gateway->state = 'open';
+        $gateway->verifiedOnly = true;
+        $response = $this->api->review($this->request('POST', '/kcpw/v1/reviews', $body));
+        $this->assertSame(403, $response->status);
+        $this->assertSame('verification_required', $response->data['status']);
+        $gateway->verifiedOnly = false;
+        $gateway->insertResult = 0;
+        $this->assertSame(500, $this->api->review($this->request('POST', '/kcpw/v1/reviews', $body))->status);
     }
 }

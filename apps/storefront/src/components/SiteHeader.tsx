@@ -1,9 +1,14 @@
 import Link from 'next/link';
-import type { Category } from '@kcpw/contracts';
+import type { NavItem } from '@/lib/nav';
 import { NavLink } from './NavLink';
+import { NavMenu } from './NavMenu';
 import { CartLink } from './CartLink';
 
-export function SiteHeader({ categories }: { categories: Category[] }) {
+/**
+ * Wide screens (60em and up) show the links inline; narrower ones show a Menu disclosure. Both lists hold the same links, and only
+ * one is ever displayed, so assistive technology reads one set. The cart link and count are always visible.
+ */
+export function SiteHeader({ nav }: { nav: NavItem[] }) {
   return (
     <header className="site-header">
       <div className="container site-header__inner">
@@ -14,16 +19,14 @@ export function SiteHeader({ categories }: { categories: Category[] }) {
           <span>KCPrintWorks</span>
         </Link>
         <nav className="site-nav" aria-label="Main">
-          <ul>
-            <li>
-              <NavLink href="/shop/">Shop</NavLink>
-            </li>
-            {categories.map((category) => (
-              <li key={category.slug}>
-                <NavLink href={`/product-category/${category.slug}/`}>{category.name}</NavLink>
+          <ul className="site-nav__inline">
+            {nav.map((item) => (
+              <li key={item.key}>
+                <NavLink href={item.href}>{item.label}</NavLink>
               </li>
             ))}
           </ul>
+          <NavMenu items={nav} />
         </nav>
         <CartLink />
       </div>

@@ -6,6 +6,7 @@ namespace KcPrintworks\Core\Wp;
 use KcPrintworks\Core\Auth\RequestVerifier;
 use KcPrintworks\Core\Cart\LineResolver;
 use KcPrintworks\Core\Handoff\HandoffService;
+use KcPrintworks\Core\Reviews\ReviewService;
 
 final class Plugin
 {
@@ -20,7 +21,7 @@ final class Plugin
             (string) home_url(),
             static fn (): int => time(),
         );
-        (new RestApi($service, new RequestVerifier(Config::secret(), new WpNonceStore()), $version))->register();
+        (new RestApi($service, new RequestVerifier(Config::secret(), new WpNonceStore()), $version, new ReviewService(new WcReviewGateway())))->register();
         (new Redeemer($service))->register();
         (new CartHooks())->register();
         (new PersonalizationPanel())->register();

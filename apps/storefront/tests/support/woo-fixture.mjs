@@ -34,7 +34,13 @@ export function createFixture(host = 'http://127.0.0.1:3200') {
     },
     { id: 21, name: 'Game Accessories', slug: 'game-accessories', description: '', count: 3 },
     { id: 22, name: 'Empty Category', slug: 'empty-category', description: '', count: 0 },
-  ];
+    // The real shop's structure as the owner verified it: "Game Cases" (417) is a parent with no products of its own and "Card Games"
+    // (332) is its child; "Personalized Gifts" (418) stands alone; "New Arrivals" (324) is the category a plugin rotates products through.
+    { id: 324, name: 'New Arrivals', slug: 'new-arrivals', description: '', count: 1 },
+    { id: 417, name: 'Game Cases', slug: 'game-cases', description: '', count: 0 },
+    { id: 332, name: 'Card Games', slug: 'card-games', description: '', count: 3, parent: 417 },
+    { id: 418, name: 'Personalized Gifts', slug: 'personalized-gifts', description: '', count: 1 },
+  ].map((c) => ({ parent: 0, menu_order: 0, image: null, ...c }));
   const cat = (id) => {
     const c = categories.find((x) => x.id === id);
     return { id: c.id, name: c.name, slug: c.slug };
@@ -57,6 +63,13 @@ export function createFixture(host = 'http://127.0.0.1:3200') {
     variations: [],
     date_modified_gmt: '2026-09-01T12:00:00',
     meta_data: [],
+    featured: false,
+    date_created_gmt: '2026-09-01T09:00:00',
+    date_created: '2026-09-01T05:00:00',
+    menu_order: 0,
+    average_rating: '0.00',
+    rating_count: 0,
+    reviews_allowed: true,
   };
   const product = (fields) => ({ ...base, ...fields });
 
@@ -210,6 +223,73 @@ export function createFixture(host = 'http://127.0.0.1:3200') {
       price: '3.00',
       regular_price: '3.00',
       categories: [cat(15)],
+    }),
+    // ---- merchandising, dates and ratings (ids 201 and up)
+    product({
+      id: 201,
+      name: 'Synthetic Card Case Alpha',
+      slug: 'synthetic-card-case-alpha',
+      price: '11.00',
+      regular_price: '11.00',
+      categories: [cat(332)],
+      images: [image(9101, host, 'card-case-a')],
+      featured: true,
+      menu_order: 2,
+      date_created_gmt: '2026-10-10T10:00:00',
+      average_rating: '4.50',
+      rating_count: 2,
+    }),
+    product({
+      id: 202,
+      name: 'Synthetic Card Case Beta',
+      slug: 'synthetic-card-case-beta',
+      price: '13.00',
+      regular_price: '13.00',
+      categories: [cat(332), cat(417)], // in the child AND the parent: must appear once on the parent's page
+      images: [image(9102, host, 'card-case-b')],
+      featured: true,
+      menu_order: 1,
+      date_created_gmt: '2026-10-12T10:00:00',
+    }),
+    product({
+      id: 203,
+      name: 'Synthetic Gift Mug',
+      slug: 'synthetic-gift-mug',
+      price: '16.00',
+      regular_price: '16.00',
+      categories: [cat(418)],
+      images: [image(9103, host, 'gift-mug')],
+      date_created_gmt: '2026-10-11T10:00:00',
+    }),
+    product({
+      id: 204,
+      name: 'Synthetic Direct Game Case',
+      slug: 'synthetic-direct-game-case',
+      price: '25.00',
+      regular_price: '25.00',
+      categories: [cat(417)],
+      images: [image(9104, host, 'direct-case')],
+      date_created_gmt: '2026-10-09T10:00:00',
+    }),
+    product({
+      id: 205,
+      name: 'Synthetic Old Arrival',
+      slug: 'synthetic-old-arrival',
+      price: '7.00',
+      regular_price: '7.00',
+      categories: [cat(324)], // in the New Arrivals CATEGORY but published long ago: must not be a "new arrival"
+      images: [image(9105, host, 'old-arrival')],
+      date_created_gmt: '2026-01-01T10:00:00',
+    }),
+    product({
+      id: 206,
+      name: 'Synthetic Reviews Off',
+      slug: 'synthetic-reviews-off',
+      price: '6.00',
+      regular_price: '6.00',
+      categories: [cat(418)],
+      reviews_allowed: false,
+      date_created_gmt: '2026-10-08T10:00:00',
     }),
   ];
 

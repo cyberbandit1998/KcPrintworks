@@ -34,7 +34,16 @@ Nothing below happens without your explicit go-ahead.
 | G1 | Step 2 | Storefront design |
 | G2 | Step 10 | Payment readiness report (test mode only) |
 | G3 | Switching checkout on in any container | The owner turns it on in the staging `.env`, after the staging checklist; never in a production image |
+| G3b | Letting shoppers write reviews | Update `kcpw-core` to 0.2.0 on **staging** first ([REVIEWS-STAGING-CHECKLIST.md](REVIEWS-STAGING-CHECKLIST.md)), then `REVIEWS_SUBMIT_ENABLED=true` in the staging `.env`; the live site's plugin is a separate approval (G6). Reviews are only ever saved as pending |
 | G6 | Any production change | Live Stripe keys and webhook, Apple Pay domain, DNS (including creating `shop.`), SSL, cutover per MIGRATION §9, redirects, launch checklist signed |
+
+### Navigation, content and reviews (owner-approved plan v2, 2026-10-14; ADR-016, ADR-017)
+
+Built after Step 3 on the owner's instruction, in stages that were each tested: (1) categories as a tree, the header Shop | Game Cases | Personalized Gifts | New
+Arrivals | Blog | Cart (categories configurable without a rebuild), Featured Products, publication-date New Arrivals; (2) the blog, Our Story and Contact read
+from WordPress with a hardened sanitizer, SEO and sitemap; (3) approved reviews from WooCommerce, with rating data; (4) moderated review submission
+through `kcpw-core` 0.2.0, off by default; (5) documentation ([WORDPRESS-CONTENT-AND-REVIEWS.md](WORDPRESS-CONTENT-AND-REVIEWS.md)). No WooCommerce category, product,
+or setting is created or changed by any of it.
 
 ## 3. Phase 0 — Foundations and decisions (size: S–M)
 
