@@ -78,6 +78,11 @@
     grid-template-areas: 'brand nav cart';
     gap: var(--space-5);
   }
+  /* The links sit against the Cart button, not the logo: the grid gap (1.5rem) plus this margin is 2rem (32px) between Blog and Cart. */
+  .site-nav {
+    justify-self: end;
+    margin-right: calc(var(--space-6) - var(--space-5));
+  }
 }
 .brand {
   grid-area: brand;
@@ -1189,6 +1194,16 @@
 }
 .post__tags {
   margin-top: var(--space-6);
+}
+.contact-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-3);
+  margin-top: var(--space-5);
+}
+.contact-actions p {
+  margin: 0;
 }
 .managed-cta {
   display: flex;

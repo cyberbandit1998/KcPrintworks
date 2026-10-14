@@ -280,6 +280,10 @@ Full text in [docs/DECISIONS.md](docs/DECISIONS.md).
 
 ## Session log
 
+- **2026-10-14, session 1 (ninth part): two small changes.** (1) Desktop header: the five links now sit against the Cart button, exactly 32px from Blog to Cart (`.site-nav` is end-aligned in the header grid with a margin that makes
+  the 1.5rem grid gap 2rem); the logo and Cart did not move (measured before and after: brand x and cart right edge identical at 960 to 1920px); mobile menu and styling untouched; tested at 960, 1024, 1280, 1440 and 1920. (2) Contact page:
+  a Contact Form 7 shortcode, or its rendered form (text included), is removed from WordPress content (`lib/wp/sanitize.ts`, applies to all WordPress pages and posts, with the empty wrappers it leaves); the page's words stay editable in
+  WordPress; under them an orange **Email Us** button (`mailto:contact@kcprintworks.com?subject=KCPrintWorks%20Inquiry`) and the address as a link. No form, endpoint, plugin or mail service; Contact stays in the footer only.
 - **2026-10-14, session 1 (eighth part): plan v2, approved by the owner with the verified category ids.** Built in five tested stages (details: ADR-016, ADR-017, `docs/WORDPRESS-CONTENT-AND-REVIEWS.md`): (1) the category tree, the new header (Shop | Game Cases |
   Personalized Gifts | New Arrivals | Blog | Cart, responsive, native-`<details>` menu, categories configurable per request), Featured Products (WooCommerce star, never padded), New Arrivals by publication date; (2) the blog, Our Story, Contact from WordPress
   with a hardened sanitizer, SEO, sitemap, JSON-LD, caching and outage behavior; (3) approved reviews, ratings and structured data from WooCommerce; (4) moderated review writing (`/api/reviews/` -> `kcpw-core` 0.2.0, pending only, shared vectors for validation,

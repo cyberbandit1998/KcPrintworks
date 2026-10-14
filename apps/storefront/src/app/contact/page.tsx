@@ -27,6 +27,10 @@ export async function generateMetadata(): Promise<Metadata> {
   };
 }
 
+/** The shop's contact address. A plain link, not a form: the storefront has no form, endpoint, or mail service. */
+const CONTACT_EMAIL = 'contact@kcprintworks.com';
+const CONTACT_MAILTO = `mailto:${CONTACT_EMAIL}?subject=KCPrintWorks%20Inquiry`;
+
 export default async function ContactPage() {
   const loaded = await loadPage();
   if ('unavailable' in loaded) return <ContentUnavailable what="This page" />;
@@ -34,7 +38,16 @@ export default async function ContactPage() {
     <ManagedPage
       title="Contact"
       page={loaded.page}
-      missingText="Contact details are coming soon."
-    />
+      missingText="Questions about KCPrintWorks? Send us an email."
+    >
+      <div className="contact-actions">
+        <a href={CONTACT_MAILTO} className="button">
+          Email Us
+        </a>
+        <p>
+          <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>
+        </p>
+      </div>
+    </ManagedPage>
   );
 }

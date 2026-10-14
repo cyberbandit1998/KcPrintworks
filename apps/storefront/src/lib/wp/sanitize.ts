@@ -132,7 +132,16 @@ export function safeEmbedSrc(raw: string | undefined): string | null {
   return null;
 }
 
+const EMPTY_WRAPPERS = new Set(['p', 'div', 'span', 'ul', 'ol']);
+
+/**
+ * Contact Form 7 shortcodes. WordPress prints one as plain text when the form plugin is off, and the storefront cannot show forms
+ * (no form, no endpoint), so the shortcode text is dropped before anything else.
+ */
+const FORM_SHORTCODE = /\[\/?contact-form-7\b[^\]]*\]/gi;
+
 export function sanitizeContent(html: string, ctx: SanitizeContext): string {
+  html = html.replace(FORM_SHORTCODE, '');
   const headings = ['h2', 'h3', 'h4', 'h5', 'h6'];
   const headingTransforms = Object.fromEntries(
     ['h1', ...headings].map((tag) => [
@@ -244,7 +253,8 @@ export function sanitizeContent(html: string, ctx: SanitizeContext): string {
     allowProtocolRelative: false,
     allowedIframeHostnames: ['www.youtube-nocookie.com', 'player.vimeo.com'],
     allowIframeRelativeUrls: false,
-    nonTextTags: ['script', 'style', 'textarea', 'option', 'noscript', 'template'],
+    // A form's text goes with it (its labels and buttons mean nothing without the form); a form plugin's wrappers are then empty and removed below.
+    nonTextTags: ['script', 'style', 'textarea', 'option', 'noscript', 'template', 'form'],
     transformTags: {
       ...headingTransforms,
       a: (_name, attribs) => {
@@ -293,8 +303,15 @@ export function sanitizeContent(html: string, ctx: SanitizeContext): string {
       },
     },
     // An image without a usable source and a frame without an allowed address are removed, not left as empty boxes.
-    exclusiveFilter: (frame) =>
-      (frame.tag === 'iframe' && !frame.attribs.src) || (frame.tag === 'img' && !frame.attribs.src),
+    exclusiveFilter: (frame) => {
+      if ((frame.tag === 'iframe' || frame.tag === 'img') && !frame.attribs.src) return true;
+      // What a removed form or shortcode leaves behind: wrappers with no text and no picture or video in them.
+      return (
+        EMPTY_WRAPPERS.has(frame.tag) &&
+        frame.text.trim() === '' &&
+        frame.mediaChildren.length === 0
+      );
+    },
   });
 }
 

@@ -15,12 +15,15 @@ export function ManagedPage({
   missingText,
   latest,
   cta,
+  children,
 }: {
   title: string;
   page: ContentPage | null;
   missingText: string;
   latest?: readonly BlogPostSummary[];
   cta?: boolean;
+  /** Shown under the WordPress words (the Contact page's email button). */
+  children?: React.ReactNode;
 }) {
   return (
     <>
@@ -34,6 +37,7 @@ export function ManagedPage({
             </figure>
           ) : null}
           {page ? <ContentHtml html={page.html} /> : <p>{missingText}</p>}
+          {children}
         </article>
       </div>
       {latest && latest.length > 0 ? (

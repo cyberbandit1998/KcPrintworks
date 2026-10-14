@@ -119,9 +119,39 @@ test('Contact shows its WordPress page, and /about/ moves permanently to Our Sto
 }) => {
   await page.goto('/contact/');
   await expect(page.getByRole('heading', { level: 1, name: 'Contact' })).toBeVisible();
+  await expect(page.locator('.content')).toContainText('sample text'); // the words still come from WordPress
   const response = await request.get('/about/', { maxRedirects: 0 });
   expect(response.status()).toBe(308);
   expect(response.headers().location).toContain('/our-story/');
+});
+
+test('Contact has an orange Email Us button and the address as a link beneath it, and no form', async ({
+  page,
+}) => {
+  await page.goto('/contact/');
+  const button = page.getByRole('link', { name: 'Email Us' });
+  await expect(button).toHaveAttribute(
+    'href',
+    'mailto:contact@kcprintworks.com?subject=KCPrintWorks%20Inquiry',
+  );
+  await expect(button).toHaveClass(/\bbutton\b/);
+  const address = page.getByRole('link', { name: 'contact@kcprintworks.com' });
+  await expect(address).toHaveAttribute('href', 'mailto:contact@kcprintworks.com');
+  const [buttonBox, addressBox] = [await button.boundingBox(), await address.boundingBox()];
+  expect(addressBox!.y).toBeGreaterThan(buttonBox!.y + buttonBox!.height - 1); // beneath the button
+  // The button is the brand's orange with dark ink text (not white), like the other buttons.
+  const colors = await button.evaluate((el) => {
+    const style = getComputedStyle(el);
+    return { background: style.backgroundColor, color: style.color };
+  });
+  expect(colors.background).toBe('rgb(255, 74, 36)');
+  expect(colors.color).toBe('rgb(17, 18, 22)');
+  // No form of any kind, and Contact is not in the header (the footer only).
+  await expect(page.locator('main form, main input, main textarea')).toHaveCount(0);
+  await expect(page.locator('.site-header').getByRole('link', { name: 'Contact' })).toHaveCount(0);
+  await expect(
+    page.getByRole('contentinfo').getByRole('link', { name: 'Contact' }),
+  ).toHaveAttribute('href', '/contact/');
 });
 
 test('the home page shows the Our Story and Latest blog posts sections, after the products', async ({

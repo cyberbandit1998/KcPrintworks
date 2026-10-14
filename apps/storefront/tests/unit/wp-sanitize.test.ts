@@ -174,6 +174,39 @@ describe('embeds', () => {
   });
 });
 
+describe('forms and form-plugin shortcodes (the storefront has no forms)', () => {
+  it('drops a Contact Form 7 shortcode, in any spelling, and the empty paragraph it leaves', () => {
+    expect(
+      clean('<p>Write to us.</p><p>[contact-form-7 id="123" title="Contact form 1"]</p>'),
+    ).toBe('<p>Write to us.</p>');
+    expect(clean('<p>Hi</p>[CONTACT-FORM-7 id="1"]<p>[contact-form-7]</p>')).toBe('<p>Hi</p>');
+  });
+
+  it('removes a form with everything inside it, labels and text included', () => {
+    const html =
+      '<p>Intro</p><div class="wpcf7"><div class="screen-reader-response"><p role="status"></p><ul></ul></div>' +
+      '<form method="post"><p><label>Your name<input name="n"></label></p><textarea>x</textarea><p><input type="submit" value="Send"></p></form></div><p>After</p>';
+    expect(clean(html)).toBe('<p>Intro</p><p>After</p>');
+  });
+
+  it('keeps other shortcodes and ordinary square brackets as text', () => {
+    expect(clean('<p>[gallery ids="1,2"] and [note]</p>')).toBe(
+      '<p>[gallery ids="1,2"] and [note]</p>',
+    );
+  });
+
+  it('removes empty wrappers but keeps ones that hold a picture, a video or text', () => {
+    expect(clean('<p></p><p>&nbsp;</p><div></div><span> </span><ul></ul>')).toBe('');
+    expect(clean('<p><img src="https://images.example/a.png" alt="A"></p>')).toContain('<img');
+    expect(clean('<div><p>Text</p></div>')).toBe('<div><p>Text</p></div>');
+    expect(
+      clean(
+        '<figure class="wp-block-embed"><div class="wp-block-embed__wrapper"><iframe src="https://www.youtube.com/embed/abc"></iframe></div></figure>',
+      ),
+    ).toContain('<iframe');
+  });
+});
+
 describe('text helpers', () => {
   it('decodes the entities WordPress writes and leaves unknown ones alone', () => {
     expect(decodeEntities('Tom &amp; Jerry&#8217;s &#x2013; &hellip; &madeup; &#0; &#xD800;')).toBe(

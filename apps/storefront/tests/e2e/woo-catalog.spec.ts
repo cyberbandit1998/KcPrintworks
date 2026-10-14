@@ -1077,19 +1077,39 @@ test.describe('WordPress content: blog, Our Story, Contact', () => {
     await expect(page.locator('[data-section="latest-posts"] article')).toHaveCount(3);
 
     await page.goto('/contact/');
-    await expect(page.getByRole('main')).toContainText('Contact details are coming soon');
+    // No WordPress page yet: a plain line, and the email button and address are still there.
+    await expect(page.getByRole('main')).toContainText('Send us an email');
+    await expect(page.getByRole('link', { name: 'Email Us' })).toBeVisible();
     expect(await page.locator('meta[name="robots"]').getAttribute('content')).toContain('noindex');
 
     await mockPost(request, 'wp', {
       addPage: {
         slug: 'contact',
         title: 'Contact',
-        html: '<p>Write to <a href="mailto:hello@example.org">hello@example.org</a>.</p>',
+        // What a form plugin leaves in a page: the shortcode as text, and (when the plugin is on) its whole form.
+        html:
+          '<p>Write to <a href="mailto:hello@example.org">hello@example.org</a>.</p>' +
+          '<p>[contact-form-7 id="123" title="Contact form 1"]</p>' +
+          '<div class="wpcf7" id="wpcf7-f123-p45-o1"><div class="screen-reader-response"><p role="status" aria-live="polite"></p><ul></ul></div>' +
+          '<form action="/contact/#wpcf7-f123-p45-o1" method="post" class="wpcf7-form"><p><label>Your name (required)<br><input type="text" name="your-name"></label></p>' +
+          '<p><label>Your message<br><textarea name="your-message"></textarea></label></p><p><input type="submit" value="Send"></p></form></div>',
       },
     });
     expect((await revalidate(request)).status()).toBe(202);
     await page.goto('/contact/');
     await expect(page.locator('.content a[href="mailto:hello@example.org"]')).toBeVisible();
+    // The page's own words stay editable in WordPress; the form-plugin leftovers are gone, text and all.
+    const text = (await page.locator('main').innerText()).replace(/\s+/g, ' ');
+    for (const leftover of ['contact-form-7', 'Your name (required)', 'Your message', 'Send ']) {
+      expect(text.includes(leftover), leftover).toBe(false);
+    }
+    await expect(page.locator('main form, main input, main textarea')).toHaveCount(0);
+    await expect(page.locator('.content p:empty, .content ul:empty')).toHaveCount(0);
+    await expect(page.getByRole('link', { name: 'Email Us' })).toHaveAttribute(
+      'href',
+      'mailto:contact@kcprintworks.com?subject=KCPrintWorks%20Inquiry',
+    );
+    await expect(page.getByRole('link', { name: 'contact@kcprintworks.com' })).toBeVisible();
   });
 
   test('a new post appears after the signed refresh, with paging, and a removed page leaves the home page', async ({

@@ -37,6 +37,10 @@ What is removed on purpose, because it could be used to attack visitors: scripts
 plugin will not appear: write your email address and hours as text instead), styling written into the page, iframes other than YouTube and
 Vimeo, and anything WordPress adds only for its own front end.
 
+Contact: the page's own words come from WordPress as above. The storefront adds, under them, an orange **Email Us** button (opens an email to
+`contact@kcprintworks.com` with the subject "KCPrintWorks Inquiry") and the address as a link. There is no form, endpoint or mail service. A Contact Form 7
+shortcode (or its form) left in the page is removed, so you can leave it or delete it in WordPress. Contact is linked from the footer only.
+
 Our Story: no text is written by the storefront. If the page is not published, the page says "Our story is coming soon" and asks search
 engines not to list it, and the home page leaves the section out. The Our Story page also shows the three newest posts and a **Shop Now** button.
 

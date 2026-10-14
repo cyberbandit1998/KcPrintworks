@@ -54,6 +54,19 @@ test.describe('header: wide screens', () => {
       const cart = (await page.locator('.cart-link').boundingBox())!;
       expect(boxes[0]!.x).toBeGreaterThan(brand.x + brand.width);
       expect(boxes.at(-1)!.right).toBeLessThan(cart.x);
+      // The links sit against the Cart button: 32px from Blog to Cart. The logo and the cart stay at the container's edges.
+      expect(cart.x - boxes.at(-1)!.right).toBeGreaterThan(31.5);
+      expect(cart.x - boxes.at(-1)!.right).toBeLessThan(32.5);
+      const inner = await page.locator('.site-header__inner').evaluate((el) => {
+        const box = el.getBoundingClientRect();
+        const style = getComputedStyle(el);
+        return {
+          left: box.left + parseFloat(style.paddingLeft),
+          right: box.right - parseFloat(style.paddingRight),
+        };
+      });
+      expect(Math.abs(brand.x - inner.left)).toBeLessThan(1);
+      expect(Math.abs(cart.x + cart.width - inner.right)).toBeLessThan(1);
       expect(
         await page.evaluate(
           () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
