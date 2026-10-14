@@ -282,18 +282,29 @@ describe('convertExport', () => {
 // Runs only where the owner's real export is present (it is gitignored, so never in CI).
 const realExport = path.resolve(process.cwd(), '../../docs/discovery/raw/products.csv');
 describe.skipIf(!existsSync(realExport))("the owner's real export", () => {
-  const rows = readExport(readFileSync(realExport, 'utf8'));
-  const result = convertExport(rows, { categories: 'current', placeholderImages: true });
+  // Loaded lazily: vitest still runs a skipped suite's body while collecting tests, and the file is absent in CI.
+  let loaded: { published: number; result: ReturnType<typeof convertExport> } | undefined;
+  const load = () => {
+    if (!loaded) {
+      const rows = readExport(readFileSync(realExport, 'utf8'));
+      loaded = {
+        published: rows.filter(
+          (r) => (r.Type === 'simple' || r.Type === 'variable') && r.Published === '1',
+        ).length,
+        result: convertExport(rows, { categories: 'current', placeholderImages: true }),
+      };
+    }
+    return loaded;
+  };
 
   it('converts every published product, or says exactly why not', () => {
-    const published = rows.filter(
-      (r) => (r.Type === 'simple' || r.Type === 'variable') && r.Published === '1',
-    );
-    expect(result.products.length + result.skipped.length).toBe(published.length);
+    const { published, result } = load();
+    expect(result.products.length + result.skipped.length).toBe(published);
     expect(result.skipped).toEqual([]);
   });
 
   it('keeps unique URLs and the real price range', () => {
+    const { result } = load();
     expect(new Set(result.products.map((p) => p.slug)).size).toBe(result.products.length);
     const cents = result.products.map((p) => p.price.amount);
     expect(Math.min(...cents)).toBeGreaterThan(0);

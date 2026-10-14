@@ -152,6 +152,9 @@ registry work. Consequences:
   `id:<n>`**, not necessarily its ID.
 - Node 22 `node --test scripts/` fails on a directory; use a glob (`"scripts/**/*.test.mjs"`).
 - Axe passing does not prove the CSS loaded. Look at a screenshot.
+- **Tests must pass without the gitignored export.** `docs/discovery/raw/` exists in the sandbox but not in CI. A suite that
+  reads it must skip with `describe.skipIf` **and** load lazily inside `it` (vitest runs a skipped suite's body while
+  collecting). Before pushing, simulate CI: move `docs/discovery/raw/products.csv` aside, run `npm run check`, move it back.
 - Use absolute paths in shell commands; the working directory can shift between calls.
 
 ## Git workflow
