@@ -60,7 +60,7 @@ Verified on 2026-10-14: `npm run check` and `npm run test:e2e` pass locally: **1
 (2 skip in CI because they read the gitignored export), **46** script tests, **66** PHP tests / 725 assertions for `kcpw-core`, and **74** Playwright
 e2e tests (axe WCAG 2.2 AA on every route, no horizontal scroll 320 to 1280 px, keyboard and focus flows, payload and script-size budgets, and 23 against
 a mock WooCommerce store plus a `kcpw-core` stand-in with checkout switched on). The CI-style run with the export moved aside is recorded in the session log.
-Previous published image: **`sha-196a701`** (CI and image workflows green); the image for this work is recorded in the session log once published.
+GitHub Actions on `e2d7c3a`: **CI green** (run 38559572272, incl. PHP tests, the `kcpw-core-plugin` artifact, and the full Playwright suite) and **Publish Docker image green** (run 38559572315): tag **`sha-e2d7c3a`**, digest `sha256:513a9849…cff607`, smoke-tested before it was pushed. Previous image: `sha-196a701`.
 
 - **`packages/contracts`:** integer money; plugin-agnostic personalization option schema and `validateOptions`;
   strict product DTO (rejects Etsy fields); strict cart line intents (rejects client prices); `priceLine`
