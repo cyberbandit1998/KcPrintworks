@@ -53,6 +53,14 @@ jobs:
           name: kcpw-core-plugin
           path: dist/kcpw-core.zip
           retention-days: 30
+      - name: Build the kcpw-checkout-style plugin package
+        run: npm run build:checkout-style
+      - name: Upload the kcpw-checkout-style plugin package
+        uses: actions/upload-artifact@v4
+        with:
+          name: kcpw-checkout-style-plugin
+          path: dist/kcpw-checkout-style.zip
+          retention-days: 30
       - name: Upload Playwright traces on failure
         if: failure()
         uses: actions/upload-artifact@v4

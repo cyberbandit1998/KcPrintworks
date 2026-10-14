@@ -1,0 +1,448 @@
+/*
+ * KCPrintWorks Checkout Style 0.1.0: the WooCommerce Checkout Block, dressed like the storefront.
+ *
+ * RULES (checked by scripts/checkout-style/checkout-style.test.mjs):
+ *  1. Every selector starts with `body.kcpw-checkout`, a class the plugin adds ONLY on the checkout page. Nothing here can reach another page.
+ *  2. The color tokens below are the storefront's (apps/storefront/src/styles/tokens.css), same values. Text pairings meet WCAG 2.2 AA.
+ *  3. Payment is left alone: no rule touches an iframe, and rules aimed at payment methods set only color, background, border color
+ *     and radius. No size, position, overflow, transform or z-index (Stripe and PayPal draw their own elements and measure them).
+ *  4. Layout belongs to WooCommerce (it switches columns with container queries). Only color, type, borders and spacing are set here.
+ *  5. System fonts, no images, no @import, no url(): nothing is requested from anywhere.
+ * `!important` is used where the theme (Astra) or WooCommerce print the same property at higher specificity or in the footer.
+ */
+
+body.kcpw-checkout {
+  --kcpw-bg: #f3ebdd;
+  --kcpw-ink: #111216;
+  --kcpw-accent: #ff4a24;
+  --kcpw-link: #2b59e6;
+  --kcpw-surface: #fbf7ef;
+  --kcpw-muted: #44454c;
+  --kcpw-link-strong: #1e3fa8;
+  --kcpw-error: #b3261e;
+  --kcpw-success: #1f6b3a;
+  --kcpw-rule: #d8cbb5;
+  --kcpw-radius: 0.5rem;
+  --kcpw-radius-lg: 1rem;
+  --kcpw-tap: 2.75rem;
+  --kcpw-font:
+    ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  background: var(--kcpw-bg) !important;
+  color: var(--kcpw-ink);
+  font-family: var(--kcpw-font);
+  font-size: 1.0625rem;
+  line-height: 1.6;
+}
+body.kcpw-checkout :focus-visible {
+  outline: 3px solid var(--kcpw-ink);
+  outline-offset: 3px;
+}
+
+/* ---------- Compact header (the storefront's wordmark, drawn in HTML and CSS) ---------- */
+body.kcpw-checkout .kcpw-co-header {
+  background: var(--kcpw-bg);
+  border-bottom: 2px solid var(--kcpw-ink);
+}
+body.kcpw-checkout .kcpw-co-header__inner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  max-width: 74rem;
+  margin-inline: auto;
+  padding: 0.75rem 1rem;
+}
+body.kcpw-checkout .kcpw-co-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0;
+  color: var(--kcpw-ink);
+  font-size: clamp(1.05rem, 0.6rem + 2.2vw, 1.35rem);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  text-decoration: none;
+}
+body.kcpw-checkout .kcpw-co-brand:hover {
+  color: var(--kcpw-ink);
+  text-decoration: underline;
+}
+body.kcpw-checkout .kcpw-co-brand__mark {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 2.25rem;
+  height: 2.25rem;
+  background: var(--kcpw-accent);
+  color: var(--kcpw-ink);
+  border: 2px solid var(--kcpw-ink);
+  border-radius: 0.35rem;
+  font-size: 0.95rem;
+  letter-spacing: -0.04em;
+}
+body.kcpw-checkout .kcpw-co-header__label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0 auto;
+  color: var(--kcpw-muted);
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+body.kcpw-checkout .kcpw-co-header__lock {
+  flex: none;
+}
+body.kcpw-checkout .kcpw-co-header__back {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: var(--kcpw-tap);
+  padding-inline: 0.75rem;
+  margin-left: auto;
+  border: 2px solid var(--kcpw-ink);
+  border-radius: var(--kcpw-radius);
+  color: var(--kcpw-ink);
+  font-weight: 800;
+  text-decoration: none;
+}
+body.kcpw-checkout .kcpw-co-header__label + .kcpw-co-header__back {
+  margin-left: 0;
+}
+body.kcpw-checkout .kcpw-co-header__back:hover {
+  background: var(--kcpw-ink);
+  color: var(--kcpw-bg);
+}
+@media (max-width: 39.99em) {
+  /* Small screens keep the header to one line; the words stay available to screen readers. */
+  body.kcpw-checkout .kcpw-co-header__label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  body.kcpw-checkout .kcpw-co-header__label + .kcpw-co-header__back {
+    margin-left: auto;
+  }
+  body.kcpw-checkout .kcpw-co-brand__mark {
+    width: 2rem;
+    height: 2rem;
+    font-size: 0.85rem;
+  }
+}
+@media (max-width: 22em) {
+  /* The narrowest phones (320px): the arrow and some padding go so the logo and the way back still share one line. */
+  body.kcpw-checkout .kcpw-co-header__inner {
+    gap: 0.5rem;
+  }
+  body.kcpw-checkout .kcpw-co-brand {
+    gap: 0.5rem;
+  }
+  body.kcpw-checkout .kcpw-co-header__back {
+    padding-inline: 0.5rem;
+  }
+  body.kcpw-checkout .kcpw-co-header__back > span[aria-hidden='true'] {
+    display: none;
+  }
+}
+@media (min-width: 48em) {
+  body.kcpw-checkout .kcpw-co-header__inner {
+    padding-inline: 2rem;
+  }
+}
+
+/* ---------- The page around the checkout (Astra's content frame) ---------- */
+body.kcpw-checkout #content .ast-container {
+  max-width: 74rem;
+  padding-inline: 1rem;
+}
+@media (min-width: 48em) {
+  body.kcpw-checkout #content .ast-container {
+    padding-inline: 2rem;
+  }
+}
+body.kcpw-checkout #primary {
+  width: 100% !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+body.kcpw-checkout .ast-article-single,
+body.kcpw-checkout .ast-article-post {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  margin: 0 !important;
+  padding: 0 0 2rem !important;
+}
+body.kcpw-checkout .entry-header {
+  margin: 0;
+}
+body.kcpw-checkout .entry-title {
+  margin: 1.5rem 0 0.25rem;
+  color: var(--kcpw-ink);
+  font-size: clamp(1.75rem, 1.4rem + 1.5vw, 2.25rem);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.12;
+}
+
+/* ---------- Text and links ---------- */
+body.kcpw-checkout .wc-block-components-main a:not(.wc-block-components-button),
+body.kcpw-checkout .wc-block-components-sidebar a:not(.wc-block-components-button) {
+  color: var(--kcpw-link);
+  text-decoration: underline;
+  text-underline-offset: 0.18em;
+  text-decoration-thickness: 0.08em;
+}
+body.kcpw-checkout .wc-block-components-main a:not(.wc-block-components-button):hover,
+body.kcpw-checkout .wc-block-components-sidebar a:not(.wc-block-components-button):hover {
+  color: var(--kcpw-link-strong);
+  text-decoration-thickness: 0.14em;
+}
+body.kcpw-checkout .wc-block-components-checkout-step__title {
+  color: var(--kcpw-ink);
+  font-size: 1.25rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+body.kcpw-checkout .wc-block-components-checkout-step__description,
+body.kcpw-checkout .wc-block-checkout__terms {
+  color: var(--kcpw-muted);
+  font-size: 0.95rem;
+}
+
+/* ---------- Fields (WooCommerce keeps its own padding, which the floating labels depend on) ---------- */
+body.kcpw-checkout
+  .wc-block-components-text-input
+  input:is(
+    [type='text'],
+    [type='email'],
+    [type='tel'],
+    [type='number'],
+    [type='password'],
+    [type='url']
+  ),
+body.kcpw-checkout .wc-blocks-components-select__select,
+body.kcpw-checkout .wc-block-components-textarea,
+body.kcpw-checkout .wc-block-checkout__add-note textarea {
+  background: var(--kcpw-surface) !important;
+  color: var(--kcpw-ink) !important;
+  border: 2px solid var(--kcpw-ink) !important;
+  border-radius: var(--kcpw-radius) !important;
+  font-family: inherit;
+  box-shadow: none;
+}
+body.kcpw-checkout .wc-block-components-text-input label,
+body.kcpw-checkout .wc-blocks-components-select__label {
+  color: var(--kcpw-muted) !important;
+}
+body.kcpw-checkout .wc-block-components-text-input.has-error input,
+body.kcpw-checkout .wc-blocks-components-select .has-error .wc-blocks-components-select__select {
+  border-color: var(--kcpw-error) !important;
+  border-width: 3px !important;
+}
+body.kcpw-checkout .wc-block-components-text-input.has-error label,
+body.kcpw-checkout .wc-block-components-validation-error {
+  color: var(--kcpw-error) !important;
+  font-weight: 700;
+}
+body.kcpw-checkout
+  .wc-block-components-checkbox
+  .wc-block-components-checkbox__input[type='checkbox'],
+body.kcpw-checkout .wc-block-components-radio-control__input[type='radio'] {
+  border-color: var(--kcpw-ink) !important;
+}
+
+/* ---------- Buttons: dark ink on orange, like the storefront (white on orange is only 3.36:1) ---------- */
+body.kcpw-checkout
+  .wc-block-components-button:not(
+    .is-link,
+    .outlined,
+    .is-style-outline,
+    .text,
+    .wc-block-components-notice-banner__dismiss,
+    .wc-block-components-panel__button
+  ) {
+  background: var(--kcpw-accent) !important;
+  color: var(--kcpw-ink) !important;
+  border: 2px solid var(--kcpw-ink) !important;
+  border-radius: var(--kcpw-radius) !important;
+  min-height: var(--kcpw-tap);
+  font-family: inherit;
+  font-weight: 800;
+  letter-spacing: -0.005em;
+  text-decoration: none;
+}
+body.kcpw-checkout
+  .wc-block-components-button:not(
+    .is-link,
+    .outlined,
+    .is-style-outline,
+    .text,
+    .wc-block-components-notice-banner__dismiss,
+    .wc-block-components-panel__button
+  ):focus-visible {
+  outline: 3px solid var(--kcpw-ink) !important;
+  outline-offset: 3px;
+}
+body.kcpw-checkout
+  .wc-block-components-button:not(
+    .is-link,
+    .outlined,
+    .is-style-outline,
+    .text,
+    .wc-block-components-notice-banner__dismiss,
+    .wc-block-components-panel__button
+  ):hover:not(:disabled, [aria-disabled='true']) {
+  background: var(--kcpw-ink) !important;
+  color: var(--kcpw-bg) !important;
+}
+body.kcpw-checkout
+  .wc-block-components-button:not(
+    .is-link,
+    .outlined,
+    .is-style-outline,
+    .text,
+    .wc-block-components-notice-banner__dismiss,
+    .wc-block-components-panel__button
+  ):is(:disabled, [aria-disabled='true']) {
+  background: var(--kcpw-surface) !important;
+  color: var(--kcpw-muted) !important;
+  border-style: dashed !important;
+}
+body.kcpw-checkout .wc-block-components-checkout-place-order-button {
+  width: 100%;
+  min-height: 3.25rem;
+  font-size: 1.125rem;
+}
+/* Our header carries the way back to the storefront's cart; WooCommerce's own link would open its separate, unused cart page. */
+body.kcpw-checkout .wc-block-components-checkout-return-to-cart-button {
+  display: none !important;
+}
+
+/* ---------- Order summary ---------- */
+@container (min-width: 700px) {
+  body.kcpw-checkout .wp-block-woocommerce-checkout-order-summary-block {
+    background: var(--kcpw-surface);
+    border: 2px solid var(--kcpw-ink);
+    border-radius: var(--kcpw-radius-lg);
+  }
+}
+@container (max-width: 699px) {
+  body.kcpw-checkout .wc-block-components-checkout-order-summary__title,
+  body.kcpw-checkout .wc-block-components-checkout-order-summary__content.is-open {
+    border-color: var(--kcpw-ink) !important;
+  }
+}
+body.kcpw-checkout .wc-block-components-checkout-order-summary__title-text {
+  color: var(--kcpw-ink);
+  font-weight: 800;
+}
+body.kcpw-checkout .wc-block-components-totals-wrapper {
+  border-color: var(--kcpw-rule) !important;
+}
+body.kcpw-checkout .wc-block-components-order-summary-item__image > img {
+  border-radius: var(--kcpw-radius);
+  box-shadow: 0 0 0 1px var(--kcpw-rule);
+}
+body.kcpw-checkout .wc-block-components-order-summary-item__quantity {
+  background: var(--kcpw-ink) !important;
+  color: var(--kcpw-bg) !important;
+  border-color: var(--kcpw-ink) !important;
+  box-shadow: 0 0 0 2px var(--kcpw-surface) !important;
+  font-weight: 800;
+}
+body.kcpw-checkout .wc-block-components-product-name {
+  color: var(--kcpw-ink);
+  font-weight: 800;
+}
+/* Personalization and other item details (kcpw-core saves them as item data): shown in full, long words wrap instead of overflowing. */
+body.kcpw-checkout .wc-block-components-product-metadata,
+body.kcpw-checkout .wc-block-components-product-details {
+  color: var(--kcpw-muted);
+  font-size: 0.9rem;
+  overflow-wrap: anywhere;
+}
+body.kcpw-checkout .wc-block-components-totals-item__label {
+  color: var(--kcpw-ink);
+}
+body.kcpw-checkout .wc-block-components-totals-item__value {
+  color: var(--kcpw-ink);
+  font-weight: 700;
+}
+body.kcpw-checkout .wc-block-components-totals-item__description {
+  color: var(--kcpw-muted);
+}
+body.kcpw-checkout .wc-block-components-totals-footer-item .wc-block-components-totals-item__label {
+  font-weight: 800;
+}
+body.kcpw-checkout .wc-block-components-totals-footer-item .wc-block-components-totals-item__value {
+  font-size: 1.5rem;
+  font-weight: 800;
+}
+
+/* ---------- Notices ---------- */
+body.kcpw-checkout .wc-block-components-notice-banner {
+  background: var(--kcpw-surface) !important;
+  color: var(--kcpw-ink) !important;
+  border: 2px solid var(--kcpw-ink) !important;
+  border-radius: var(--kcpw-radius) !important;
+}
+body.kcpw-checkout .wc-block-components-notice-banner.is-error {
+  border: 3px solid var(--kcpw-error) !important;
+}
+body.kcpw-checkout .wc-block-components-notice-banner.is-success {
+  border: 3px solid var(--kcpw-success) !important;
+}
+
+/* ---------- Payment methods and shipping options: color, border color and radius only ---------- */
+body.kcpw-checkout .wc-block-components-radio-control__option,
+body.kcpw-checkout .wc-block-components-radio-control-accordion-option,
+body.kcpw-checkout .wc-block-components-radio-control-accordion-content {
+  border-color: var(--kcpw-ink);
+  border-radius: var(--kcpw-radius);
+}
+body.kcpw-checkout .wc-block-components-radio-control__description,
+body.kcpw-checkout .wc-block-components-radio-control__secondary-description {
+  color: var(--kcpw-muted);
+}
+
+/* ---------- Order confirmation (same page, after payment) ---------- */
+body.kcpw-checkout .wc-block-order-confirmation-summary,
+body.kcpw-checkout .wc-block-order-confirmation-totals,
+body.kcpw-checkout .woocommerce-order-overview {
+  background: var(--kcpw-surface);
+  border: 2px solid var(--kcpw-ink);
+  border-radius: var(--kcpw-radius-lg);
+  padding: 1rem 1.5rem;
+}
+
+/* ---------- Footer: the storefront's ink footer, colors only ---------- */
+body.kcpw-checkout .site-footer,
+body.kcpw-checkout .site-footer .site-above-footer-wrap,
+body.kcpw-checkout .site-footer .site-primary-footer-wrap,
+body.kcpw-checkout .site-footer .site-below-footer-wrap {
+  background: var(--kcpw-ink) !important;
+}
+body.kcpw-checkout .site-footer,
+body.kcpw-checkout .site-footer :is(p, span, li, a, div, small, h2, h3, h4) {
+  color: var(--kcpw-bg) !important;
+}
+body.kcpw-checkout .site-footer a {
+  text-decoration: underline;
+}
+body.kcpw-checkout .site-footer :focus-visible {
+  outline-color: var(--kcpw-bg);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  body.kcpw-checkout .wc-block-components-button,
+  body.kcpw-checkout .kcpw-co-header__back {
+    transition:
+      background-color 0.15s ease,
+      color 0.15s ease;
+  }
+}

@@ -75,6 +75,8 @@ Dockerfile, deploy/         Docker image (Next.js standalone, multi-stage) and t
 .github/workflows/          ci.yml (checks) and docker-publish.yml (build, smoke-test, publish to GHCR)
 wordpress/kcpw-core/        WordPress plugin (v0.2.1; `/status` also reports `storefrontUrl`): checkout link (quote + single-use handoff), personalization editor/validation/order-item meta, and pending-review intake (`src/Reviews`).
                             Pure PHP core (no WP calls; tested with shared vectors) + thin `src/Wp` layer (tested with stubs); `php tests/run.php`
+wordpress/kcpw-checkout-style/  WordPress plugin (v0.1.0), styling only: the shop's checkout page (ID 9) dressed like the storefront (compact header, scoped stylesheet). No script, no route, no cart/order/payment code;
+                            `tests/` has PHP tests and a hand-written STAND-IN page (`tests/fixture`) rendered by `apps/storefront/tests/e2e/checkout-style.spec.ts`; rules enforced by `scripts/checkout-style/*.test.mjs`. See docs/CHECKOUT-STYLE.md
 ```
 
 ## Commands
@@ -95,6 +97,7 @@ Node 22 (`.nvmrc`), npm workspaces. Run from the repo root.
 | `npm run test:scripts`                  | `node --test` for `scripts/**` (export analyzer, deploy.sh, freshness script)        |
 | `npm run test:php`                      | PHP lint + the kcpw-core tests (`wordpress/kcpw-core/tests/run.php`, no dependencies) |
 | `npm run build:core-plugin`             | Packages `dist/kcpw-core.zip` (also a CI artifact)                                   |
+| `npm run build:checkout-style`          | Packages `dist/kcpw-checkout-style.zip` (also a CI artifact)                         |
 | `npm run check`                         | guard, format, lint, typecheck, test, test:scripts, build (e2e is separate)          |
 | `node scripts/discovery/analyze-wc-export.mjs <csv>` | Markdown report on a product export (`--json` for machine output). Raw exports live in `docs/discovery/raw/` (gitignored) |
 
@@ -189,6 +192,8 @@ and the Ubuntu archive work. Consequences:
 - WordPress REST: `_fields` hides everything not listed, and `_embed` only appears if `_embedded`/`_links` are in `_fields` (the mock imitates this). `has_password=false` keeps protected posts out of counts.
 - A mid-load `invalidate()` must not be lost: `SwrCache` uses a generation counter; do not "simplify" it back to a boolean.
 - WordPress/PHP: the plugin core must not call WordPress functions (a test enforces it); anything needing WP goes in `src/Wp` behind an interface, with a fake in `tests/`.
+- **`kcpw-checkout-style` CSS:** every selector starts with `body.kcpw-checkout`; rules aimed at payment (`payment`, `express`, `gateway`, `stripe`, `paypal`, `accordion`, `radio-control`) may set only color, background, border-color and border-radius; never a size, position, overflow, stacking or frame
+  rule; no `url()`/`@import`. `scripts/checkout-style/checkout-style.test.mjs` and the Playwright spec fail otherwise. After changing the header's markup, run `php wordpress/kcpw-checkout-style/tests/fixture/build.php` (a test checks the fixture is current).
 
 ## Git workflow
 

@@ -1,0 +1,85 @@
+/*
+ * STAND-IN, NOT THE REAL THING. A small hand-written approximation of what Astra and WooCommerce print on the checkout page, written
+ * from the open source of WooCommerce Blocks (class names, structure, container-query layout) so the plugin's stylesheet is tested
+ * against competing rules. The real Astra and WooCommerce stylesheets are not available in the build sandbox; the real page must be
+ * looked at once by the owner (docs/CHECKOUT-STYLE.md, "Preview first").
+ */
+* { box-sizing: border-box; }
+body { margin: 0; font-family: Georgia, serif; color: #333; background: #f5f5f5; line-height: 1.5; }
+a { color: #0170b9; }
+.screen-reader-text { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(1px, 1px, 1px, 1px); }
+
+/* Astra: a tall, white header with the old logo, and a boxed white article */
+.site-header { background: #fff; border-bottom: 1px solid #ddd; padding: 36px 20px; }
+.site-header .old-logo { display: block; width: 300px; max-width: 100%; height: 110px; background: #bbb; color: #fff; font: 20px sans-serif; padding: 40px 10px; }
+.ast-container { max-width: 1240px; margin: 0 auto; padding: 0 20px; display: flex; }
+#primary { width: 100%; padding: 4em 0; margin: 0 0 0 0; }
+.ast-separate-container .ast-article-single:not(.ast-related-post) { background: #fff; padding: 5.34em 6.67em; border-radius: 6px; margin-bottom: 2em; }
+@media (max-width: 544px) { .ast-separate-container .ast-article-single:not(.ast-related-post) { padding: 1.5em 1em; } }
+.entry-title { font-size: 40px; margin: 0 0 1em; color: #3a3a3a; }
+.woocommerce-store-notice { position: static; margin: 0; padding: 12px 20px; background: #0170b9; color: #fff; text-align: center; font: 15px sans-serif; }
+.site-footer { background: #fff; color: #444; padding: 24px 20px; font: 14px sans-serif; text-align: center; }
+.site-footer a { color: #0170b9; }
+
+/* WooCommerce Blocks: layout by container query, floating labels, white 1px inputs, a dark button */
+.wp-block-woocommerce-checkout { container-type: inline-size; margin: 0; padding-top: 24px; }
+.wc-block-components-sidebar-layout { display: flex; flex-wrap: wrap; position: relative; }
+.wc-block-components-sidebar-layout:has(> :last-child.wp-block-woocommerce-checkout-fields-block) { flex-direction: row-reverse; }
+.wc-block-components-main { padding-right: 5%; width: 65%; }
+.wc-block-components-sidebar { padding-left: 2%; width: 35%; }
+@container (max-width: 699px) {
+  .wc-block-components-sidebar-layout { flex-direction: column; }
+  .wc-block-components-main, .wc-block-components-sidebar { padding: 0; width: 100%; }
+  .wc-block-components-main { order: 1; }
+}
+.wc-block-components-checkout-step { border: 0; margin: 0 0 24px; padding: 0; }
+.wc-block-components-checkout-step__title { font-size: 20px; margin: 0 0 8px; font-weight: 500; }
+.wc-block-components-checkout-step__description { margin: 0 0 16px; font-size: 14px; }
+.wc-block-components-text-input { position: relative; margin-top: 16px; }
+.wc-block-components-text-input input { background: #fff; border: 1px solid rgba(18, 18, 18, 0.8); border-radius: 4px; height: 3em; width: 100%; padding: 1.5em 0.75em 0.5em; font: inherit; color: #2b2d2f; }
+.wc-block-components-text-input label { position: absolute; left: 0.75em; top: 0; transform: translateY(0.75em); transform-origin: top left; color: #636d75; pointer-events: none; }
+.wc-block-components-text-input.is-active label { transform: translateY(0.25em) scale(0.75); }
+.wc-blocks-components-select__container { position: relative; margin-top: 16px; }
+.wc-blocks-components-select__label { position: absolute; left: 0.75em; top: 0.25em; font-size: 12px; color: #636d75; }
+.wc-blocks-components-select__select { background: #fff; border: 1px solid rgba(18, 18, 18, 0.8); border-radius: 4px; height: 3em; width: 100%; padding: 1.25em 0.75em 0; font: inherit; }
+.wc-block-components-address-form { display: flex; flex-wrap: wrap; gap: 0 12px; }
+.wc-block-components-address-form .wc-block-components-text-input { flex: 1 0 calc(50% - 6px); }
+.wc-block-components-address-form .wc-block-components-address-form__address_1 { flex: 0 0 100%; }
+.wc-block-components-radio-control__option { display: flex; align-items: center; gap: 12px; border: 1px solid rgba(18, 18, 18, 0.11); padding: 14px 16px; margin: 0; }
+.wc-block-components-radio-control__label, .wc-block-components-radio-control__description { display: block; }
+.wc-block-components-radio-control__secondary-label { margin-left: auto; }
+.wc-block-components-radio-control-accordion-option { border: 1px solid rgba(18, 18, 18, 0.11); }
+.wc-block-components-radio-control-accordion-option .wc-block-components-radio-control__option { border: 0; }
+.wc-block-components-radio-control-accordion-content { padding: 0 16px 16px; }
+.wc-block-components-payment-method-label { font-weight: 600; }
+.wc-stripe-elements-field { border: 1px solid #aaa; border-radius: 4px; background: #fff; }
+.wc-stripe-elements-field iframe { display: block; border: 0; width: 100%; }
+.wc-block-components-checkbox { margin-top: 16px; display: block; }
+.wc-block-checkout__terms { font-size: 14px; margin: 16px 0; }
+.wc-block-checkout__actions_row { display: flex; justify-content: space-between; align-items: center; }
+.wc-block-components-button:not(.is-link) { display: inline-flex; align-items: center; justify-content: center; background: #1e1e1e; color: #fff; border: 0; border-radius: 4px; font: inherit; cursor: pointer; }
+.wc-block-components-checkout-place-order-button { width: 50%; padding: 1em; }
+@container (max-width: 399px) { .wc-block-components-checkout-place-order-button { width: 100%; } }
+.wp-block-woocommerce-checkout-order-summary-block { border: 1px solid rgba(18, 18, 18, 0.11); border-radius: 5px; }
+.wc-block-components-checkout-order-summary__title { display: flex; justify-content: space-between; margin: 16px 16px 0; }
+.wc-block-components-checkout-order-summary__title-text { margin: 0 0 16px; font-weight: 500; }
+@container (max-width: 699px) {
+  .wp-block-woocommerce-checkout-order-summary-block { border: 0; }
+  .wc-block-components-checkout-order-summary__title { margin: 0; padding: 20px 0; border-top: 1px solid rgba(18, 18, 18, 0.11); border-bottom: 1px solid rgba(18, 18, 18, 0.11); }
+}
+@container (min-width: 700px) { .wc-block-components-checkout-order-summary__title-price { display: none; } }
+.wc-block-components-order-summary { padding: 0 16px; }
+.wc-block-components-order-summary-item { display: flex; padding: 16px 0 0; font-size: 14px; }
+.wc-block-components-order-summary-item__image { position: relative; width: 48px; flex: none; margin-top: 10px; padding-bottom: 16px; }
+.wc-block-components-order-summary-item__image img { width: 48px; max-width: 48px; display: block; }
+.wc-block-components-order-summary-item__quantity { position: absolute; right: 0; top: 0; transform: translate(50%, -50%); background: #fff; border: 2px solid rgba(18, 18, 18, 0.11); border-radius: 1em; color: #000; min-width: 20px; min-height: 20px; padding: 0 0.4em; display: flex; align-items: center; justify-content: center; line-height: 1; box-shadow: 0 0 0 2px #fff; z-index: 1; }
+.wc-block-components-order-summary-item__description { padding: 0 8px 16px 24px; flex: 1; }
+.wc-block-components-product-details { list-style: none; margin: 4px 0 0; padding: 0; }
+.wc-block-components-order-summary-item__total-price { font-weight: 700; margin-left: auto; text-align: right; }
+.wc-block-components-totals-wrapper { border-top: 1px solid rgba(18, 18, 18, 0.11); padding: 16px; }
+.wc-block-components-totals-item { display: flex; justify-content: space-between; }
+.wc-block-components-totals-footer-item .wc-block-components-totals-item__value { font-size: 20px; }
+.wc-block-components-notice-banner { display: flex; gap: 12px; margin: 16px 0; padding: 16px !important; border: 1px solid #1e1e1e; border-radius: 4px; background: #fff; color: #1e1e1e; font-size: 14px; }
+.wc-block-components-notice-banner.is-error { border-color: #cc1818; background: #fff0f0; }
+.wc-block-components-validation-error { color: #cc1818; font-size: 12px; }
+.wc-block-components-text-input.has-error input { border-color: #cc1818; }
