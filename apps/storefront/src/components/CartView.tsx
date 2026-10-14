@@ -37,6 +37,15 @@ const ERROR_TEXT: Record<string, string> = {
     'Checkout is not reachable right now. Your cart is kept; please try again in a moment.',
 };
 
+function isWebAddress(address: string): boolean {
+  try {
+    const url = new URL(address);
+    return url.protocol === 'https:' || url.protocol === window.location.protocol;
+  } catch {
+    return false;
+  }
+}
+
 export function CartView({
   checkoutEnabled = false,
   handoffNotice,
@@ -49,6 +58,8 @@ export function CartView({
   const [result, setResult] = useState<QuoteResult | null>(null);
   const [announcement, setAnnouncement] = useState('');
   const [checkout, setCheckout] = useState<CheckoutState>({ phase: 'idle' });
+  // Set synchronously on the first press, so two presses inside one render cannot send two requests.
+  const checkoutInFlight = useRef(false);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const focusHeadingAfterRender = useRef(false);
 
@@ -92,8 +103,10 @@ export function CartView({
   }, [lines, isClient, requestKey]);
 
   async function startCheckout() {
-    if (checkout.phase === 'working') return;
+    if (checkoutInFlight.current) return;
+    checkoutInFlight.current = true;
     setCheckout({ phase: 'working' });
+    let leaving = false;
     try {
       const response = await fetch('/api/cart/handoff/', {
         method: 'POST',
@@ -108,8 +121,15 @@ export function CartView({
         lines?: { index?: number; issues?: { message?: string }[] }[];
       };
       if (body.ok === true && typeof body.redirectUrl === 'string') {
-        // Leaves this site for the shop's checkout. The phase stays "working" so the button cannot be pressed twice.
-        window.location.assign(body.redirectUrl);
+        // The server already accepted this address (the shop's own front page with one single-use token). This only keeps a
+        // malformed or non-web address from ever being navigated to. When leaving, the lock and the "working" phase stay on
+        // so the button cannot be pressed again while the browser changes page.
+        if (isWebAddress(body.redirectUrl)) {
+          leaving = true;
+          window.location.assign(body.redirectUrl);
+          return;
+        }
+        setCheckout({ phase: 'error', message: ERROR_TEXT.unavailable!, details: [] });
         return;
       }
       const code = typeof body.error === 'string' ? body.error : 'unavailable';
@@ -126,6 +146,8 @@ export function CartView({
       });
     } catch {
       setCheckout({ phase: 'error', message: ERROR_TEXT.unavailable!, details: [] });
+    } finally {
+      if (!leaving) checkoutInFlight.current = false;
     }
   }
 
@@ -319,8 +341,7 @@ export function CartView({
                 Checkout
               </button>
               <p className="pdp__note" id="checkout-note">
-                Checkout is not connected in this design preview. It arrives in the next build
-                phase.
+                Online checkout is not open on this site yet.
               </p>
             </>
           )}

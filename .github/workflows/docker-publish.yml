@@ -126,6 +126,22 @@ jobs:
           ./scripts/docker-smoke.sh http://127.0.0.1:3001 staging hostile || { docker logs hostile; exit 1; }
           docker rm -f hostile
 
+      - name: Checkout follows the container's environment, with no rebuild
+        if: env.SITE_ENV == 'staging'
+        run: |
+          # The same image three ways: no checkout settings, checkout switched on without the shared secret, and everything set
+          # (the shop address is deliberately unreachable; the secret is a throwaway value made here). Only the environment differs.
+          run_case() {
+            name="$1"; expect="$2"; shift 2
+            docker run -d --name "$name" -p 127.0.0.1:3002:3000 "$@" kcprintworks-nextjs:smoke
+            ./scripts/docker-smoke-checkout.sh http://127.0.0.1:3002 "$expect" || { docker logs "$name"; exit 1; }
+            docker rm -f "$name"
+          }
+          run_case co-off off
+          run_case co-incomplete incomplete -e CHECKOUT_ENABLED=true -e KCPW_SHOP_URL=https://shop.invalid
+          run_case co-on on -e CHECKOUT_ENABLED=true -e KCPW_SHOP_URL=https://shop.invalid \
+            -e "KCPW_HANDOFF_SECRET=$(openssl rand -hex 24)"
+
       - name: Publish the tested image to GHCR
         id: push
         env:

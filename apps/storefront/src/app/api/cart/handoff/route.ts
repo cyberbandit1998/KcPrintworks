@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { HandoffRequestSchema, type HandoffResponse } from '@kcpw/contracts';
 import { getCatalog, refreshCatalog } from '@/lib/catalog';
 import { buildQuote } from '@/lib/quote-server';
-import { readCheckoutStatus } from '@/lib/checkout';
+import { currentCheckoutStatus } from '@/lib/checkout';
 import { NO_STORE, readBodyLimited } from '@/lib/http';
 import { requestHandoff } from '@/lib/handoff/upstream';
 
@@ -19,7 +19,7 @@ const reply = (body: HandoffResponse, status: number) =>
   NextResponse.json(body, { status, headers: NO_STORE });
 
 export async function POST(request: Request) {
-  const checkout = readCheckoutStatus();
+  const checkout = currentCheckoutStatus();
   if (!checkout.enabled) return reply({ ok: false, error: 'checkout_disabled' }, 403);
 
   const raw = await readBodyLimited(request, MAX_BODY_BYTES);

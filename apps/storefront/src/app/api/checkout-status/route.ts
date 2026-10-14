@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { readCheckoutStatus } from '@/lib/checkout';
+import { currentCheckoutStatus } from '@/lib/checkout';
 import { NO_STORE } from '@/lib/http';
 import { requestShopStatus } from '@/lib/handoff/upstream';
 
@@ -10,7 +10,7 @@ import { requestShopStatus } from '@/lib/handoff/upstream';
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
-  const status = readCheckoutStatus();
+  const status = currentCheckoutStatus();
   if (!status.enabled) {
     return NextResponse.json(
       {

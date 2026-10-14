@@ -56,11 +56,11 @@ anywhere, and the cutover (gate G6). Creating the WooCommerce Read-only REST key
 ## What exists in the code
 
 Verified on 2026-10-14: `npm run check` and `npm run test:e2e` pass locally: **108** contracts tests (incl. 33 shared personalization vectors,
-29 shared line-pricing vectors, 3 request-signing vectors, and a graph test that keeps zod out of the browser entry), **171** storefront unit tests
-(2 skip in CI because they read the gitignored export), **46** script tests, **66** PHP tests / 725 assertions for `kcpw-core`, and **74** Playwright
-e2e tests (axe WCAG 2.2 AA on every route, no horizontal scroll 320 to 1280 px, keyboard and focus flows, payload and script-size budgets, and 23 against
+29 shared line-pricing vectors, 3 request-signing vectors, and a graph test that keeps zod out of the browser entry), **176** storefront unit tests
+(2 skip in CI because they read the gitignored export), **46** script tests, **66** PHP tests / 725 assertions for `kcpw-core`, and **82** Playwright
+e2e tests (axe WCAG 2.2 AA on every route, no horizontal scroll 320 to 1280 px, keyboard and focus flows, payload and script-size budgets, and 31 against
 a mock WooCommerce store plus a `kcpw-core` stand-in with checkout switched on). The CI-style run with the export moved aside is recorded in the session log.
-GitHub Actions on `e2d7c3a`: **CI green** (run 38559572272, incl. PHP tests, the `kcpw-core-plugin` artifact, and the full Playwright suite) and **Publish Docker image green** (run 38559572315): tag **`sha-e2d7c3a`**, digest `sha256:513a9849…cff607`, smoke-tested before it was pushed. Previous image: `sha-196a701`.
+Images: `sha-e2d7c3a` (CI run 38559572272 and image run 38559572315 green; digest `sha256:513a9849…cff607`) and `sha-8529f95` (same code, docs only; the one deployed on staging when the checkout-config problem below was reported). The image for the checkout-config fix is the one from the next push; its tag is in that run's "Publish Docker image" summary.
 
 - **`packages/contracts`:** integer money; plugin-agnostic personalization option schema and `validateOptions`;
   strict product DTO (rejects Etsy fields); strict cart line intents (rejects client prices); `priceLine`
@@ -252,6 +252,16 @@ Full text in [docs/DECISIONS.md](docs/DECISIONS.md).
 3. Ask which blockers the owner has cleared before starting Step 2; do not guess at their site.
 
 ## Session log
+
+- **2026-10-14, session 1 (sixth part):** the owner reported that staging (`sha-8529f95`, `CHECKOUT_ENABLED=true`, `KCPW_SHOP_URL` and `WC_BASE_URL` set) still showed the disabled
+  Checkout button with "not connected in this design preview". Cause: that text is the *checkout off* branch of `CartView`, and the container found checkout incomplete because the code
+  read only `KCPW_API_URL` (and needs `KCPW_HANDOFF_SECRET`); `KCPW_SHOP_URL` was never a name it read, and compose lists variables explicitly, so a name it does not list never reaches the container.
+  The working checkout button, loading state, double-press guard, error messages and server-chosen redirect already existed (no hardcoded button). Changes: the shop address now comes from
+  `KCPW_API_URL`, then `KCPW_SHOP_URL`, then `WC_BASE_URL` (empty counts as unset; the https rule applies to whichever name was used; an explicit bad value is refused, not replaced); the server log says
+  why a switched-on checkout stays off (names only); the disabled copy no longer says "design preview"; the browser also refuses to navigate to a non-web address; a synchronous in-flight lock backs the
+  double-press guard; compose passes `KCPW_SHOP_URL`; the publish workflow now starts the image three ways (off, incomplete, fully set) and checks checkout follows the environment alone
+  (`scripts/docker-smoke-checkout.sh`); 8 new browser tests (loading, error and retry, dropped connection, hostile client body, foreign and off-path shop links, withdrawn product, intents-only request, non-web address)
+  and 5 unit tests. Verified locally: check (export moved aside), 82 e2e, and the real standalone build in all three environments. Nothing on the live site, WooCommerce, Stripe or DNS was touched.
 
 - **2026-10-14, session 1 (fifth part):** owner asked for a storefront independent of the sync service (ExportYourStore now, maybe Nembol later), with WooCommerce as the single
   source of truth, no custom Etsy integration, and priority on WooCommerce integration, personalization, cart handoff, and Stripe checkout. Wrote ADR-014 and `docs/SYNC-INDEPENDENCE.md`;

@@ -128,7 +128,7 @@ test.describe('personalized purchase flow (design preview)', () => {
     );
   });
 
-  test('cart: change quantity, remove, empty state, and checkout is clearly not connected', async ({
+  test('cart: change quantity, remove, empty state, and checkout says it is not open yet', async ({
     page,
   }) => {
     await page.goto('/product/sample-sticker-pack/');
@@ -141,7 +141,7 @@ test.describe('personalized purchase flow (design preview)', () => {
 
     const checkout = page.getByRole('button', { name: 'Checkout' });
     await expect(checkout).toHaveAttribute('aria-disabled', 'true');
-    await expect(page.getByText(/Checkout is not connected/)).toBeVisible();
+    await expect(page.getByText(/Online checkout is not open on this site yet/)).toBeVisible();
 
     await page.getByRole('button', { name: /Remove/ }).click();
     await expect(page.getByRole('heading', { name: 'Your cart is empty' })).toBeFocused();

@@ -5,7 +5,7 @@ import '@/styles/components.css';
 import { SiteHeader } from '@/components/SiteHeader';
 import { SiteFooter } from '@/components/SiteFooter';
 import { getCatalog } from '@/lib/catalog';
-import { readCheckoutStatus } from '@/lib/checkout';
+import { currentCheckoutStatus } from '@/lib/checkout';
 import { catalogSourceName, isProduction, siteUrl } from '@/lib/env';
 import { SITE_NAME } from '@/lib/seo';
 
@@ -50,7 +50,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
               </p>
             ) : catalogSourceName === 'woo' ? (
               <p>
-                {readCheckoutStatus().enabled
+                {currentCheckoutStatus().enabled
                   ? 'Staging preview with the products from your WooCommerce store. Checkout is for testing only: use Stripe test cards, never a real card. Not a live store.'
                   : 'Staging preview with the products from your WooCommerce store, read-only. Checkout is not connected, so nothing can be ordered here. Not a live store.'}
               </p>

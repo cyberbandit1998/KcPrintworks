@@ -417,6 +417,173 @@ test.describe('checkout handoff', () => {
     ).toHaveLength(1);
   });
 
+  const handoffRoute = '**/api/cart/handoff/';
+  const shopCalls = async (request: APIRequestContext) =>
+    (
+      (await (await request.get(`${WOO_TEST.mockUrl}/__mock/log`)).json()).core as {
+        route: string;
+      }[]
+    ).filter((c) => c.route === '/kcpw/v1/cart/handoff').length;
+
+  test('while the shop is being asked, the button says so and a second press sends nothing', async ({
+    page,
+  }) => {
+    await addCardBox(page);
+    await page.goto('/cart/');
+    let asked = 0;
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    await page.route(handoffRoute, async (route) => {
+      asked += 1;
+      await gate;
+      await route.continue();
+    });
+
+    await page.getByRole('button', { name: 'Checkout' }).click();
+    const working = page.getByRole('button', { name: 'Preparing checkout…' });
+    await expect(working).toHaveAttribute('aria-disabled', 'true');
+    await expect(page.locator('#checkout-status')).toContainText('Taking you to secure checkout');
+    await working.click({ force: true });
+    await working.click({ force: true });
+    release();
+    await page.waitForURL(`${WOO_TEST.mockUrl}/?kcpw_handoff=*`);
+    expect(asked).toBe(1);
+  });
+
+  test('the browser sends line intents and nothing else: no price, no total, no address to go to', async ({
+    page,
+  }) => {
+    await addCardBox(page);
+    await page.goto('/cart/');
+    const sending = page.waitForRequest(handoffRoute);
+    await page.getByRole('button', { name: 'Checkout' }).click();
+    const sent = (await sending).postDataJSON();
+    expect(Object.keys(sent)).toEqual(['lines']);
+    expect(sent.lines).toEqual([
+      { productId: 103, variationId: 7001, quantity: 1, attributes: { color: 'red' }, options: {} },
+    ]);
+    await page.waitForURL(`${WOO_TEST.mockUrl}/?kcpw_handoff=*`);
+  });
+
+  test('a request that tries to set a price, a total, or where to go is refused and never reaches the shop', async ({
+    page,
+    request,
+  }) => {
+    await page.goto('/cart/');
+    const before = await shopCalls(request);
+    const statuses = await page.evaluate(async () => {
+      const line = { productId: 103, variationId: 7001, quantity: 1 };
+      const post = (body: unknown) =>
+        fetch('/api/cart/handoff/', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(body),
+        }).then((response) => response.status);
+      return Promise.all([
+        post({ lines: [{ ...line, price: 1 }] }),
+        post({ lines: [line], total: 1 }),
+        post({ lines: [line], expectedSubtotal: 1 }),
+        post({ lines: [line], redirectUrl: 'https://evil.example/' }),
+        post({ lines: [line], returnUrl: 'https://evil.example/' }),
+        post({ lines: [{ ...line, redirectUrl: 'https://evil.example/' }] }),
+      ]);
+    });
+    expect(statuses).toEqual([400, 400, 400, 400, 400, 400]);
+    expect(await shopCalls(request)).toBe(before);
+  });
+
+  test('a shop that answers with a link to another site, or another page, is never followed', async ({
+    page,
+    request,
+  }) => {
+    await addCardBox(page);
+    await page.goto('/cart/');
+    for (const mode of ['foreign_redirect', 'wrong_path']) {
+      await mockPost(request, 'handoff', { mode });
+      await page.getByRole('button', { name: 'Checkout' }).click();
+      await expect(page.locator('.notice[role="alert"]')).toContainText(
+        'Checkout is not reachable right now',
+      );
+      await expect(page).toHaveURL(/\/cart\/$/);
+    }
+  });
+
+  test('an address that is not a web address is never navigated to, even if the server sent it', async ({
+    page,
+  }) => {
+    await addCardBox(page);
+    await page.goto('/cart/');
+    for (const redirectUrl of ['javascript:alert(1)', 'data:text/html,hi', 'not an address']) {
+      await page.route(handoffRoute, (route) =>
+        route.fulfill({ contentType: 'application/json', json: { ok: true, redirectUrl } }),
+      );
+      await page.getByRole('button', { name: 'Checkout' }).click();
+      await expect(page.locator('.notice[role="alert"]')).toContainText(
+        'Checkout is not reachable right now',
+      );
+      await expect(page).toHaveURL(/\/cart\/$/);
+      await page.unroute(handoffRoute);
+    }
+  });
+
+  test('an unreachable shop is reported plainly, the cart is kept, and pressing Checkout again works', async ({
+    page,
+    request,
+  }) => {
+    await addCardBox(page);
+    await page.goto('/cart/');
+    await mockPost(request, 'handoff', { mode: 'down' });
+    await page.getByRole('button', { name: 'Checkout' }).click();
+    const notice = page.locator('.notice[role="alert"]');
+    await expect(notice).toContainText('Checkout is not reachable right now');
+    await expect(notice).toContainText('Your cart is kept');
+    await expect(page).toHaveURL(/\/cart\/$/);
+    await expect(page.getByRole('button', { name: 'Checkout' })).toHaveAttribute(
+      'aria-disabled',
+      'false',
+    );
+
+    await mockPost(request, 'handoff', { mode: 'normal' });
+    await page.getByRole('button', { name: 'Checkout' }).click();
+    await page.waitForURL(`${WOO_TEST.mockUrl}/?kcpw_handoff=*`);
+  });
+
+  test('a dropped connection is reported the same way and does not lock the button', async ({
+    page,
+  }) => {
+    await addCardBox(page);
+    await page.goto('/cart/');
+    await page.route(handoffRoute, (route) => route.abort());
+    await page.getByRole('button', { name: 'Checkout' }).click();
+    await expect(page.locator('.notice[role="alert"]')).toContainText(
+      'Checkout is not reachable right now',
+    );
+    await page.unroute(handoffRoute);
+    await page.getByRole('button', { name: 'Checkout' }).click();
+    await page.waitForURL(`${WOO_TEST.mockUrl}/?kcpw_handoff=*`);
+  });
+
+  test('a product withdrawn from sale after it was added is named, and no checkout starts', async ({
+    page,
+    request,
+  }) => {
+    await addCardBox(page);
+    await page.goto('/cart/');
+    await mockPost(request, 'product', { id: 103, fields: { status: 'draft' } });
+    const before = await shopCalls(request);
+    await page.getByRole('button', { name: 'Checkout' }).click();
+    const notice = page.locator('.notice[role="alert"]');
+    await expect(notice).toContainText('Some items cannot be ordered right now');
+    await expect(notice).toContainText('This item is no longer available');
+    await expect(page).toHaveURL(/\/cart\/$/);
+    await expect(page.getByRole('button', { name: 'Checkout' })).toHaveAttribute(
+      'aria-disabled',
+      'false',
+    );
+    // The shop was asked (it is the authority), said no, and nothing was handed over.
+    expect(await shopCalls(request)).toBe(before + 1);
+  });
+
   test('the operator status page sees the shop and its Stripe mode, and shows no secret', async ({
     request,
   }) => {
@@ -462,6 +629,6 @@ test.describe('checkout handoff', () => {
       'aria-disabled',
       'true',
     );
-    await expect(page.getByText('Checkout is not connected')).toBeVisible();
+    await expect(page.getByText('Online checkout is not open on this site yet.')).toBeVisible();
   });
 });

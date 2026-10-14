@@ -40,7 +40,9 @@ services:
       # Checkout (Step 3). OFF unless CHECKOUT_ENABLED=true AND the shop address and handoff secret are set. It can never be
       # on in a production build. The secret must equal KCPW_HANDOFF_SECRET in the shop's wp-config.php. Test mode only.
       CHECKOUT_ENABLED: ${CHECKOUT_ENABLED:-false}
+      # The shop address is KCPW_API_URL, or KCPW_SHOP_URL, or (when both are empty) WC_BASE_URL above.
       KCPW_API_URL: ${KCPW_API_URL:-}
+      KCPW_SHOP_URL: ${KCPW_SHOP_URL:-}
       KCPW_HANDOFF_SECRET: ${KCPW_HANDOFF_SECRET:-}
       # Keep V8's heap below the container's memory limit so it collects garbage instead of being OOM-killed.
       NODE_OPTIONS: --max-old-space-size=320

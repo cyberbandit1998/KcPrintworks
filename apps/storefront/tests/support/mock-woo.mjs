@@ -102,6 +102,8 @@ export function createMockWoo({ port = 0, key = MOCK_KEY, secret = MOCK_SECRET }
   let data = createFixture(host);
   const log = { requests: [], writes: 0, unauthorized: 0, core: [] };
   const handoffs = new Map();
+  // How the stand-in shop answers a handoff: normal | down (503) | foreign_redirect | wrong_path (a hostile or broken shop).
+  let handoffMode = 'normal';
   const expected = `Basic ${Buffer.from(`${key}:${secret}`).toString('base64')}`;
 
   const json = (res, status, body, headers = {}) => {
@@ -133,6 +135,7 @@ export function createMockWoo({ port = 0, key = MOCK_KEY, secret = MOCK_SECRET }
           log.unauthorized = 0;
           log.core = [];
           handoffs.clear();
+          handoffMode = 'normal';
           return json(res, 200, { ok: true });
         }
         if (url.pathname === '/__mock/product') {
@@ -141,6 +144,10 @@ export function createMockWoo({ port = 0, key = MOCK_KEY, secret = MOCK_SECRET }
           Object.assign(row, input.fields, {
             date_modified_gmt: new Date().toISOString().slice(0, 19),
           });
+          return json(res, 200, { ok: true });
+        }
+        if (url.pathname === '/__mock/handoff') {
+          handoffMode = String(input.mode ?? 'normal');
           return json(res, 200, { ok: true });
         }
         if (url.pathname === '/__mock/fail') {
@@ -182,6 +189,11 @@ export function createMockWoo({ port = 0, key = MOCK_KEY, secret = MOCK_SECRET }
         }
         if (route !== '/kcpw/v1/cart/handoff' || req.method !== 'POST')
           return json(res, 404, { code: 'rest_no_route' });
+        if (handoffMode === 'down')
+          return json(res, 503, {
+            code: 'kcpw_not_ready',
+            message: 'The checkout link is not set up.',
+          });
         let body;
         try {
           body = JSON.parse(raw);
@@ -239,7 +251,12 @@ export function createMockWoo({ port = 0, key = MOCK_KEY, secret = MOCK_SECRET }
           currency: 'USD',
           subtotal,
           lines,
-          redirectUrl: `${host}/?kcpw_handoff=${token}`,
+          redirectUrl:
+            handoffMode === 'foreign_redirect'
+              ? `https://evil.example/?kcpw_handoff=${token}`
+              : handoffMode === 'wrong_path'
+                ? `${host}/wp-admin/?kcpw_handoff=${token}`
+                : `${host}/?kcpw_handoff=${token}`,
           expiresAt: Math.floor(Date.now() / 1000) + 600,
         });
       });

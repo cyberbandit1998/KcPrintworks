@@ -68,9 +68,9 @@ pass "browser-supplied prices are rejected"
 html=$(curl -fsS "$base/cart/")
 found=0
 for src in $(echo "$html" | grep -oE '/_next/static/[^"]+\.js' | sort -u); do
-  if curl -fsS "$base$src" | grep -q 'Checkout is not connected'; then found=1; break; fi
+  if curl -fsS "$base$src" | grep -q 'Online checkout is not open on this site yet'; then found=1; break; fi
 done
-[ "$found" = "1" ] || fail "cart does not ship the 'checkout is not connected' state"
+[ "$found" = "1" ] || fail "cart does not ship the 'online checkout is not open' state"
 pass "checkout is disabled"
 
 if [ -n "$container" ]; then

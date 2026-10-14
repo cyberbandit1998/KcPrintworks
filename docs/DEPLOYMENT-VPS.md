@@ -308,12 +308,13 @@ WordPress, set `KCPW_HANDOFF_SECRET`, Stripe test keys). Then, on the VPS:
 
 ```bash
 cd /opt/kcprintworks-nextjs
-nano .env      # set:  CHECKOUT_ENABLED=true   KCPW_API_URL=https://YOUR-STAGING-WORDPRESS   KCPW_HANDOFF_SECRET=<same value as wp-config.php>
+nano .env      # set:  CHECKOUT_ENABLED=true   KCPW_HANDOFF_SECRET=<same value as wp-config.php>   (and KCPW_API_URL=https://YOUR-STAGING-WORDPRESS if it is not the WC_BASE_URL site)
 ./deploy.sh "$(grep '^IMAGE_TAG=' .env | cut -d= -f2-)"
 curl -s https://YOUR-STAGING-STOREFRONT/api/checkout-status/     # expect "enabled":true and "shop":{"reachable":true,... "stripeTestMode":true}
 ```
 
 The page banner then says checkout is for testing with Stripe test cards. To switch it off again: `CHECKOUT_ENABLED=false` and the same `deploy.sh` line.
 If `reachable` is false the answer names the reason (secret mismatch, plugin not active, secret not set on the shop).
+If the cart still shows a disabled Checkout button, `"enabled":false` in the same answer names the missing setting; see the troubleshooting list in [CHECKOUT-STAGING-CHECKLIST.md](CHECKOUT-STAGING-CHECKLIST.md) section 4.
 
 Deploying a new image keeps all of this: it lives in `.env`, not in the image.

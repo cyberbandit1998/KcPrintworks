@@ -54,7 +54,7 @@ On the VPS, in `/opt/kcprintworks-nextjs/.env` (edit with a text editor; `chmod 
 
 ```
 CHECKOUT_ENABLED=true
-KCPW_API_URL=https://YOUR-STAGING-WORDPRESS
+KCPW_API_URL=https://YOUR-STAGING-WORDPRESS      # optional: when empty, KCPW_SHOP_URL and then WC_BASE_URL are used (the shop is the WooCommerce site)
 KCPW_HANDOFF_SECRET=<the same value as in wp-config.php>
 ```
 
@@ -67,6 +67,24 @@ curl -s https://YOUR-STAGING-STOREFRONT/api/checkout-status/
 
 `reachable:false` names the reason ("did not accept the signature" = the two secrets differ; "route not found" = the plugin is not active).
 A production image ignores these settings, by design.
+
+### If the cart still says "Online checkout is not open on this site yet"
+
+The button is disabled whenever the container finds checkout switched off or incomplete. The container tells you which, and it never needs a rebuild: the setting is read on every request.
+
+```bash
+curl -s https://YOUR-STAGING-STOREFRONT/api/checkout-status/
+# {"enabled":false,"reason":"not fully configured","missing":["KCPW_HANDOFF_SECRET (32 or more characters)"]}   names what is missing, never a value
+docker logs kcprintworks-nextjs 2>&1 | grep '\[checkout\]'                      # the same reason, in the server log
+
+# What the container actually received (the secret is shown only as a length):
+docker exec kcprintworks-nextjs sh -c 'for v in CHECKOUT_ENABLED KCPW_API_URL KCPW_SHOP_URL WC_BASE_URL SITE_ENV; do printf "%s=%s\n" "$v" "$(printenv $v)"; done; printf "KCPW_HANDOFF_SECRET length=%s\n" "$(printenv KCPW_HANDOFF_SECRET | tr -d "\n" | wc -c)"'
+```
+
+- A name that is in `.env` but **empty or absent in the container** means the compose file is older than the image: refresh it from the image ([DEPLOYMENT-VPS.md](DEPLOYMENT-VPS.md), "update") and run `./deploy.sh` again. Compose passes only the names it lists.
+- `SITE_ENV=production` in the image disables checkout on purpose; use the staging image.
+- `"missing":["KCPW_HANDOFF_SECRET ..."]`: the container has no secret, or fewer than 32 characters. It must equal `KCPW_HANDOFF_SECRET` in the shop's `wp-config.php`.
+- `"enabled":true` with `"reachable":false` is a different problem (secret mismatch, plugin inactive): the answer names it.
 
 ## 5. Test it
 

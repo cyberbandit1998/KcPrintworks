@@ -65,7 +65,8 @@ describe('POST /api/cart/handoff/', () => {
     const settings: Record<string, string>[] = [
       { CHECKOUT_ENABLED: 'false' },
       { KCPW_HANDOFF_SECRET: 'too-short' },
-      { KCPW_API_URL: '' },
+      { KCPW_API_URL: 'http://shop.example.com', WC_BASE_URL: '' }, // an explicit but non-https address is refused, not replaced
+      { KCPW_API_URL: '', KCPW_SHOP_URL: '', WC_BASE_URL: '' },
     ];
     for (const env of settings) {
       const POST = await route(env);
