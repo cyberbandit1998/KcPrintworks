@@ -42,6 +42,18 @@ else
   pass "production is indexable"
 fi
 
+# The image optimizer (sharp) must work inside the image: resize the home-page photo. A broken optimizer would show as
+# missing photos only after WooCommerce products are connected.
+optimized=$(curl -s -o /dev/null -w '%{http_code} %{content_type}' "$base/_next/image/?url=%2Fimages%2Fhero-banner.jpg&w=640&q=75")
+case "$optimized" in "200 image/"*) ;; *) fail "image optimizer did not resize a photo (got: $optimized)" ;; esac
+pass "image optimizer works"
+
+# Catalog endpoints exist and behave for the placeholder catalog: status reports the source, refresh is not an endpoint.
+curl -fsS "$base/api/catalog-status/" | grep -q '"source":"fixtures"' || fail "catalog-status did not report the placeholder source"
+code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$base/api/revalidate/" -d '{}')
+[ "$code" = "404" ] || fail "revalidate endpoint answered $code without a WooCommerce source (expected 404)"
+pass "catalog endpoints"
+
 code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$base/api/cart/quote/" \
   -H 'content-type: application/json' \
   -d '{"lines":[{"productId":103,"quantity":1,"options":{},"price":1}]}')

@@ -11,10 +11,6 @@ import { toPurchaseModel } from '@kcpw/contracts';
 
 type Params = { slug: string };
 
-export async function generateStaticParams(): Promise<Params[]> {
-  return (await getCatalog().listProducts()).map((p) => ({ slug: p.slug }));
-}
-
 export async function generateMetadata({ params }: { params: Promise<Params> }): Promise<Metadata> {
   const { slug } = await params;
   const product = await getCatalog().getProductBySlug(slug);

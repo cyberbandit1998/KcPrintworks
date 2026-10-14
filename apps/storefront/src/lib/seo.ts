@@ -4,6 +4,7 @@ import { siteUrl } from './env';
 export const SITE_NAME = 'KCPrintWorks';
 
 export function absoluteUrl(path: string): string {
+  if (/^https?:\/\//i.test(path)) return path; // already absolute (photos hosted by WooCommerce)
   return `${siteUrl}${path.startsWith('/') ? path : `/${path}`}`;
 }
 

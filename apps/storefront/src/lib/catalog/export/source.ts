@@ -20,7 +20,9 @@ import { readExport } from './csv';
 const repoRoot = () => path.resolve(process.cwd(), '../..');
 
 function readTable(file: string): Record<string, string>[] {
-  return existsSync(file) ? readExport(readFileSync(file, 'utf8')) : [];
+  return existsSync(/*turbopackIgnore: true*/ file)
+    ? readExport(readFileSync(/*turbopackIgnore: true*/ file, 'utf8'))
+    : [];
 }
 
 export function loadCategoryPlan(file: string) {
@@ -52,13 +54,13 @@ export function loadExportCatalog(
   if (cached) return cached;
   const exportPath =
     env.CATALOG_EXPORT_PATH ?? path.join(repoRoot(), 'docs/discovery/raw/products.csv');
-  if (!existsSync(exportPath)) {
+  if (!existsSync(/*turbopackIgnore: true*/ exportPath)) {
     throw new Error(
       `CATALOG_SOURCE=export needs the product export at ${exportPath}. Put the WooCommerce export there (it is gitignored) or set CATALOG_EXPORT_PATH.`,
     );
   }
   const discovery = path.join(repoRoot(), 'docs/discovery');
-  cached = convertExport(readExport(readFileSync(exportPath, 'utf8')), {
+  cached = convertExport(readExport(readFileSync(/*turbopackIgnore: true*/ exportPath, 'utf8')), {
     categories: env.CATALOG_CATEGORIES === 'current' ? 'current' : 'proposed',
     categoryPlan: loadCategoryPlan(path.join(discovery, 'category-plan.csv')),
     hide:

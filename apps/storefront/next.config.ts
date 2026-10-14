@@ -1,5 +1,6 @@
 import path from 'node:path';
 import type { NextConfig } from 'next';
+import { parseImageHosts } from './src/lib/image-hosts';
 
 /**
  * SITE_ENV controls indexing. Only `production` is indexable; staging, previews, and local builds send
@@ -25,6 +26,7 @@ const securityHeaders = [
  * manifest. An image therefore is either a staging image (noindex, the default) or a production image.
  */
 const standalone = process.env.NEXT_OUTPUT === 'standalone';
+const imageHosts = parseImageHosts(process.env.IMAGE_HOSTS);
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
@@ -32,10 +34,22 @@ const nextConfig: NextConfig = {
   // This is an npm workspace: trace dependencies from the repository root so the standalone output
   // includes packages/contracts and the hoisted node_modules.
   outputFileTracingRoot: path.resolve(process.cwd(), '../..'),
+  // The design-preview source can read the owner's product export from docs/discovery. Never ship that folder in a build output.
+  outputFileTracingExcludes: { '/*': ['../../docs/discovery/**/*'] },
   poweredByHeader: false,
   // Match WooCommerce's trailing-slash URLs so existing links need no redirect (MIGRATION §5).
   trailingSlash: true,
   transpilePackages: ['@kcpw/contracts'],
+  // Pages are rendered per request now (the catalog is read from WooCommerce at run time), so a runtime environment
+  // variable could otherwise change what an image was built to be. These are written into the build: a staging image
+  // stays noindex whatever the VPS .env says, and the optimizer's host list cannot be widened from outside.
+  env: {
+    SITE_ENV: process.env.SITE_ENV ?? '',
+    IMAGE_HOSTS: imageHosts.join(','),
+  },
+  images: {
+    remotePatterns: imageHosts.map((hostname) => ({ protocol: 'https' as const, hostname })),
+  },
   async headers() {
     return [{ source: '/:path*', headers: securityHeaders }];
   },

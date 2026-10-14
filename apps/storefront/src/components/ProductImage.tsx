@@ -1,5 +1,6 @@
 import Image from 'next/image';
 import type { ProductImage as ProductImageData } from '@kcpw/contracts/client';
+import { isOptimizableImage } from '@/lib/image-hosts';
 
 interface Props {
   image: ProductImageData;
@@ -18,9 +19,9 @@ export function ProductImage({ image, alt, sizes, priority }: Props) {
       height={image.height}
       sizes={sizes ?? '(min-width: 56em) 40vw, 100vw'}
       priority={priority}
-      // Local SVG placeholders need no optimization. Absolute URLs (the design preview hot-links the live site's
-      // photos) skip the optimizer so no remote host has to be configured; Step 2 sets remotePatterns and removes this.
-      unoptimized={image.url.endsWith('.svg') || /^https?:\/\//.test(image.url)}
+      // SVG placeholders need no optimization. Photos are resized by Next only from the hosts in lib/image-hosts.ts
+      // (next.config.ts images.remotePatterns); a photo from any other host is shown as is rather than failing the page.
+      unoptimized={image.url.endsWith('.svg') || !isOptimizableImage(image.url)}
     />
   );
 }

@@ -36,6 +36,8 @@ jobs:
         run: npm test
       - name: Script tests
         run: npm run test:scripts
+      - name: WordPress plugin (PHP lint and tests)
+        run: npm run test:php
       - name: Install Playwright browser
         run: npx playwright install --with-deps chromium
         working-directory: apps/storefront
@@ -43,6 +45,14 @@ jobs:
         run: npm run test:e2e
         env:
           CI: 'true'
+      - name: Build the Etsy plugin package
+        run: npm run build:etsy-plugin
+      - name: Upload the Etsy plugin package
+        uses: actions/upload-artifact@v4
+        with:
+          name: kcpw-etsy-plugin
+          path: dist/kcpw-etsy.zip
+          retention-days: 30
       - name: Upload Playwright traces on failure
         if: failure()
         uses: actions/upload-artifact@v4

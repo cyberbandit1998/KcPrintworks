@@ -152,7 +152,7 @@ function imagesOf(
 }
 
 /** Personalization the export cannot describe. Proposed fields for the products that say they are personalized. */
-function proposedOptions(title: string): { schema: OptionSchema; proposed: boolean } {
+export function proposedOptions(title: string): { schema: OptionSchema; proposed: boolean } {
   const personalized = /personali[sz]ed|custom name/i.test(title);
   if (!personalized) return { schema: { version: 1, fields: [] }, proposed: false };
   const fields: OptionField[] = [

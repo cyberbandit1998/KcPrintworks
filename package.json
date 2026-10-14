@@ -22,8 +22,10 @@
     "guard": "node scripts/guards.mjs",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "check": "npm run guard && npm run format:check && npm run lint && npm run typecheck && npm run test && npm run test:scripts && npm run build",
-    "test:scripts": "node --test \"scripts/**/*.test.mjs\""
+    "check": "npm run guard && npm run format:check && npm run lint && npm run typecheck && npm run test && npm run test:scripts && npm run test:php && npm run build",
+    "test:scripts": "node --test \"scripts/**/*.test.mjs\"",
+    "test:php": "node scripts/php-check.mjs",
+    "build:etsy-plugin": "node scripts/build-etsy-plugin.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^9.0.0",

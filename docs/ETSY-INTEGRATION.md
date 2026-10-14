@@ -1,40 +1,55 @@
-# Etsy Integration (Open API v3)
+# Etsy Integration (Open API v3): Etsy is the master catalog
 
-Status: **approved architecture** (2026-10-13); Etsy specifics still pending verification against
-Etsy's official documentation. Shop: <https://kcprintworks.etsy.com>.
+Status: **owner decision 2026-10-14 ([ADR-013](DECISIONS.md#adr-013--etsy-is-the-master-product-catalog-owner-decision-2026-10-14))**. Products are created and edited
+on Etsy; they flow **Etsy -> `kcpw-etsy` -> WooCommerce -> Next.js**. WooCommerce keeps checkout, shipping, tax, and the official Stripe plugin.
+Shop: <https://kcprintworks.etsy.com>.
 
-> **Verification note (updated 2026-10-13).** Etsy's developer site (`developers.etsy.com`,
-> `developer.etsy.com`), help center (`help.etsy.com`), API hosts, and the Etsy Dev MCP server
-> endpoint are all blocked by the network policy of the environment this plan was written in
-> (DNS fails or the proxy returns 403), and no Etsy MCP connector is attached to the session. I
-> therefore **could not read Etsy's current reference, terms, or specification**. Etsy-specific
-> facts below come from the owner's statements, search-result excerpts of Etsy's pages, and my own
-> knowledge. Each is tagged in §16 as **Confirmed**, **Owner-stated**, **Reported** (third-party or
-> community), or **To verify**. Step 5 verifies every non-confirmed item against the official
-> OpenAPI spec (via the Etsy Dev MCP server, §2.1) before code depends on it.
+> **What exists today, and what does not.** The WordPress plugin `wordpress/kcpw-etsy/` (v0.1.0, read-only) has the Seller App connection (OAuth 2.0 with PKCE),
+> a rate-limit-aware GET-only Etsy client, an encrypted token vault, a listing downloader, the product **matching report** with owner decisions, and a
+> **dry-run planner** that says what a sync would change. It has **no code that creates, updates, or deletes a WooCommerce product, variation, price, stock level,
+> category, image, or order**, and none that writes to Etsy; a test scans for both. The first synchronization (the "apply" step) is **not built** and needs the
+> owner's approval after reviewing the matches and the dry-run. Everything is tested against **mock Etsy responses**, never against the real shop (see the note below).
+>
+> | Capability | State |
+> |---|---|
+> | Seller App connection (PKCE, encrypted tokens, rotation-safe refresh, "Test connection" that diffs real responses against the expected shapes) | **Built**, untested against real Etsy |
+> | Listing download (listings, inventory, images, personalization settings) into a private snapshot table | **Built**, untested against real Etsy |
+> | Matching report with CSV, owner decisions (link / ignore / create new), no auto-linking of ambiguous matches | **Built**; tested on the real WooCommerce export for duplicate handling |
+> | Dry-run planner (field policy, overrides, price and inventory policy, three-way conflicts, variation matching, personalization suggestion) | **Built** |
+> | Admin screens: Connection (status, test), Preview (matches, newly seen listings, decisions), Plan (dry-run) | **Built** (last-run status shown; failure list and manual download button included) |
+> | Apply the first synchronization, change log, rollback | **Designed (section 8), not built.** Needs owner approval |
+> | Scheduled background sync, Etsy webhooks | **Designed (sections 8, 11), not built.** A once-a-day read-only download exists behind a `wp-config.php` constant |
+> | Order import (`order.paid`) | **Designed (section 10), later phase** |
+> | Writing to Etsy | **Not planned.** Etsy is the master; the only candidate is tracking numbers (W1), on separate approval |
+
+> **Verification note (updated 2026-10-14).** Etsy's developer site (`developers.etsy.com`, `developer.etsy.com`), help center (`help.etsy.com`), API hosts, and the Etsy Dev
+> MCP server endpoint are blocked by the network policy of the environment this was written in (DNS fails or the proxy returns 403), and no Etsy MCP connector is
+> attached. I therefore **could not read Etsy's current reference, terms, or specification**, and the plugin has **never talked to Etsy**. Etsy-specific facts (endpoints,
+> field names, headers, token lifetimes) come from the owner's statements, search-result excerpts of Etsy's pages, and my own knowledge, and are tagged in section 16 as
+> **Confirmed**, **Owner-stated**, **Reported**, or **To verify**. The plugin's *Test connection* screen is the first real check: it compares Etsy's actual responses with what the
+> code expects and lists every difference. Nothing may be applied before that has been run against the real shop and the differences resolved.
 
 ## 1. Principles and capability phases
 
-1. **Read-only first.** The initial release requests read scopes only.
-2. **WooCommerce is master for the website.** Etsy data enters under an explicit per-field policy.
-3. **Preview, then apply.** No Woo change happens without a stored preview that you approved.
-4. **No silent overwrites in either direction.** Conflicts are surfaced, not resolved by whoever
-   wrote last.
-5. **Never on a public request.** All Etsy calls run in background jobs or in admin-initiated actions.
-6. **Draft-only writes later, each with approval.** Live Etsy listings are never published or
-   overwritten automatically.
+1. **Etsy is the source of truth** for title, description, images, variations, colors, and base prices (section 7). WooCommerce is the website's projection of it.
+2. **Read-only toward Etsy, always.** Only read scopes are requested; the HTTP layer refuses any request that is not a GET or the OAuth token call.
+3. **Nothing changes in WooCommerce without a stored dry-run that the owner approved.** The live store stays unchanged until the first synchronization is approved.
+4. **No duplicates.** Linking comes before creating; every ambiguous match is decided by the owner; titles are never a key.
+5. **No silent overwrites in either direction.** A website-side edit to an Etsy-owned field is a *conflict* or an *approved override*, never "last writer wins".
+6. **Never on a public request.** Etsy is called only from background jobs and admin actions. The storefront has no Etsy credentials and no Etsy code (`npm run guard`).
+7. **Reversible.** Every applied change records the prior value; a run can be reverted field by field where the target has not changed since.
 
-| Phase | Capability | Etsy scopes | Release |
+| Phase | Capability | Etsy scopes | State |
 |---|---|---|---|
-| R0 | Connect, snapshot listings, import preview, matching | `shops_r`, `listings_r`, `transactions_r` | v1 |
-| R1 | Apply product sync under field policy | same | v1 |
-| R2 | Import Etsy orders, decrement stock for stock-managed items | same | v1 |
-| W1 | Push shipment tracking to Etsy | adds `transactions_w` | After launch, on approval |
-| W2 | Push stock/price to Etsy | adds `listings_w` | After launch, on approval |
-| W3 | Create Etsy **draft** listings from WooCommerce products | `listings_w` | After launch, on approval |
-| W4 | Update existing listings | `listings_w` | After launch, per-listing approval |
+| E0 | Connect the Seller App, test connection, download listings | `shops_r`, `listings_r` | **Built** |
+| E1 | Matching report, owner decisions, dry-run plan | same | **Built** |
+| E2 | **First synchronization** (apply approved plan to WooCommerce, staging first), change log, rollback | same | Needs owner approval; not built |
+| E3 | Scheduled background sync (every 6 h plus nightly full), webhooks as a trigger where available | same | Not built |
+| E4 | Import Etsy orders as WooCommerce orders (section 10) | adds `transactions_r` | Later |
+| W1 | Push shipment tracking to Etsy | adds `transactions_w` | Only on separate approval |
 
-`listings_d` (delete) is never requested. Buyer email scope (`email_r`) is off by default (§10).
+`listings_w` and `listings_d` are **never** requested: with Etsy as master there is no WooCommerce-to-Etsy publishing (the old W2 to W4 phases are dropped, section 14).
+Buyer email (`email_r`) stays off (section 10).
 
 ## 2. Access and app registration
 
@@ -116,9 +131,9 @@ Plan for Step 5, in a development environment with network access:
 - Single PHP client class; base URL `https://api.etsy.com/v3/application`; request timeout 15 s.
 - API key header: `x-api-key`. Etsy may now require the shared secret in this header
   (`keystring:secret` form) *(To verify)*; header construction lives in one method.
-- **Read-only guard:** until a write feature is explicitly enabled, the client throws on any
-  non-GET request. Enabling writes requires all three of: the `KCPW_ETSY_WRITES_ENABLED` constant,
-  the granted write scope, and an unconsumed approval record for the specific action.
+- **Read-only guard (built):** `ReadOnlyTransport` allows only `GET` under the API base URL and the single OAuth token `POST`, over https with no embedded credentials; anything else throws
+  `WriteBlocked` before a socket is opened, and `Scopes` can only ever request `shops_r`, `listings_r`, `transactions_r`. There is currently **no switch** that enables writes. If a write
+  (W1) is ever approved it would be a new code path requiring all three of: a `wp-config.php` constant, the granted write scope, and an unconsumed approval record for the specific action.
 - **Rate limits:** Etsy enforces per-key queries-per-second and queries-per-day limits, with
   response headers `x-limit-per-second`, `x-remaining-this-second`, `x-limit-per-day`,
   `x-remaining-today`; the daily window is rolling over 24 hours *(Confirmed from Etsy docs
@@ -152,135 +167,129 @@ Plan for Step 5, in a development environment with network access:
 
 ## 6. Mapping model and matching
 
-### 6.1 Explicit mappings
+### 6.1 Explicit, permanent mappings
 
-Stored in the tables in [ARCHITECTURE.md §6](ARCHITECTURE.md#6-data-model):
+- **Listing level:** Etsy listing ID <-> WooCommerce product ID, stored as product meta `_kcpw_etsy_listing_id`. The plugin **reads** this key today (so a mapping made later is
+  honored at once); it is **written** only by the first approved synchronization (E2).
+- **Variant level:** Etsy inventory product ID <-> WooCommerce variation ID, meta `_kcpw_etsy_product_id` on the variation (read today, written at E2). Existing WooCommerce variation
+  IDs are **kept**, so carts, orders, and the storefront's variation IDs do not change.
+- **SKU:** a matching aid, trusted only where it is unique on both sides.
+- **Orders (later):** Etsy receipt ID <-> WooCommerce order ID; Etsy transaction ID <-> order item ID.
 
-- **Listing level:** Etsy listing ID ↔ WooCommerce product ID.
-- **Variant level:** Etsy inventory product ID (and offering ID) ↔ WooCommerce variation ID,
-  with a normalized hash of the Etsy property values.
-- **SKU:** stored on both levels as a matching aid, used only where unique on both sides.
-- **Orders:** Etsy receipt ID ↔ WooCommerce order ID; Etsy transaction ID ↔ order item ID.
+Each mapping records how it was made (`stored_id`, `sku`, `image`, `owner_decision`) and who confirmed it. **Product titles are never a key.**
 
-Each mapping row carries its `match_method` (`manual`, `sku`, `stored_id`, `suggested_confirmed`),
-who confirmed it and when. **Product titles are never a key.**
+### 6.2 How the matcher decides (built, `src/Match/Matcher.php`)
 
-### 6.2 Matching tiers
+Every Etsy listing is compared with every WooCommerce product and given **signals**:
 
-| Tier | Signals | Behavior |
+| Signal | Strength | Meaning |
 |---|---|---|
-| 1. Existing | Mapping row already present, or a stored Etsy listing ID in WooCommerce meta | Verified and kept |
-| 2. High confidence | Exact SKU unique across both catalogs, at product or variant level | Proposed link; applied only after you approve the preview (bulk approval allowed once you have approved the first run) |
-| 3. Suggested | Normalized title similarity above threshold **and** a corroborating signal (price within tolerance, image match) | Shown as a suggestion only; never auto-applied |
-| 4. Unmatched | Nothing credible | Listed in the Unmatched queue |
+| `stored_id` | strong | The product already stores this Etsy listing ID |
+| `listing_id_in_sku`, `product_id_in_sku` | strong | A SKU contains the Etsy listing ID or inventory product ID |
+| `sku_exact` | strong | Same SKU, unique on both sides |
+| `image_id` | strong | The product's photo file name carries an Etsy image ID (`il_fullxfull.<id>_<hash>`) |
+| `title_exact`, `title_similar`, `description_similar`, `price_equal` | weak | Textual similarity only |
 
-Duplicates are never created automatically: an unmatched Etsy listing becomes a **draft**
-WooCommerce product only if you choose "Create" for it in the preview, and it is never published to
-the storefront without your action. Duplicate SKUs on either side block auto-linking and raise a
-warning.
+Result per listing (a status the admin shows in plain words):
+
+| Status | When | What happens |
+|---|---|---|
+| `mapped` | A stored ID points at an existing product | Kept |
+| `proposed` | Exactly one strong candidate and no look-alike twin; or no strong signal but one product with a matching title **and** description | Shown for approval; **never applied by itself** |
+| `ambiguous` | Two or more candidates, or one strong candidate **plus an identical-looking twin** (WooCommerce already holds duplicate imports) | Needs the owner to pick one product, or "ignore", or "create new". The suggestion is *published first, then lowest ID* and is only a suggestion |
+| `new` | No credible candidate | Would become a **draft** product after the owner chooses "create new" |
+| `approved`, `approved_new`, `ignored` | The owner's saved decision | Used by the planner; decisions are stored separately and change nothing in WooCommerce |
+
+A product can be claimed by only one listing; a second claim is reported (`claimed_by_other_listing`) instead of silently reusing it. A decision that points at a
+product that no longer exists is reported as invalid, not applied.
 
 ### 6.2.1 What the existing WooCommerce catalog tells us
 
 From the owner's product export ([discovery/INVENTORY.md](discovery/INVENTORY.md)), observed 2026-10-13:
 
-- The catalog appears to be derived from Etsy (attribute values use Etsy's `made_to_order` and `i_did` vocabulary, and
-  Etsy-style fields such as Primary color, Occasion, Holiday), but **no Etsy listing IDs or URLs are stored**. There is
-  nothing to read an existing link from; every link is created by matching.
-- SKUs are present on every variation and unique. 181 rows use a `<9 to 12 digit number>_<suffix>` pattern (12 distinct
-  numbers; all 169 variations of one product share one). These may be marketplace IDs (**unverified**). Step 5 compares
-  them with Etsy listing IDs, product IDs, and SKUs. A SKU match is only trusted when it is unique on both sides.
-- **WooCommerce already contains duplicates:** 15 groups (32 products) share a title; 12 groups have two or more
-  published copies. Because one Etsy listing maps to at most one product, the matcher must report these explicitly
-  ("one Etsy listing, several candidate products") and never pick a winner. The owner chooses; the loser is later
-  redirected, not deleted by us.
-- Variation attribute values are blank for 256 of 259 variations ("Any"), so a variation does not say which option it
-  represents. The Etsy variation mapping grid must therefore use the chosen option values, SKUs, and the live database
-  rather than assuming one WooCommerce variation per option combination.
-- Stock quantities are mostly defaults (15 or 20). Etsy quantities are likewise not trusted as inventory for
-  made-to-order items; the inventory rule defaults to `made_to_order` (section 12).
+- The catalog appears to be derived from Etsy (attribute values use Etsy's `made_to_order` and `i_did` vocabulary, Etsy-style fields such as Primary color, Occasion, Holiday), but
+  **no Etsy listing IDs or URLs are stored**. There is nothing to read an existing link from; every link is created by matching.
+- SKUs are present on every variation and unique. 181 rows use a `<9 to 12 digit number>_<suffix>` pattern (12 distinct numbers; all 169 variations of one product share one).
+  These may be marketplace IDs (**unverified**); the matcher compares them with Etsy listing IDs and inventory product IDs once connected.
+- **WooCommerce already contains duplicates:** 15 groups (32 products) share a title; 12 groups have two or more published copies. One Etsy listing maps to at most one product, so
+  the report lists "one Etsy listing, several candidate products" and never picks a winner. A test runs the matcher over the real export (a synthetic Etsy snapshot built from the
+  products) to prove duplicates are reported as ambiguous. The owner decides; the losing copy is later redirected, not deleted by this plugin.
+- Variation attribute values are blank for 256 of 259 variations ("Any"), so a variation does not say which option it represents. Variation matching therefore uses the WooCommerce variation
+  ID stored in meta, SKUs, a product ID embedded in a SKU, and option values, in that order; a blank "Any" variation that must become a specific one is flagged **high risk** and keeps its ID.
+- Stock quantities are mostly defaults (15 or 20). Etsy quantities are not trusted as inventory for made-to-order items (section 12).
 
 ### 6.3 Variation mapping
 
-Etsy variations are a list of products, each with up to two property dimensions (for example
-Size × Color), a SKU, and an offering with price and quantity *(To verify)*. WooCommerce variations
-use attributes. Mapping is by normalized (property, value) pairs to attribute terms, shown as a grid
-where each Etsy product points to a WooCommerce variation. Ambiguous cases go to the manual grid. **Variation structure is never
-altered automatically after the first approved import;** a structural difference raises a conflict.
+Etsy variations are a list of products, each with up to two property dimensions (for example Size x Color), a SKU, and an offering with price and quantity *(To verify)*. WooCommerce
+variations use attributes. The planner matches Etsy products to existing variations as described above, shows a grid of the proposed pairs, and **never alters variation structure
+automatically after the first approved synchronization**; a structural difference becomes a conflict.
 
-### 6.4 Manual matching tool
+### 6.4 Owner decisions
 
-Search WooCommerce by name, SKU, or ID next to the Etsy listing detail (images, SKUs, price,
-variations); pick a match, map each variation, then "Confirm". Also: "Ignore this listing"
-(excluded from future previews), "Unlink", and "Create new product (draft)".
+On the Preview screen (or in the downloadable CSV) the owner picks, per ambiguous listing, one of: link to a named product, ignore this listing, or create a new draft product.
+Saved decisions are stored in the plugin's own table (`kcpw_etsy_decision`); saving them touches nothing in WooCommerce. CSV cells that start with `=`, `+`, `-`, or `@` are prefixed
+so a spreadsheet cannot run them as formulas.
 
-## 7. Field ownership
+## 7. Field ownership (Etsy is master)
 
-Each field has an **owner policy**. Defaults are conservative; changes to defaults are made in the
-UI (global or per product) and logged.
+Each field has an **owner**. Defaults follow ADR-013; the owner can change them globally or per product, and every change is logged.
 
-| Field | Default policy | Behavior |
+| Field | Owner | Behavior |
 |---|---|---|
-| Etsy listing ID, inventory/offering IDs | Etsy-owned, immutable | Written to mapping tables |
-| Title | **Import once**, then Woo-owned | Seed on creation; later Etsy changes shown as informational drift |
-| Description | **Import once**, then Woo-owned | Protects website SEO copy |
-| SEO fields (title tag, meta description, slug, canonical, schema) | **Woo-owned, never written** | Not touched by the importer |
-| Categories, tags, WooCommerce-specific options (personalization schema, add-ons) | **Woo-owned, never written** | Not touched |
-| Images | **Import once**, then Woo-owned | New Etsy images are flagged, not added; Woo-added images are never removed. Deduped by Etsy image ID and file hash |
-| Website price | **Woo-owned** | Independent from Etsy |
-| Etsy price | Etsy-owned, stored separately | Admin-only; never exposed on the storefront. Drift shown as information |
-| SKU | Import if empty in Woo; otherwise Woo-owned | Conflicts flagged |
-| Variation structure | Import once, then Woo-owned | Structural mismatch is a conflict |
-| Listing state (active, inactive, sold out, draft, expired) | Etsy-owned, stored on the mapping | Shown in admin. Optional policy "flag"; auto-hiding products in Woo is off by default |
-| Availability / stock | Per-product **inventory rule** (§12) | Default `made_to_order`: no stock management, nothing synced |
+| Etsy listing ID, inventory/offering IDs | Etsy, immutable | Written to the mapping |
+| **Title** | **Etsy** | Etsy changes flow to WooCommerce after approval. A website-side edit is a conflict, or an approved override that survives later syncs |
+| **Description** | **Etsy** | Same. Compared as plain text, so reformatting alone is not a change |
+| **Images** | **Etsy** | Added, reordered, and removed to follow Etsy, deduplicated by Etsy image ID. Images added only on the website are listed, not deleted, until the owner decides |
+| **Variations, colors, options** | **Etsy** | Option names and values follow Etsy; **existing WooCommerce variation IDs are kept**. A structural difference is a conflict. "Any" variations are never rewritten silently |
+| **Base price** | **Etsy** | Etsy's price is stored; the **website price** is derived by the price policy (below) |
+| Website address (slug), SEO title, meta description, canonical | WooCommerce | **Never written.** Existing product URLs do not change |
+| Categories, tags | WooCommerce | **Never written.** Etsy taxonomy is shown for information only |
+| Shipping class / rules, tax class | WooCommerce | **Never written** (Etsy's shipping profiles do not apply to the website) |
+| Personalization schema (storefront fields) | Derived, then WooCommerce | Etsy's personalization settings produce a **suggested** schema (sections 9 and 12); it is never activated without approval |
+| Stock / availability | Inventory policy (section 12) | Default `made_to_order`: Etsy quantity is ignored |
+| Listing state (active, inactive, sold out, draft, expired) | Etsy, stored with the mapping | Shown in admin and flagged; a product is hidden on the website only if the owner enables that rule |
+| Approved overrides | WooCommerce, per field per product | A recorded owner decision ("keep my website title for this product"); the planner reports the field as `skipped_override` |
 
-Price policy values: `independent` (default, only one implemented in v1), plus reserved
-`markup_percent`, `fixed_delta`, `etsy_master`, `woo_master` for later.
+**Price policy** (per product, default = Etsy price as is; integer cents, half rounded away from zero): `etsy` (website price equals Etsy), `markup_percent`, `fixed_delta`, `fixed` (an
+independent website price that Etsy changes never touch). The dry-run shows both prices.
 
-### 7.1 Conflict detection (three-way)
+### 7.1 Conflict detection (three-way, built in the planner)
 
-For each field under an "Etsy → Woo" policy, the mapping stores the **base hash** (value at last
-sync). On the next run:
+For each Etsy-owned field the mapping stores the **base hash** (the value at the last synchronization). On the next plan:
 
-- Etsy unchanged since base → nothing to do.
-- Etsy changed, Woo unchanged since base → update proposed in the preview.
-- Etsy changed **and** Woo changed → **conflict**: not applied; shown with both values for a decision
-  (keep Woo, take Etsy, or ignore).
+- Etsy unchanged since base -> nothing to do (`in_sync`).
+- Etsy changed, WooCommerce unchanged since base -> `change`, proposed in the dry-run.
+- Etsy changed **and** WooCommerce changed -> `conflict`: not applied, both values shown for a decision (take Etsy, keep website as an override, ignore).
+- Etsy unchanged, WooCommerce changed -> `website_edit`: reported so the owner knows the website has drifted from Etsy.
+- An approved override on the field -> `skipped_override`.
 
-Conflict warnings visible in the UI include: title or description changed on both sides; Etsy price
-drift versus the stored value; variation structure mismatch; duplicate SKU; mapped Etsy listing
-now deleted or expired; Woo product in trash.
+Before the first synchronization there is no base, so every difference is a `change` and every field the website has already edited is highlighted for review.
 
-## 8. Import preview and apply
+## 8. Preview, dry-run, apply, rollback
 
-1. **Snapshot.** A job fetches listings, inventory, and images into `kcpw_etsy_listing_snapshot`.
-   Nothing in WooCommerce changes.
-2. **Plan.** The planner compares the snapshot with WooCommerce under the field policy and writes a
-   plan to `kcpw_sync_plan`. Each item: entity, action (`create_draft`, `link`, `update`, `skip`,
-   `conflict`), target IDs, and field-level diffs showing before, after, owner, and reason.
-   Plan items carry the Etsy `updated_timestamp` they were based on.
-3. **Review.** The admin screen filters by action and confidence, and lets you tick items.
-   Nothing is pre-ticked in the first run.
-4. **Apply** consumes a plan ID and a plan hash. Items whose Etsy source changed since the preview, or whose Woo target changed,
-   are marked `stale` and skipped until re-previewed.
-5. **Execution** runs in batches via Action Scheduler (about 25 items per batch), is resumable,
-   and writes every field change to `kcpw_sync_change` with prior values.
-6. **Undo.** "Revert run" restores prior values for fields that have not been changed since.
-   Created draft products are moved to trash rather than deleted.
-7. **Image import** uses WordPress sideloading with MIME checks, stores the Etsy image ID in
-   attachment meta for dedupe, sets alt text from the title, and preserves Etsy image order.
+1. **Download** (built). A background-safe, resumable job fetches listings, inventory, and images into the plugin's snapshot table. WooCommerce is only *read*.
+2. **Match** (built). The matching report (section 6) and the owner's decisions.
+3. **Dry-run plan** (built). For every matched or approved listing the planner lists, per field, `before`, `after`, owner, risk (`low`, `medium`, `high`), and the reason, plus
+   draft creations for approved-new listings and flags for anything it cannot represent. The plan is a stored, hashed document: it describes, it does not write.
+4. **Owner review** (built UI for matches and the plan; approval controls come with E2). Nothing is pre-approved. **No WooCommerce change happens before the owner approves the
+   first synchronization.**
+5. **Apply** (E2, **not built**). Consumes a plan ID and hash. An item whose Etsy source or WooCommerce target changed since the dry-run is marked `stale` and skipped until re-planned.
+   Execution is batched, resumable, and writes every field change with its prior value to a change log. Product *creation* is as a **draft**. Images are sideloaded with MIME checks and
+   deduplicated by Etsy image ID.
+6. **Rollback** (E2, **not built**). "Revert run" restores prior values for fields that have not changed since; created drafts are trashed, never hard-deleted.
+7. **Staging first.** The first apply runs on a staging copy of the WooCommerce site, is compared against the dry-run, and only then is the same plan proposed for the live store.
 
-Scheduled syncs after the first apply **refresh snapshots and generate a new plan**. They apply
-only changes that your standing rules mark as automatic; by default, nothing is auto-applied
-and the plan waits for review.
+Scheduled syncs (E3) refresh the snapshot and generate a **new plan**; they apply only changes that standing rules mark as automatic, and by default nothing is auto-applied.
 
 ## 9. Product synchronization scope
 
-Listing ID, name, description, images, price (stored as Etsy price), SKU, variations (property
-values, per-variation SKU, price, quantity), availability, listing state, and attributes. Mapped
-to the Woo fields per §7. Etsy tags and materials are imported as product attributes only if you
-enable it. Personalization settings on the listing (whether personalization is on, whether it
-is required, character limit, instructions) are read to **pre-fill a suggested option schema**
-for the WooCommerce product; they are never auto-activated.
+In scope once approved: title, description, images, variations (property values, per-variation SKU, price, availability), base price, listing state, and the Etsy IDs. Etsy tags and
+materials are imported as product attributes only if the owner enables it.
+
+**Personalization.** Etsy's per-listing settings (personalization on/off, required, character limit, instructions) are read and turned into a **suggested** storefront option schema
+(text field with the Etsy limit and instructions as help text). It is shown in the dry-run as a `suggestion`, never auto-activated, and the storefront validates every value server-side
+against the schema before it is saved on the order item (ADR-007 invariants; [PERSONALIZATION.md](PERSONALIZATION.md)). Etsy's personalization is a single free-text box per listing;
+structured fields such as separate tag, text, and cable colors come from Etsy *variations* when the listing uses them, and from the WooCommerce-side schema otherwise.
 
 ## 10. Order synchronization
 
@@ -413,68 +422,37 @@ Structured run and event logs in the database (90 days), WooCommerce logger for 
 Alert (email, one digest per hour at most) on: `needs_reauth`, three consecutive failed runs,
 overdue job, daily quota above 80%, unmapped sale imported, order total mismatch.
 
-## 12. Inventory synchronization
+## 12. Inventory policies
 
-Many KCPrintWorks items are made to order, so stock sync is **opt-in per product or variation**.
+Many KCPrintWorks items are 3D printed to order, so an Etsy quantity of 0 or a stale number must never make a printable item "out of stock" on the website.
 
-| Rule | Meaning |
+| Policy | Meaning |
 |---|---|
-| `made_to_order` (**default**) | WooCommerce stock management off; Etsy quantity ignored; nothing synchronized |
-| `woo_master` | WooCommerce quantity is authoritative; Etsy quantity is reported against it (push to Etsy only in W2) |
-| `etsy_master` | Etsy quantity is authoritative; imported into WooCommerce stock |
-| `shared_pool` | One stock pool decremented by sales on either channel |
+| `made_to_order` (**default**) | WooCommerce stock management off, availability "in stock"; Etsy quantity is ignored |
+| `etsy_quantity` | Etsy's quantity is imported into WooCommerce stock for that product/variation (read-only toward Etsy) |
+| `woo_managed` | WooCommerce owns stock; Etsy quantity is shown in the dry-run for information only |
 
-Design rules:
+The policy is per product (and per variation where needed). The dry-run shows the effect before anything is applied; a listing Etsy reports as sold out or inactive under `made_to_order`
+is **flagged**, not hidden. Stock is only reduced by imported Etsy orders (phase E4) and only when the policy says so. Writing quantities back to Etsy is not planned (Etsy is master).
 
-- **Events over absolutes.** For `shared_pool`, each sale is applied as a delta to the other channel,
-  and periodic reconciliation compares absolute quantities and reports drift beyond a tolerance
-  instead of overwriting. Only an explicit master rule auto-corrects.
-- **Safe direction first.** Etsy → Woo (from imported receipts) uses read scopes only and ships in
-  v1. Woo → Etsy requires W2.
-- **Etsy inventory write semantics.** Updating inventory appears to replace the full set of
-  products *(Reported)*. W2 must therefore read the current inventory, modify only the intended
-  fields, show a diff, and write back all other fields unchanged. A shadow mode logs the intended
-  write without sending it, before W2 is ever enabled.
-- **Oversell risk** when both channels sell the last unit simultaneously: mitigate with a configurable safety buffer; alert when stock reaches zero.
-- A change to Etsy variations or stock never changes WooCommerce price or variation structure.
+## 13. Admin interface (WordPress admin, WooCommerce > Etsy sync)
 
-## 13. Admin interface (WordPress admin, WooCommerce → Etsy Sync)
+Capability- and nonce-protected (`manage_woocommerce`; every action is POST + nonce, checked in a fixed order and tested with a fake gateway); WCAG-minded plain HTML tables and forms.
 
-Built with `@wordpress/components` and the WordPress REST API; capability- and nonce-protected;
-WCAG 2.2 AA.
+| Screen | Built | Contents |
+|---|---|---|
+| **Connection** | yes | Connected / needs re-authorization / not connected, shop name, granted scopes, token expiry (never the token), **Connect with Etsy**, **Test connection** (compares real responses with the expected shapes), Disconnect |
+| **Import preview** | yes | Last download (phase, start and finish, listings / details / failed, Etsy requests left today, the latest problems), **Download Etsy listings now**, the matching report: matched products, proposed and ambiguous matches with candidates and evidence, **listings that have no WooCommerce product yet**, decision selectors, CSV and JSON downloads |
+| **Dry-run plan** | yes | Field-by-field before/after, owner, risk, conflicts, website edits, skipped overrides, suggestions; nothing here writes |
+| History, rollback, approve-and-apply, field-policy editor, scheduling | E2/E3 | Not built |
 
-| Screen | Contents |
-|---|---|
-| **Dashboard** | Connection status (connected / needs re-auth / disconnected), shop name, granted scopes, token expiry (no secrets), last successful sync per job, counts (listings seen, matched, unmatched, conflicts, ignored), recent errors, API quota meter, kill switches, **Sync now** (per job; runs a preview for products) |
-| **Products** | Table with filters (matched, suggested, unmatched, conflict, ignored, error), search by title/SKU/ID; row detail with Etsy and Woo side by side; variation mapping grid; match, unlink, ignore, create draft |
-| **Import preview** | The plan from §8 with filters, tick boxes, diffs, stale markers, **Apply selected** |
-| **Field policy** | Global and per-product ownership, price policy, state policy; shows what each setting would change |
-| **Conflicts** | Open conflicts with both values and decision buttons |
-| **Orders** | Imported receipts, Woo order links, needs-attention queue, mismatches |
-| **Inventory** | Rules per product/variation; drift report |
-| **History** | Runs and per-field changes, filters, export CSV, **Revert run** |
-| **Settings** | Schedules, thresholds, alert recipients, scope upgrade requests (disabled until approved), required Etsy attribution |
+The Etsy API quota meter, per-job toggles, and alert e-mails from the original design come with the scheduled jobs (E3).
 
-Accessibility specifics: real tables with headers and captions; every control labelled; full keyboard
-operation; visible focus; status uses icon plus text; progress and results announced via `aria-live`
-regions; respects reduced motion; tested with axe-core and manual screen-reader checks.
+## 14. Publishing to Etsy: dropped
 
-## 14. Future publishing design (not built in v1)
-
-- A **PublishPlan** is generated from a WooCommerce product: title, description, tags,
-  materials, taxonomy, images, variation properties and offerings, price per variation, quantity,
-  shipping profile, processing profile, and maker disclosures. Etsy's required fields and limits
-  (title length, tag count and length, image count, variation limits) are validated before approval
-  *(limits To verify against the vendored spec)*.
-- State machine: `planned → validated → awaiting_approval → approved → executed`. **Executed means
-  a draft was created.** The plugin never sets a listing to active; publishing (which incurs listing
-  fees) is done by you in Etsy.
-- Image upload is idempotent (Etsy image IDs recorded).
-- Updating an existing listing requires a per-listing diff and approval, and stores a snapshot of the
-  prior Etsy state first.
-- Every write is rate-limit aware, logged, undoable where Etsy allows, and gated by the three conditions in §4.
-- Etsy's seller and listing policies (maker and AI disclosures, handmade or made-to-order rules)
-  remain your responsibility; the plan surfaces fields Etsy requires.
+The earlier design (WooCommerce product -> Etsy draft listing) is **removed**: with Etsy as the master catalog the data only flows toward WooCommerce. If the owner ever wants a write,
+the only candidates are shipment tracking (W1, `transactions_w`) and, much later, anything else would need a new ADR and a separate scope consent. The client already refuses non-GET
+requests, and the three-condition gate for enabling writes (constant, granted scope, approval record) described in section 4 remains the rule for any future exception.
 
 ## 15. Test strategy
 
@@ -487,6 +465,10 @@ regions; respects reduced motion; tested with axe-core and manual screen-reader 
 - **Safety invariants:** no non-GET request is sent while writes are disabled; no PaymentIntent for
   Etsy orders; apply never touches fields owned by Woo.
 - **Staging soak:** at least 7 days of read-only sync against the real shop before launch.
+- **As built (2026-10-14):** `npm run test:php` runs 106 tests / 5,610 assertions with no dependencies: OAuth/PKCE and token rotation, the vault, the Etsy client (quota, retries, error shapes),
+  the normalizer, the collector, the matcher (including a run over the real WooCommerce export), the planner and policies, the admin actions via a fake gateway (capability, nonce, method, order of checks),
+  WordPress-glue stubs, and `ReadOnlySafetyTest`, which fails if any source file contains a WooCommerce write, a mutating product method, a non-GET request, or a write scope.
+  What these cannot prove: real Etsy responses and a real WordPress/WooCommerce runtime (database stores, SQL, hooks). Those are verified on staging with *Test connection* and a first download.
 
 ## 16. Verification status
 
@@ -513,6 +495,10 @@ regions; respects reduced motion; tested with axe-core and manual screen-reader 
 | Buyer-data usage and attribution terms | **To verify** (legal review) | Current terms not retrievable here |
 | Shop contents (listing count, variations, personalization use) | **Unknown** | Shop not reachable from here. The WooCommerce catalog (71 products, 259 variations) is known from the owner's export, not the Etsy shop |
 | Whether the 9 to 12 digit numbers in WooCommerce SKUs are Etsy IDs | **To verify** | Inferred from their shape only; compare with listing/product IDs once connected |
+| Mock-based plugin tests prove behavior on real Etsy and WordPress | **No** | `npm run test:php` uses fake transports, stores, and a WordPress stub. Real Etsy, WooCommerce, and database behavior are **unverified** until run on staging |
+| Etsy personalization is one free-text box per listing (on/off, required, character limit, instructions) | **To verify** | From my recollection of the listing schema; *Test connection* shows the real fields |
+| Listing `state` values (`active`, `inactive`, `sold_out`, `draft`, `expired`) | **To verify** | Same |
+| Image file names embed an Etsy image id (`il_fullxfull.<id>_<hash>`) | **Reported** | Seen in the export's image URLs; used as a strong matching signal only when it equals a downloaded image id |
 
 Sources reached (none of Etsy's own pages could be opened directly): Etsy's `open-api` repository ([README](https://github.com/etsy/open-api),
 [#1509](https://github.com/etsy/open-api/discussions/1509),

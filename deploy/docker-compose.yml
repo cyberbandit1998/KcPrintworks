@@ -4,6 +4,8 @@
 # - Joins the EXISTING external Docker network "proxy" so Nginx Proxy Manager can reach it by container name.
 # - Port 3000 is only `expose`d to that network. There is no `ports:` entry, so nothing is published on the VPS.
 # - It does not create, modify, or depend on WordPress, MariaDB, or Nginx Proxy Manager.
+# - With CATALOG_SOURCE=woo it READS products from the WooCommerce REST API (GET only, a Read-only key). It never writes
+#   to WooCommerce, never talks to Stripe, and checkout stays disabled in the code.
 #
 # Settings come from the .env file next to this one (see .env.example). IMAGE_TAG is required on purpose: the
 # server always runs an explicit, known image, never "whatever latest is today".
@@ -22,12 +24,19 @@ services:
       PORT: '3000'
       HOSTNAME: 0.0.0.0
       NEXT_TELEMETRY_DISABLED: '1'
-      # The staging/production behavior (noindex, canonical URLs) was fixed when the image was built. These
-      # two only label the environment; they cannot make a staging image indexable.
+      # The staging/production behavior (noindex, canonical URLs, image hosts) was fixed when the image was built.
+      # These two only label the environment; they cannot make a staging image indexable.
       SITE_ENV: ${SITE_ENV:-staging}
       NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-http://localhost:3000}
-      # Placeholder catalog until the WooCommerce connection is built and approved.
-      CATALOG_SOURCE: fixtures
+      # fixtures = placeholder products (default, needs nothing). woo = the real WooCommerce catalog, read-only.
+      CATALOG_SOURCE: ${CATALOG_SOURCE:-fixtures}
+      # Used only when CATALOG_SOURCE=woo. Values come from the .env next to this file (chmod 600), never from the image.
+      WC_BASE_URL: ${WC_BASE_URL:-}
+      WC_CONSUMER_KEY: ${WC_CONSUMER_KEY:-}
+      WC_CONSUMER_SECRET: ${WC_CONSUMER_SECRET:-}
+      # How often (seconds) the catalog is re-read in the background, and the secret that signs refresh requests.
+      CATALOG_REVALIDATE_SECONDS: ${CATALOG_REVALIDATE_SECONDS:-120}
+      REVALIDATE_SECRET: ${REVALIDATE_SECRET:-}
       # Keep V8's heap below the container's memory limit so it collects garbage instead of being OOM-killed.
       NODE_OPTIONS: --max-old-space-size=320
 

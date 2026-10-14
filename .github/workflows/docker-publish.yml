@@ -94,6 +94,7 @@ jobs:
           build-args: |
             SITE_ENV=${{ env.SITE_ENV }}
             NEXT_PUBLIC_SITE_URL=${{ steps.vars.outputs.site_url }}
+            IMAGE_HOSTS=${{ vars.IMAGE_HOSTS }}
             GIT_SHA=${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
@@ -113,6 +114,17 @@ jobs:
           echo "container health: $status"
           [ "$status" = "healthy" ] || { docker logs smoke; exit 1; }
           docker rm -f smoke
+
+      - name: A staging image cannot be made indexable from outside, and a read-only container runs without WooCommerce
+        if: env.SITE_ENV == 'staging'
+        run: |
+          # Same image, hostile environment: SITE_ENV=production at run time must NOT change what the image was built to be,
+          # and the container runs read-only with no capabilities exactly like the compose file does.
+          docker run -d --name hostile -p 127.0.0.1:3001:3000 --read-only --cap-drop ALL \
+            --tmpfs /tmp --tmpfs /app/apps/storefront/.next/cache:uid=1000,gid=1000 \
+            -e SITE_ENV=production -e CATALOG_SOURCE=fixtures kcprintworks-nextjs:smoke
+          ./scripts/docker-smoke.sh http://127.0.0.1:3001 staging hostile || { docker logs hostile; exit 1; }
+          docker rm -f hostile
 
       - name: Publish the tested image to GHCR
         id: push

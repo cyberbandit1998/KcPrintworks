@@ -8,6 +8,13 @@ import { getCatalog } from '@/lib/catalog';
 import { catalogSourceName, isProduction, siteUrl } from '@/lib/env';
 import { SITE_NAME } from '@/lib/seo';
 
+/**
+ * Rendered per request. The catalog comes from WooCommerce at run time (cached in memory, see lib/catalog/woo), so a page
+ * must not be frozen into the image at build time: a product saved in WooCommerce has to appear without a rebuild.
+ * Staging/production behavior (noindex, canonical host) is still fixed at build time; see next.config.ts.
+ */
+export const dynamic = 'force-dynamic';
+
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
   title: {
@@ -25,7 +32,11 @@ export const viewport: Viewport = {
 };
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
-  const categories = await getCatalog().listCategories();
+  // If the catalog cannot be loaded (WooCommerce down before anything was cached), still draw the page frame;
+  // the page itself reports the problem through error.tsx.
+  const categories = await getCatalog()
+    .listCategories()
+    .catch(() => []);
   return (
     <html lang="en">
       <body>
@@ -35,6 +46,11 @@ export default async function RootLayout({ children }: { children: React.ReactNo
               <p>
                 Design preview built from your product export: real titles, prices, and options. Web
                 addresses are derived, and personalization fields are proposed. Not a live store.
+              </p>
+            ) : catalogSourceName === 'woo' ? (
+              <p>
+                Staging preview with the products from your WooCommerce store, read-only. Checkout
+                is not connected, so nothing can be ordered here. Not a live store.
               </p>
             ) : (
               <p>Design preview with placeholder products and content. Not a live store.</p>

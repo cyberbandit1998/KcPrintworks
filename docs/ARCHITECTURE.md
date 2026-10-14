@@ -1,15 +1,21 @@
 # Architecture
 
-Status: **approved 2026-10-13** (see [DECISIONS.md](DECISIONS.md) for the status of each decision).
+Status: **approved 2026-10-13**; **updated 2026-10-14**: Etsy is the master product catalog ([ADR-013](DECISIONS.md#adr-013--etsy-is-the-master-product-catalog-owner-decision-2026-10-14)) and the
+storefront reads WooCommerce directly and read-only (ADR-008, revised). See [DECISIONS.md](DECISIONS.md) for the status of each decision.
 Anything marked *(assumption)* depends on facts about the current hosting and plugins that could not be
 inspected; see the open inputs in DECISIONS.md and [LIVE-SITE-DISCOVERY.md](LIVE-SITE-DISCOVERY.md).
 Moving the existing store to the `shop.` host is covered in [MIGRATION-SHOP-DOMAIN.md](MIGRATION-SHOP-DOMAIN.md).
+
+> **Product data flow (2026-10-14).** `Etsy --(kcpw-etsy, read-only, background)--> WooCommerce --(REST GET, read-only key, cached)--> Next.js`. Etsy owns title, description, images, variations, colors, and base
+> prices; WooCommerce owns the website address and SEO, categories, shipping and tax rules, the personalization schema, the inventory policy, and approved overrides; Next.js never calls Etsy.
+> Orders, checkout, shipping, tax, and Stripe stay in WooCommerce. Built so far: the plugin's connection, listing download, matching report, and dry-run planner (no WooCommerce writes), and the
+> storefront's WooCommerce catalog source ([WOOCOMMERCE-CATALOG.md](WOOCOMMERCE-CATALOG.md)). Not built: the first synchronization (needs approval), scheduling, webhooks, order import.
 
 ## 1. Principles
 
 | # | Principle | Consequence |
 |---|---|---|
-| P1 | WooCommerce is the system of record for catalog, orders, and payments status | The storefront never computes prices or totals; WooCommerce does. |
+| P1 | WooCommerce is the system of record for what the website sells, orders, and payment status; **Etsy is the master for product content** (ADR-013) | The storefront never computes prices or totals; WooCommerce does. Product content is edited on Etsy and flows into WooCommerce only through approved, previewed syncs. |
 | P2 | The shopper path has no dependency on Etsy | Etsy code lives in its own plugin; the storefront has no Etsy credentials; all Etsy calls are background jobs. |
 | P3 | Payment truth comes from Stripe, verified server-side | Redirects and client callbacks are informational only. |
 | P4 | Nothing changes without a preview, and nothing live changes without approval | Dry-run first, plan-hash apply, approval gates, kill switches. |
@@ -34,7 +40,7 @@ flowchart LR
     etsyPlugin --- woo
   end
   stripePlugin <-->|"Stripe.js, API, signed webhooks"| stripe[(Stripe)]
-  etsyPlugin <-.->|"OAuth + Open API v3, background jobs only"| etsy[(Etsy)]
+  etsy[("Etsy: master catalog")] -.->|"OAuth + Open API v3 reads, background jobs only"| etsyPlugin
   core -.->|"signed revalidate webhook"| www
   staff([Staff]) --> woo
 ```
@@ -93,6 +99,9 @@ Staging must never share a database, Stripe account mode, or webhook secrets wit
 Everything Etsy: OAuth, API client, snapshot store, matcher, preview/apply engine, order
 importer, inventory rules, scheduler, admin UI. Detailed in
 [ETSY-INTEGRATION.md](ETSY-INTEGRATION.md).
+
+**Status (2026-10-14).** Version 0.1.0 is read-only: connection, download, matching report with owner decisions, and a dry-run planner. It contains no WooCommerce write code and no Etsy write
+capability; `tests/ReadOnlySafetyTest.php` fails the build if either appears. Apply, change log, rollback, scheduling, and webhooks are the next phases and each needs the owner's approval.
 
 **Isolation rule:** deactivating `kcpw-etsy`, or setting `KCPW_ETSY_ENABLED=false`, must have
 zero effect on browsing, cart, checkout, or payments. This is covered by an automated test.
@@ -187,6 +196,10 @@ package references an Etsy hostname or an Etsy credential variable.
 
 WordPress/WooCommerce tables are used as-is. First-party tables (prefix `kcpw_`) are created
 by migrations with versioned schema and `dbDelta`.
+
+> **As built so far:** only `kcpw_etsy_snapshot` (downloaded listings, inventory, images as JSON) and `kcpw_etsy_decision` (the owner's link / ignore / create-new decisions) exist, created by
+> `wordpress/kcpw-etsy/src/Wp/Schema.php`; tokens and settings are encrypted/plain options (`kcpw_etsy_tokens`, `kcpw_etsy_settings`, `kcpw_etsy_run_state`). The mapping, change-log, policy and order tables
+> below are the design for the apply phase; the Etsy IDs that matter are also read from product/variation meta (`_kcpw_etsy_listing_id`, `_kcpw_etsy_product_id`).
 
 | Table | Purpose | Key constraints |
 |---|---|---|

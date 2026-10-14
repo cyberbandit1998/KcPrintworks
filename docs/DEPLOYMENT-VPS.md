@@ -1,8 +1,8 @@
 # Deploying the storefront to the InterServer VPS (Docker)
 
 Status: ready to use. The image builds and is smoke-tested in GitHub Actions and published to GHCR; the compose file pulls it.
-This is a **staging** deployment: noindex, placeholder catalog, checkout disabled. Nothing here touches WordPress, MariaDB,
-Nginx Proxy Manager's configuration, DNS, or Stripe.
+This is a **staging** deployment: noindex, checkout disabled, and either the placeholder catalog (default) or, once you add a read-only key
+(section 9), your real WooCommerce products. Nothing here touches WordPress, MariaDB, Nginx Proxy Manager's configuration, DNS, or Stripe.
 
 ```
 git push ──> GitHub Actions ──build + smoke test──> ghcr.io/cyberbandit1998/kcprintworks-nextjs:sha-1a2b3c4
@@ -19,14 +19,15 @@ Browser ──https──> Nginx Proxy Manager ──http (proxy network)──>
 | Staging behavior          | `X-Robots-Tag: noindex, nofollow`, `robots.txt` disallows everything, `<meta name="robots" content="noindex">`. Fixed **when the image is built** (default `staging`), so it cannot drift       |
 | Checkout                  | Disabled. It is a compile-time constant, not a setting; no environment variable can enable it. Turning it on is a code change that needs the owner's approval                                   |
 | Prices                    | Never accepted from the browser (the quote endpoint rejects them; checked on every build)                                                                                                       |
-| Data                      | Placeholder catalog baked into the image. No database, no WooCommerce call, no Stripe or Etsy credentials, no secrets in the image or in `.env`                                                |
+| Data                      | Default: placeholder catalog baked into the image (no outbound calls). With `CATALOG_SOURCE=woo` (section 9): the published WooCommerce products, **read with GET requests only** using a Read-only key kept in the VPS `.env`. No database, no Stripe or Etsy credentials, no secrets in the image |
 | Health check              | `GET /api/health/` inside the container (30 s interval, 5 s timeout, 20 s start period, 3 retries). It never calls an upstream, so a WooCommerce outage cannot make the container look dead    |
 | Resource limits           | 0.75 CPU, 512 MB RAM (128 MB reserved), 200 processes, Node heap capped at 320 MB. Sized for a 1 CPU / 4 GB host that also runs WordPress and MariaDB                                          |
 | Restart policy            | `unless-stopped` (survives reboots and crashes; stays stopped if you stop it on purpose)                                                                                                       |
 | Logs                      | `json-file`, 10 MB x 3 files, so logs cannot fill the disk                                                                                                                                      |
 
-`SITE_ENV` and `NEXT_PUBLIC_SITE_URL` are **build-time** settings because the pages are prerendered. The compose values only label
-the environment. A staging image can never be made indexable by editing `.env`; that needs a separate, deliberate production build.
+`SITE_ENV`, `NEXT_PUBLIC_SITE_URL`, and `IMAGE_HOSTS` are **build-time** settings: `next.config.ts` writes them into the build. Pages themselves are rendered per request (the catalog
+is read at run time), but the compose values for these three only label the environment. A staging image can never be made indexable by editing `.env`; CI proves it by starting a staging
+image with `SITE_ENV=production` and checking it is still noindex. Going live needs a separate, deliberate production build.
 
 ## 1. One-time GitHub setup
 
@@ -166,7 +167,22 @@ cd /opt/kcprintworks-nextjs
 ```
 
 If the new container does not turn healthy within two minutes, the script restores the previous image automatically and exits with an error.
-The compose file itself rarely changes; when it does, re-run step 3 of the VPS setup with the new tag to refresh `docker-compose.yml` and `deploy.sh`.
+The compose file itself rarely changes; when it does (it did for Step 2), refresh `docker-compose.yml` and `deploy.sh` from the new image **before** deploying it:
+
+```bash
+cd /opt/kcprintworks-nextjs
+TAG=sha-9f8e7d6                                  # the new tag
+docker pull ghcr.io/cyberbandit1998/kcprintworks-nextjs:$TAG
+docker create --name kcpw-extract ghcr.io/cyberbandit1998/kcprintworks-nextjs:$TAG >/dev/null
+cp docker-compose.yml docker-compose.yml.bak     # keeps the old file in case you want it back
+docker cp kcpw-extract:/opt/kcprintworks-deploy/. /opt/kcprintworks-nextjs/     # copies compose, deploy.sh, .env.example; your .env is not in the image, so it is untouched
+docker rm kcpw-extract
+chmod +x deploy.sh
+./deploy.sh $TAG
+```
+
+Your `.env` keeps every setting. New variables (Step 2 added `CATALOG_SOURCE`, `WC_*`, `CATALOG_REVALIDATE_SECONDS`, `REVALIDATE_SECRET`) have safe defaults in the compose file, so deploying the new image with
+your old `.env` behaves exactly as before (placeholder catalog). Switching to WooCommerce is a separate, deliberate step (section 9).
 
 ## 5. Roll back
 
@@ -200,6 +216,10 @@ To stop the storefront entirely (nothing else is affected): `cd /opt/kcprintwork
 | `manifest unknown`                             | The tag does not exist. Copy it exactly from the workflow summary (`sha-` plus 7 characters).                                                                         |
 | `required variable IMAGE_TAG is missing`       | `.env` has no `IMAGE_TAG`. Use `./deploy.sh <tag>`.                                                                                                                   |
 | NPM shows **502 Bad Gateway**                  | The container is not healthy yet, or NPM and the app are not on the same network. `docker network inspect proxy` must list both; `./deploy.sh --status` for health.   |
+| `/api/catalog-status/` says `lastError: WooCommerce returned HTTP 401` | The key or secret in `.env` is wrong or was revoked, or `WC_BASE_URL` points at a different site. Re-check section 9; the shop keeps showing the last good catalog meanwhile. |
+| `... HTTP 403` or `request failed`             | Something in front of WooCommerce is blocking the VPS (a security plugin, WAF/bot challenge, host firewall, HTTP basic auth). Allow this server's IP for `/wp-json/wc/v3/`. |
+| Pages show "Something went wrong" right after switching to `woo` | The very first load failed, so there is no copy to show. `docker logs --tail 50 kcprintworks-nextjs` and `/api/catalog-status/` name the reason; switch back with `CATALOG_SOURCE=fixtures` while you fix it. |
+| A product edit does not appear                 | Wait `CATALOG_REVALIDATE_SECONDS` (default 2 minutes) or run the refresh command in [WOOCOMMERCE-CATALOG.md](WOOCOMMERCE-CATALOG.md) section 3. Check the product is **Published** and visible in the catalog. |
 | Container restarts in a loop                   | `docker logs --tail 100 kcprintworks-nextjs`. Out of memory shows as exit code 137; do not raise the limit without checking `free -h` for the other services first.    |
 | `exec format error`                            | The VPS is not x86_64 (`uname -m`). Tell me and I will add an arm64 build.                                                                                            |
 | Disk filling with old images                   | List only this project's images: `docker images ghcr.io/cyberbandit1998/kcprintworks-nextjs`. Remove specific old tags with `docker rmi <image>:<tag>`. Keep the last few for rollback. **Do not run `docker system prune`** on a host shared with other stacks. |
@@ -207,15 +227,69 @@ To stop the storefront entirely (nothing else is affected): `cd /opt/kcprintwork
 ## 7. Going live later (not part of this; each step needs your approval)
 
 Staging stays noindex until you decide otherwise. Going live is a separate change: a production image (_Run workflow > site_env = production_,
-with `SITE_URL` set to the real address), the WooCommerce connection (Step 2), checkout and Stripe in test mode (Step 3), and the DNS and
+with `SITE_URL` set to the real address), checkout and Stripe in test mode (Step 3), and the DNS and
 Nginx Proxy Manager switch described in [MIGRATION-SHOP-DOMAIN.md](MIGRATION-SHOP-DOMAIN.md). None of it happens by deploying this image.
 
 ## 8. How it is tested
 
 - Every publish builds the image, starts it, and runs [`scripts/docker-smoke.sh`](../scripts/docker-smoke.sh) against the container
-  **before anything is pushed**: health, pages, noindex header/robots.txt/meta tag (staging), browser prices rejected, checkout disabled, non-root user,
-  and the Docker health check turning healthy. The image that passes is the image that is published.
+  **before anything is pushed**: health, pages, noindex header/robots.txt/meta tag (staging), the image optimizer resizing a photo, the catalog endpoints, browser prices rejected,
+  checkout disabled, non-root user, and the Docker health check turning healthy. A second start of the same image with `SITE_ENV=production` in its environment, read-only filesystem and
+  no capabilities (as compose runs it) must still be noindex. The image that passes is the image that is published.
+- The WooCommerce path is tested without the real store: unit tests run the real client and converter against a mock WooCommerce server (GET only, credentials required), and a
+  Playwright suite starts a second storefront against it to prove products, variations, "Any" options, photos, 404s, cache behavior, the signed refresh, the failure fallback, and that no
+  credential reaches the browser. What is **not** tested here is the real kcprintworks.com (this environment cannot reach it).
 - `deploy.sh` has [tests](../scripts/deploy/deploy.test.mjs) that run it against a fake `docker`: first install, update, automatic rollback on an unhealthy
   release, failed pull, `--rollback` without network, bad tag input, and a check that it only ever issues `docker compose` for this project and talks to the
   `kcprintworks-nextjs` container (never to WordPress, MariaDB, or Nginx Proxy Manager, and never `down`, `rm`, `stop`, `prune`, or network/volume commands).
 - The compose file is validated with `docker compose config`; `ports:` is absent.
+
+## 9. Show your real WooCommerce products (Step 2)
+
+This makes the staging container **read** your WooCommerce catalog. It writes nothing to WooCommerce. Do the steps in order; each is reversible.
+
+**A. Create a Read-only key (you do this in WordPress; it adds one API-key row to the live site's settings, which is why I do not do it).**
+
+1. WordPress admin > WooCommerce > Settings > Advanced > **REST API** > **Add key**.
+2. Description `KCPrintWorks storefront (read-only)`. User: a dedicated administrator-or-shop-manager account if you have one (a key can do no more than its user), **Permissions: Read**. Generate.
+3. Copy the **Consumer key** (`ck_...`) and **Consumer secret** (`cs_...`) into a text editor for the next step. They are shown once. Never paste them into a chat, an issue, or the repository.
+   To remove access later: delete the key on the same screen.
+
+**B. Put them on the VPS (the file holds secrets, so lock it down).**
+
+```bash
+cd /opt/kcprintworks-nextjs
+chmod 600 .env
+nano .env        # set these lines (keep everything else):
+#   CATALOG_SOURCE=woo
+#   WC_BASE_URL=https://kcprintworks.com
+#   WC_CONSUMER_KEY=ck_...        (paste with the editor, not on the command line)
+#   WC_CONSUMER_SECRET=cs_...
+#   REVALIDATE_SECRET=<output of: openssl rand -hex 24>
+```
+
+**C. Test the key without the storefront (read-only request; the secret is read from the file, never printed or put on a command line):**
+
+```bash
+cd /opt/kcprintworks-nextjs
+set -a; . ./.env; set +a
+printf 'user = "%s:%s"\n' "$WC_CONSUMER_KEY" "$WC_CONSUMER_SECRET" \
+  | curl -sS -K - -o /dev/null -w 'HTTP %{http_code}, %{size_download} bytes\n' "$WC_BASE_URL/wp-json/wc/v3/products?per_page=1&status=publish"
+unset WC_CONSUMER_KEY WC_CONSUMER_SECRET REVALIDATE_SECRET
+# expect: HTTP 200. 401 = wrong key/secret. 403 or a challenge page = something blocks this server. 404 = WC_BASE_URL is not the WooCommerce site.
+```
+
+**D. Switch the container to the WooCommerce catalog.**
+
+```bash
+cd /opt/kcprintworks-nextjs
+./deploy.sh "$(grep '^IMAGE_TAG=' .env | cut -d= -f2-)"     # same image, new environment; waits for "healthy"
+curl -s https://YOUR-STAGING-HOST/api/catalog-status/ | head -c 800; echo
+```
+
+Expected: `"source":"woo"`, `counts.products` equal to the number of published products you expect (66), `status.lastError` null. `counts.skipped` lists any product that is not shown, with the reason.
+Then open `https://YOUR-STAGING-HOST/shop/`: the banner says it is a staging preview with your WooCommerce products, checkout is not connected, and the page is still noindex.
+
+**E. Back out at any time:** set `CATALOG_SOURCE=fixtures` in `.env` and run the same `./deploy.sh` line. Delete the REST key in WordPress to cut access completely.
+
+**F. Prove changes appear without a rebuild:** [WOOCOMMERCE-CATALOG.md](WOOCOMMERCE-CATALOG.md) section 3.
