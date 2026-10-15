@@ -249,6 +249,13 @@ final class Settings
         return $settings;
     }
 
+    /** @param array<string, mixed> $settings */
+    public static function markWizardDone(array $settings): array
+    {
+        $settings['wizard_done'] = true;
+        return $settings;
+    }
+
     /** Whether this visitor should be given the autocomplete at all. */
     public static function isActiveFor(array $settings, bool $isAdministrator): bool
     {

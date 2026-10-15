@@ -1,0 +1,11 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>A page on another origin (stand-in for a frame that navigated away; used by the Visual Selector Tool's tests)</title></head>
+<body>
+<p>Not the site.</p>
+<script>
+  // What a hostile page would do: claim to be the picking script and offer a selector of its choosing.
+  parent.postMessage({ source: 'kcpw-aa-picker', type: 'pick', candidates: [{ kind: 'id', selector: '#evil', count: 1, unique: true }] }, '*');
+</script>
+</body>
+</html>

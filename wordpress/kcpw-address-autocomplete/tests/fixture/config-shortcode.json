@@ -1,0 +1,100 @@
+{
+    "v": "test",
+    "key": "test-key-0000000000000000000000",
+    "mapsVersion": "weekly",
+    "language": "en-US",
+    "admin": false,
+    "preview": false,
+    "minChars": 3,
+    "debounce": 300,
+    "maxRequests": 12,
+    "disableAutofill": true,
+    "fallbackNotice": true,
+    "usage": true,
+    "style": {
+        "theme": "match",
+        "accent": "#2b59e6",
+        "radius": 8
+    },
+    "modules": [],
+    "rest": {
+        "usage": "https://shop.example.test/wp-json/kcpw-aa/v1/usage"
+    },
+    "i18n": {
+        "attribution": "Powered by Google",
+        "listLabel": "Address suggestions",
+        "count": "%d address suggestions available. Use the up and down arrow keys, then Enter to choose.",
+        "noResults": "No suggestions. Keep typing, or enter your address yourself.",
+        "unavailable": "Address suggestions are not available right now. Please enter your address yourself.",
+        "limit": "Suggestions paused. Please finish typing your address yourself.",
+        "loading": "Looking up addresses…",
+        "placeFailed": "We could not load that address. Please finish it yourself.",
+        "filled": "Address filled in. Please check each field.",
+        "unit": "Unit",
+        "preview": "Address suggestions: preview for administrators only. Customers do not see them yet.",
+        "previewDismiss": "Dismiss this notice",
+        "problem": "Address suggestions are not working on this page"
+    },
+    "forms": [
+        {
+            "id": "sc_1",
+            "mode": "smart",
+            "groups": [
+                {
+                    "label": "Shortcode",
+                    "scope": "#kcpw-aa-sc-1",
+                    "fields": {
+                        "address": "#kcpw-aa-sc-1-address",
+                        "address2": "#kcpw-aa-sc-1-address2",
+                        "city": "#kcpw-aa-sc-1-city",
+                        "state": "#kcpw-aa-sc-1-state",
+                        "postcode": "#kcpw-aa-sc-1-postcode",
+                        "country": "#kcpw-aa-sc-1-country"
+                    }
+                }
+            ],
+            "countries": [
+                "US",
+                "CA"
+            ],
+            "language": "",
+            "placeTypes": "address",
+            "features": {
+                "map_picker": false,
+                "gps": false,
+                "validation": false,
+                "pobox": false
+            }
+        },
+        {
+            "id": "sc_2",
+            "mode": "smart",
+            "groups": [
+                {
+                    "label": "Shortcode",
+                    "scope": "#kcpw-aa-sc-2",
+                    "fields": {
+                        "address": "#kcpw-aa-sc-2-address",
+                        "address2": "#kcpw-aa-sc-2-address2",
+                        "city": "#kcpw-aa-sc-2-city",
+                        "state": "#kcpw-aa-sc-2-state",
+                        "postcode": "#kcpw-aa-sc-2-postcode",
+                        "country": "#kcpw-aa-sc-2-country"
+                    }
+                }
+            ],
+            "countries": [
+                "US",
+                "CA"
+            ],
+            "language": "",
+            "placeTypes": "address",
+            "features": {
+                "map_picker": false,
+                "gps": false,
+                "validation": false,
+                "pobox": false
+            }
+        }
+    ]
+}

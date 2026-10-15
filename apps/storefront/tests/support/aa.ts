@@ -1,5 +1,6 @@
 import { expect, type Locator, type Page } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
+import { createServer, type Server } from 'node:http';
 import { existsSync, mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -76,7 +77,7 @@ export interface Details {
 /* eslint-disable @typescript-eslint/no-explicit-any -- the plugin's page configuration is a free-form JSON document the specs edit freely */
 export type Config = Record<string, any>;
 
-export function config(name: 'block' | 'classic' | 'plain' | 'preview'): Config {
+export function config(name: 'block' | 'classic' | 'plain' | 'preview' | 'shortcode'): Config {
   return JSON.parse(readFileSync(path.join(FIXTURE, `config-${name}.json`), 'utf8'));
 }
 
@@ -231,6 +232,7 @@ export interface Scenario {
   authFailure?: boolean;
   noImportLibrary?: boolean;
   geocodeDelay?: number;
+  geocodeOk?: boolean;
   failGeocode?: string;
 }
 
@@ -253,11 +255,12 @@ export interface Opened {
 /** Opens one of the stand-in pages with the plugin configured and the Google stand-in answering. */
 export async function open(
   page: Page,
-  name: 'block' | 'classic' | 'generic',
+  name: 'block' | 'classic' | 'generic' | 'shortcode',
   options: OpenOptions = {},
 ): Promise<Opened> {
-  const base = options.config ?? config(name === 'generic' ? 'plain' : name);
-  const cfg = typeof base === 'function' ? base(config(name === 'generic' ? 'plain' : name)) : base;
+  const own = config(name === 'generic' ? 'plain' : name);
+  const base = options.config ?? own;
+  const cfg = typeof base === 'function' ? base(own) : base;
   const scenario = { ...defaultScenario(), ...(options.scenario ?? {}) };
   let loads = 0;
 
@@ -320,4 +323,61 @@ export async function waitForSuggestions(page: Page, count?: number) {
 /** Waits until the plugin has finished filling a chosen address `times` times (the fields are written one at a time, so wait for the last). */
 export async function filled(page: Page, times = 1) {
   await expect.poll(() => page.evaluate(() => window.__filled), { timeout: 10000 }).toBe(times);
+}
+
+const TYPES: Record<string, string> = {
+  '.html': 'text/html; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.json': 'application/json',
+};
+
+/**
+ * Serves the built fixtures over http on a free local port. The Visual Selector Tool's screen and the page it picks fields on must be
+ * the SAME ORIGIN (as the WordPress admin and the site are), which file:// pages are not.
+ */
+export async function serveFixtures(): Promise<{ origin: string; close: () => Promise<void> }> {
+  const dir = fixtureDir();
+  const server: Server = createServer((req, res) => {
+    const name = decodeURIComponent(new URL(req.url ?? '/', 'http://local').pathname).replace(
+      /^\/+/,
+      '',
+    );
+    const file = path.join(dir, name);
+    if (!file.startsWith(dir) || !existsSync(file)) {
+      res.statusCode = 404;
+      res.end('not found');
+      return;
+    }
+    res.setHeader('Content-Type', TYPES[path.extname(file)] ?? 'application/octet-stream');
+    res.end(readFileSync(file));
+  });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const address = server.address();
+  const port = typeof address === 'object' && address ? address.port : 0;
+  return {
+    origin: `http://127.0.0.1:${port}`,
+    close: () => new Promise<void>((resolve) => server.close(() => resolve())),
+  };
+}
+
+/** Opens one of the administrator screens (written by the plugin's PHP) with the Google stand-in answering. */
+export async function openAdmin(
+  page: Page,
+  file: string,
+  options: { scenario?: Partial<Scenario>; width?: number; blockGoogle?: boolean } = {},
+) {
+  const scenario = { ...defaultScenario(), geocodeOk: true, ...(options.scenario ?? {}) };
+  await page.setViewportSize({ width: options.width ?? 1280, height: 900 });
+  await page.route('https://maps.googleapis.com/**', async (route) => {
+    if (options.blockGoogle) {
+      await route.abort('failed');
+      return;
+    }
+    await route.fulfill({ status: 200, contentType: 'text/javascript', body: STANDIN });
+  });
+  await page.addInitScript((s) => {
+    window.__KCPW_G = s;
+  }, scenario);
+  await page.goto(pathToFileURL(path.join(fixtureDir(), file)).href);
 }

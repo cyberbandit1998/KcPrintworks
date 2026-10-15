@@ -1,0 +1,32 @@
+/* KCPrintWorks Address Autocomplete: the Visual Selector Tool's outline and note on your page. Only present while an administrator is picking. */
+
+.kcpw-aa-pk-outline {
+  position: fixed;
+  z-index: 2147483000;
+  box-sizing: border-box;
+  border: 3px solid #2b59e6;
+  border-radius: 4px;
+  background: rgba(43, 89, 230, 0.12);
+  pointer-events: none;
+}
+.kcpw-aa-pk-outline[hidden] {
+  display: none;
+}
+.kcpw-aa-pk-bar {
+  position: fixed;
+  inset-inline: 0;
+  bottom: 0;
+  z-index: 2147483001;
+  box-sizing: border-box;
+  padding: 10px 16px;
+  background: #1f2328;
+  color: #ffffff;
+  font:
+    400 15px/1.4 system-ui,
+    -apple-system,
+    'Segoe UI',
+    Roboto,
+    Arial,
+    sans-serif;
+  text-align: center;
+}

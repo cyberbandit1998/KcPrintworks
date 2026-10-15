@@ -56,11 +56,20 @@ namespace {
         public static bool $nonceValid = true;
         /** @var array<string, mixed> */
         public static array $get = [];
+        /** @var list<object> */
+        public static array $pages = [];
+        /** @var array<string, string> */
+        public static array $wooPages = [];
+        /** @var array<string, callable> */
+        public static array $shortcodes = [];
+        /** @var list<string> */
+        public static array $headers = [];
 
         public static function reset(): void
         {
             self::$actions = self::$options = self::$autoload = self::$transients = self::$scripts = self::$styles = self::$inline = [];
-            self::$routes = self::$menus = self::$nonceChecks = self::$redirects = self::$get = [];
+            self::$routes = self::$menus = self::$nonceChecks = self::$redirects = self::$get = self::$pages = self::$wooPages = self::$shortcodes = self::$headers = [];
+            \KcPrintworks\AddressAutocomplete\Picker::reset();
             self::$isAdmin = self::$canManage = self::$ajax = self::$isCheckout = self::$isOrderReceived = self::$isAccount = self::$isEditAddress = false;
             self::$queriedId = 0;
             self::$requestUri = '/';
@@ -84,6 +93,54 @@ namespace {
     {
     }
 
+    if (!defined('DAY_IN_SECONDS')) {
+        define('DAY_IN_SECONDS', 86400);
+    }
+
+    function add_shortcode(string $tag, callable $callback): void
+    {
+        WpStub::$shortcodes[$tag] = $callback;
+    }
+    function add_filter(string $hook, callable|string $callback, int $priority = 10, int $args = 1): void
+    {
+        WpStub::$actions['filter:' . $hook][] = [$callback, $priority];
+    }
+    function wp_robots_no_robots(array $robots): array
+    {
+        return $robots;
+    }
+    function nocache_headers(): void
+    {
+        WpStub::$headers[] = 'nocache';
+    }
+    function wp_create_nonce(string $action): string
+    {
+        return 'nonce-' . $action;
+    }
+    function wp_verify_nonce(string $nonce, string $action): int|false
+    {
+        return WpStub::$nonceValid && $nonce === 'nonce-' . $action ? 1 : false;
+    }
+    function sanitize_text_field(string $text): string
+    {
+        return trim(strip_tags($text));
+    }
+    function get_pages(array $args = []): array
+    {
+        return WpStub::$pages;
+    }
+    function get_permalink(int $id = 0): string
+    {
+        return 'https://shop.example.test/page-' . $id . '/';
+    }
+    function wc_get_page_permalink(string $page): string
+    {
+        return WpStub::$wooPages[$page] ?? '';
+    }
+    function wp_nonce_url(string $url, string $action): string
+    {
+        return $url . '&_wpnonce=nonce-for-' . $action;
+    }
     function add_action(string $hook, callable $callback, int $priority = 10): void
     {
         WpStub::$actions[$hook][] = [$callback, $priority];

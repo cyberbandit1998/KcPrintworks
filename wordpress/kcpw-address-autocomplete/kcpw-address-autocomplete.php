@@ -23,7 +23,7 @@ if (PHP_VERSION_ID < 80100) {
     return;
 }
 
-foreach (['Settings', 'Presets', 'FormConfig', 'PageMatcher', 'Usage', 'RateLimiter', 'Frontend', 'Rest', 'Admin', 'Plugin'] as $class) {
+foreach (['Settings', 'Presets', 'FormConfig', 'PageMatcher', 'Usage', 'RateLimiter', 'Store', 'Html', 'Conflicts', 'Picker', 'Frontend', 'Shortcode', 'Rest', 'Admin', 'AdminForms', 'Wizard', 'Plugin'] as $class) {
     require_once __DIR__ . '/src/' . $class . '.php';
 }
 

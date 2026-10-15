@@ -14,15 +14,14 @@ if (!out) throw new Error('Usage: node build-fixtures.mjs <outDir>');
 mkdirSync(out, { recursive: true });
 
 for (const name of readdirSync(here)) {
-  if (/\.(html|css|json)$/.test(name) || name === 'google-standin.js') cpSync(join(here, name), join(out, name));
+  if (/\.(html|css|json)$/.test(name) || name === 'google-standin.js' || name === 'picker-loader.js') cpSync(join(here, name), join(out, name));
 }
 for (const name of readdirSync(join(plugin, 'assets', 'js'))) {
   if (name.startsWith('kcpw-aa') && name.endsWith('.js')) cpSync(join(plugin, 'assets', 'js', name), join(out, name));
 }
 cpSync(join(plugin, 'assets', 'css', 'kcpw-aa.css'), join(out, 'kcpw-aa.css'));
-if (existsSync(join(plugin, 'assets', 'css', 'kcpw-aa-picker.css'))) {
-  cpSync(join(plugin, 'assets', 'css', 'kcpw-aa-picker.css'), join(out, 'kcpw-aa-picker.css'));
-}
+cpSync(join(plugin, 'assets', 'css', 'kcpw-aa-admin.css'), join(out, 'kcpw-aa-admin.css'));
+cpSync(join(plugin, 'assets', 'css', 'kcpw-aa-picker.css'), join(out, 'kcpw-aa-picker.css'));
 
 await build({
   configFile: false,

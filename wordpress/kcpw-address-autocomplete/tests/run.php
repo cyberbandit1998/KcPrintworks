@@ -11,7 +11,7 @@ set_error_handler(static function (int $no, string $message, string $file, int $
 });
 
 require_once __DIR__ . '/wp-stubs.php';
-foreach (['Settings', 'Presets', 'FormConfig', 'PageMatcher', 'Usage', 'RateLimiter', 'Frontend', 'Rest', 'Admin', 'Plugin'] as $class) {
+foreach (['Settings', 'Presets', 'FormConfig', 'PageMatcher', 'Usage', 'RateLimiter', 'Store', 'Html', 'Conflicts', 'Picker', 'Frontend', 'Shortcode', 'Rest', 'Admin', 'AdminForms', 'Wizard', 'Plugin'] as $class) {
     require_once dirname(__DIR__) . '/src/' . $class . '.php';
 }
 require_once __DIR__ . '/TestCase.php';

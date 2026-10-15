@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tricky markup (stand-in page for the Visual Selector Tool's browser tests)</title>
+<link rel="stylesheet" href="baseline.css">
+<script src="picker-loader.js"></script>
+</head>
+<body>
+<main>
+<h1>Booking form</h1>
+<form class="wpforms-form" id="wpforms-form-5" action="/submit" method="post">
+  <div class="wpforms-field wpforms-field-address">
+    <label class="wpforms-field-label" for="wpforms-5-field_3">Address</label>
+    <input type="text" id="wpforms-5-field_3" class="wpforms-field-medium css-1x2y3z" name="wpforms[fields][3][address1]" placeholder="Street" autocomplete="address-line1" data-rule-required="true">
+    <input type="text" id="wpforms-5-field_3-address2" class="wpforms-field-medium css-1x2y3z" name="wpforms[fields][3][address2]" placeholder="Apartment">
+    <input type="text" class="wpforms-field-small" name="wpforms[fields][3][city]" placeholder="City">
+  </div>
+  <label class="phone-wrap">Phone <input type="tel" name="phone"></label>
+  <p class="form-row" id="row-company"><span class="hint">Company</span> <input type="text" name='co"mpany' aria-label="Company"></p>
+  <div class="form-row">
+    <label for="country">Country</label>
+    <select id="country" name="billing_country" class="country_to_state select2-hidden-accessible"><option value="US">United States</option><option value="CA">Canada</option></select>
+    <span class="select2-container select2-container--default"><span class="select2-selection"><span class="select2-selection__rendered">United States</span></span></span>
+  </div>
+  <div class="copy"><input type="text" class="twin" name="twin" placeholder="Twin"><input type="text" class="twin" name="twin" placeholder="Twin"></div>
+  <input type="text" id="123-numeric-id" name="n" aria-label="Reference number">
+  <p class="not-a-field">Plain text, not a field.</p>
+  <button type="submit" id="go">Place order</button>
+  <a href="/elsewhere" id="away">A link that goes somewhere</a>
+</form>
+<p id="submitted" hidden>submitted</p>
+</main>
+<script>
+  document.getElementById('wpforms-form-5').addEventListener('submit', function (e) { e.preventDefault(); document.getElementById('submitted').hidden = false; });
+  window.__clicks = 0;
+  document.getElementById('go').addEventListener('click', function () { window.__clicks += 1; });
+</script>
+</body>
+</html>

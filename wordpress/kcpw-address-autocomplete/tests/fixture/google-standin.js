@@ -12,6 +12,7 @@
  *   delay            ms before a suggestion answer (a rule may set its own);  detailsDelay ms before place details
  *   failSuggest      -> message of the error to throw instead of answering
  *   failDetails      -> true to throw from fetchFields
+ *   geocodeOk        -> true to let the Geocoder answer with one result;  failGeocode -> message of the error it throws
  *   authFailure      -> true to call window.gm_authFailure() shortly after load, as Google does for a rejected key
  *   noImportLibrary  -> true to leave google.maps without importLibrary (an older script from another plugin)
  */
@@ -103,7 +104,7 @@
     S.calls.geocode.push(request);
     await sleep(S.geocodeDelay);
     if (S.failGeocode) throw new Error(S.failGeocode);
-    return { results: (S.geocodeResults && S.geocodeResults(request)) || [] };
+    return { results: S.geocodeOk ? [{ formatted_address: 'Stand-in result', address_components: [] }] : [] };
   };
 
   var libraries = {

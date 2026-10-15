@@ -8,18 +8,17 @@ final class Plugin
 {
     public static function boot(string $file, string $version): void
     {
-        $settings = Settings::load(get_option(Settings::OPTION, []));
-        $forms = FormConfig::sanitizeList(get_option(FormConfig::OPTION, []));
-        $effective = Settings::effective(
-            $settings,
-            defined('KCPW_AA_BROWSER_KEY') ? constant('KCPW_AA_BROWSER_KEY') : null,
-            defined('KCPW_AA_SERVER_KEY') ? constant('KCPW_AA_SERVER_KEY') : null,
-        );
+        $store = Store::load();
+        $effective = $store->effective();
 
-        (new Frontend($file, $version, $effective, $forms))->register();
+        $frontend = new Frontend($file, $version, $effective, $store->forms);
+        $frontend->register();
+        (new Shortcode($frontend))->register();
+        (new Picker($file, $version))->register();
         (new Rest($effective))->register();
         if (is_admin()) {
-            (new Admin($file, $version, $settings, $forms))->register();
+            (new Admin($file, $version, $store))->register();
+            (new AdminForms($store))->register();
         }
     }
 }

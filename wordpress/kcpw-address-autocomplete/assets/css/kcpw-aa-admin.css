@@ -67,3 +67,160 @@
   display: inline-block;
   margin: 2px 0;
 }
+
+/* The Forms editor */
+.kcpw-aa-admin .kcpw-aa-group {
+  max-width: 880px;
+  margin: 16px 0;
+  padding: 8px 20px 16px;
+  background: #fff;
+  border: 1px solid #c3c4c7;
+  border-radius: 4px;
+}
+.kcpw-aa-admin .kcpw-aa-group legend {
+  padding: 0 8px;
+  font-weight: 600;
+}
+.kcpw-aa-admin .kcpw-aa-field-row {
+  margin: 10px 0;
+}
+.kcpw-aa-admin .kcpw-aa-multi {
+  min-width: 280px;
+}
+.kcpw-aa-admin .kcpw-aa-wizard-steps {
+  display: flex;
+  gap: 8px;
+  margin: 12px 0;
+  padding: 0;
+  list-style: none;
+}
+.kcpw-aa-admin .kcpw-aa-wizard-steps li {
+  padding: 6px 14px;
+  border: 1px solid #c3c4c7;
+  border-radius: 999px;
+  background: #fff;
+}
+.kcpw-aa-admin .kcpw-aa-wizard-steps .is-current {
+  border-color: #2271b1;
+  background: #2271b1;
+  color: #fff;
+  font-weight: 600;
+}
+
+/* The Visual Selector Tool's window */
+.kcpw-aa-picker {
+  width: min(1100px, 96vw);
+  height: min(780px, 92vh);
+  padding: 0;
+  border: 1px solid #1d2327;
+  border-radius: 6px;
+}
+.kcpw-aa-picker[open] {
+  display: flex;
+  flex-direction: column;
+}
+.kcpw-aa-picker::backdrop {
+  background: rgba(0, 0, 0, 0.55);
+}
+.kcpw-aa-picker__head,
+.kcpw-aa-picker__bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+}
+.kcpw-aa-picker__head {
+  justify-content: space-between;
+  border-bottom: 1px solid #c3c4c7;
+}
+.kcpw-aa-picker__head h2 {
+  margin: 0;
+}
+.kcpw-aa-picker__help {
+  margin: 0;
+  padding: 0 16px 8px;
+}
+.kcpw-aa-picker__body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+.kcpw-aa-picker__body iframe {
+  flex: 1 1 60%;
+  min-width: 0;
+  border: 0;
+  border-inline-end: 1px solid #c3c4c7;
+  background: #fff;
+}
+.kcpw-aa-picker__results {
+  flex: 0 0 38%;
+  overflow: auto;
+  padding: 8px 12px;
+}
+.kcpw-aa-card-pick {
+  margin: 0 0 10px;
+  padding: 8px 10px;
+  border: 1px solid #c3c4c7;
+  border-inline-start: 4px solid #8c8f94;
+  background: #fff;
+}
+.kcpw-aa-card-pick.is-unique {
+  border-inline-start-color: #0a5c2f;
+}
+.kcpw-aa-card-pick code {
+  display: block;
+  margin: 4px 0;
+  padding: 4px 6px;
+  overflow-wrap: anywhere;
+  background: #f0f0f1;
+}
+.kcpw-aa-card-pick .description {
+  display: block;
+  margin-bottom: 6px;
+}
+@media (max-width: 782px) {
+  .kcpw-aa-picker__body {
+    flex-direction: column;
+  }
+  .kcpw-aa-picker__results {
+    flex: 0 0 40%;
+  }
+}
+
+/* Touch-sized controls on this plugin's screens (WCAG 2.2 asks for at least 24 by 24 pixels), whatever the admin theme does to small buttons. */
+.kcpw-aa-admin .button,
+.kcpw-aa-admin .button-small {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding-block: 2px;
+  line-height: 1.4;
+}
+.kcpw-aa-admin .kcpw-aa-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.kcpw-aa-admin .kcpw-aa-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+}
+.kcpw-aa-admin .kcpw-aa-scroll:focus-visible {
+  outline: 2px solid #2271b1;
+  outline-offset: 2px;
+}
+
+/* A long option or a long placeholder must never make the page scroll sideways on a phone. */
+.kcpw-aa-admin select,
+.kcpw-aa-admin input[type='text'],
+.kcpw-aa-admin textarea {
+  max-width: 100%;
+  box-sizing: border-box;
+}
+.kcpw-aa-admin .form-table {
+  width: 100%;
+}
+.kcpw-aa-admin .form-table select {
+  width: 100%;
+  max-width: 25rem;
+}

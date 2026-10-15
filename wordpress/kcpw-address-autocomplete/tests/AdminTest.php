@@ -6,6 +6,7 @@ namespace KcPrintworks\AddressAutocomplete\Tests;
 use KcPrintworks\AddressAutocomplete\Admin;
 use KcPrintworks\AddressAutocomplete\FormConfig;
 use KcPrintworks\AddressAutocomplete\Settings;
+use KcPrintworks\AddressAutocomplete\Store;
 use KcPrintworks\AddressAutocomplete\Usage;
 
 /** An Admin whose redirect records the address instead of ending the request. */
@@ -26,14 +27,13 @@ final class AdminTest extends TestCase
     private function admin(array $settings = [], ?array $forms = null): TestAdmin
     {
         \WpStub::$canManage = true;
-        $forms ??= [];
-        return new TestAdmin('/x/kcpw-address-autocomplete/kcpw-address-autocomplete.php', '0.1.0', Settings::load($settings), $forms);
+        return new TestAdmin('/x/kcpw-address-autocomplete/kcpw-address-autocomplete.php', '0.1.0', new Store(Settings::load($settings), $forms ?? []));
     }
 
     public function testMenuAndHooksAreRegistered(): void
     {
         $this->admin()->register();
-        foreach (['admin_menu', 'admin_enqueue_scripts', 'admin_post_kcpw_aa_save', 'admin_post_kcpw_aa_forms'] as $hook) {
+        foreach (['admin_menu', 'admin_enqueue_scripts', 'admin_post_kcpw_aa_save', 'admin_post_kcpw_aa_wizard'] as $hook) {
             $this->assertTrue(isset(\WpStub::$actions[$hook]), $hook);
         }
         \WpStub::run('admin_menu');
@@ -48,6 +48,19 @@ final class AdminTest extends TestCase
         $a->assets('toplevel_page_kcpw-aa');
         $this->assertSame(['kcpw-aa-core', 'kcpw-aa-admin'], array_column(\WpStub::$scripts, 'handle'));
         $this->assertContains('KCPW_AA_MANUAL=true', \WpStub::$inline['kcpw-aa-core:before']);
+        $this->assertNotContains('"picker"', \WpStub::$inline['kcpw-aa-admin:before'], 'the picker data is only for the form editor');
+    }
+
+    public function testTheFormsScreenGetsThePickerDataAndTheTokenOnlyThere(): void
+    {
+        \WpStub::$pages = [(object) ['ID' => 7, 'post_title' => 'Contact']];
+        $a = $this->admin(['browser_key' => self::KEY]);
+        $a->assets('address-autocomplete_page_kcpw-aa-forms');
+        $js = \WpStub::$inline['kcpw-aa-admin:before'];
+        $this->assertContains('"picker"', $js);
+        $this->assertContains('nonce-kcpw_aa_pick', $js);
+        $this->assertContains('Contact', $js);
+        $this->assertContains('Use this selector', $js);
     }
 
     public function testDashboardShowsModeStepsUsageAndGoogleRequirements(): void
@@ -75,6 +88,12 @@ final class AdminTest extends TestCase
         $this->assertNotContains('Add the WooCommerce checkout (block)', $this->admin([], $forms)->dashboardHtml());
     }
 
+    public function testTheWizardIsOfferedUntilItIsDone(): void
+    {
+        $this->assertContains('view=wizard', $this->admin()->dashboardHtml());
+        $this->assertNotContains('view=wizard', $this->admin(['wizard_done' => true])->dashboardHtml());
+    }
+
     public function testGoingLiveAsksForConfirmationAndOffersTheOtherModesOnly(): void
     {
         $html = $this->admin(['mode' => 'preview'])->dashboardHtml();
@@ -84,10 +103,21 @@ final class AdminTest extends TestCase
         $this->assertNotContains('Preview (administrators only)</button>', $html, 'the current mode has no button');
     }
 
+    public function testOtherPluginsLoadingGoogleMapsAreShownWithoutTheirKeys(): void
+    {
+        \WpStub::$transients['kcpw_aa_conflicts'] = [['handle' => 'some-map-plugin', 'host' => 'maps.googleapis.com']];
+        $html = $this->admin()->dashboardHtml();
+        $this->assertContains('Another plugin loads Google Maps', $html);
+        $this->assertContains('some-map-plugin', $html);
+        $this->assertNotContains('key=', $html);
+        \WpStub::$transients = [];
+        $this->assertNotContains('Another plugin loads Google Maps', $this->admin()->dashboardHtml());
+    }
+
     public function testASavedKeyIsNeverPrintedBack(): void
     {
         $a = $this->admin(['browser_key' => self::KEY, 'server_key' => 'ServerKeyServerKeyServerKey0123456789']);
-        foreach ([$a->settingsHtml('general'), $a->dashboardHtml(), $a->settingsHtml('behavior'), $a->formsHtml()] as $html) {
+        foreach ([$a->settingsHtml('general'), $a->dashboardHtml(), $a->settingsHtml('behavior')] as $html) {
             $this->assertNotContains(self::KEY, $html);
             $this->assertNotContains('AbCdEfGh', $html);
         }
@@ -152,6 +182,15 @@ final class AdminTest extends TestCase
         $this->assertContains('page=kcpw-aa-settings&tab=general&kcpw_msg=saved', (string) $a->redirected);
     }
 
+    public function testTheDashboardModeButtonsReturnToTheDashboard(): void
+    {
+        $a = $this->admin();
+        $_POST = ['section' => 'general', 's' => ['mode' => 'off'], 'return' => 'dashboard'];
+        $a->onSave();
+        $this->assertSame('off', \WpStub::$options[Settings::OPTION]['mode']);
+        $this->assertSame('https://shop.example.test/wp-admin/admin.php?page=kcpw-aa&kcpw_msg=saved', $a->redirected);
+    }
+
     public function testAnUnknownSectionChangesNothing(): void
     {
         $a = $this->admin();
@@ -159,43 +198,6 @@ final class AdminTest extends TestCase
         $a->onSave();
         $this->assertSame([], \WpStub::$options);
         $this->assertContains('kcpw_msg=error', (string) $a->redirected);
-    }
-
-    public function testFormsAreAddedToggledAndDeletedByIdOnly(): void
-    {
-        $a = $this->admin();
-        $this->assertTrue($a->formsAction('add_preset', '', 'woo_block'));
-        $forms = \WpStub::$options[FormConfig::OPTION];
-        $this->assertSame(1, count($forms));
-        $id = $forms[0]['id'];
-        $this->assertTrue($a->formsAction('toggle', $id, ''));
-        $this->assertFalse(\WpStub::$options[FormConfig::OPTION][0]['enabled']);
-        $this->assertFalse($a->formsAction('toggle', 'f_nonexistent', ''));
-        $this->assertFalse($a->formsAction('add_preset', '', 'no_such_preset'));
-        $this->assertFalse($a->formsAction('format_disk', $id, ''));
-        $this->assertTrue($a->formsAction('delete', $id, ''));
-        $this->assertSame([], \WpStub::$options[FormConfig::OPTION]);
-    }
-
-    public function testTheFormsHandlerNeedsItsNonceAndTheCapability(): void
-    {
-        $a = $this->admin();
-        $_POST = ['do' => 'add_preset', 'preset' => 'woo_block'];
-        $a->onForms();
-        $this->assertSame(['kcpw_aa_forms'], \WpStub::$nonceChecks);
-        $this->assertContains('kcpw_msg=saved', (string) $a->redirected);
-        \WpStub::$canManage = false;
-        $this->assertThrows(fn () => $a->onForms());
-    }
-
-    public function testFormsScreenListsFormsAndOffersOnlyTheWooCommercePresets(): void
-    {
-        $forms = FormConfig::sanitizeList([FormConfig::blank('woo_block')]);
-        $html = $this->admin([], $forms)->formsHtml();
-        $this->assertContains('WooCommerce Checkout Block', $html);
-        $this->assertContains('The WooCommerce checkout page', $html);
-        $this->assertContains('nonce-for-kcpw_aa_forms', $html);
-        $this->assertNotContains('Contact Form 7', $html, 'other form plugins arrive with the Visual Selector stage');
     }
 
     public function testTheKeyTestStringsCoverEveryHint(): void

@@ -22,6 +22,13 @@ final class Frontend
         'pobox' => 'kcpw-aa-pobox.js',
     ];
 
+    /** @var list<array<string, mixed>> forms that matched this page */
+    private array $pageForms = [];
+    /** @var list<array<string, mixed>> forms made by [kcpw_address_autocomplete] shortcodes on this page */
+    private array $shortcodeForms = [];
+    private bool $queued = false;
+    private bool $isAdmin = false;
+
     /**
      * @param array<string, mixed> $settings
      * @param list<array<string, mixed>> $forms
@@ -39,25 +46,53 @@ final class Frontend
         add_action('wp_enqueue_scripts', [$this, 'enqueue']);
     }
 
+    /** Whether this visitor is given the autocomplete at all (the same gates for forms and shortcodes). */
+    public function allowed(): bool
+    {
+        if (Picker::active() || is_admin() || (function_exists('wp_doing_ajax') && wp_doing_ajax())) {
+            return false;
+        }
+        $this->isAdmin = current_user_can('manage_options');
+        return Settings::isActiveFor($this->settings, $this->isAdmin);
+    }
+
     public function enqueue(): void
     {
-        if (is_admin() || (function_exists('wp_doing_ajax') && wp_doing_ajax())) {
+        if (!$this->allowed()) {
             return;
         }
-        $isAdmin = current_user_can('manage_options');
-        if (!Settings::isActiveFor($this->settings, $isAdmin)) {
-            return;
+        $this->pageForms = PageMatcher::select($this->forms, $this->context());
+        if ($this->pageForms !== []) {
+            $this->queue();
         }
-        $forms = PageMatcher::select($this->forms, $this->context());
-        if ($forms === []) {
-            return;
-        }
+    }
 
+    /** A shortcode on the page adds its own form (and, with it, the script). Already sanitized by the caller. */
+    public function addShortcodeForm(array $form): void
+    {
+        $this->shortcodeForms[] = $form;
+        $this->queue();
+    }
+
+    private function queue(): void
+    {
+        if ($this->queued) {
+            return;
+        }
+        $this->queued = true;
         $base = plugin_dir_url($this->file);
         wp_enqueue_style(self::HANDLE, $base . 'assets/css/kcpw-aa.css', [], $this->version);
         wp_enqueue_script(self::HANDLE, $base . 'assets/js/kcpw-aa.js', [], $this->version, ['in_footer' => true, 'strategy' => 'defer']);
+        // The configuration is printed just before the footer scripts, once every shortcode on the page has had its say.
+        add_action('wp_footer', [$this, 'printConfig'], 1);
+        // Late in the footer, note any other plugin that loads Google Maps on this page.
+        add_action('wp_print_footer_scripts', [new Conflicts(), 'onFooter'], 99);
+    }
+
+    public function printConfig(): void
+    {
         // JSON_HEX_* keep a "</script>" or an ampersand inside a value from ever ending the block or the attribute.
-        $json = wp_json_encode($this->buildConfig($forms, $isAdmin), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_SLASHES);
+        $json = wp_json_encode($this->buildConfig(array_merge($this->pageForms, $this->shortcodeForms), $this->isAdmin), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_SLASHES);
         wp_add_inline_script(self::HANDLE, 'window.KCPW_AA=' . $json . ';', 'before');
     }
 

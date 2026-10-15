@@ -25,22 +25,29 @@ final class FrontendTest extends TestCase
         \WpStub::$requestUri = '/checkout/';
     }
 
+    /** Runs the page: the script is queued on wp_enqueue_scripts and the configuration is printed in the footer. */
+    private function render(Frontend $f): void
+    {
+        $f->enqueue();
+        \WpStub::run('wp_footer');
+    }
+
     public function testNothingLoadsWhenTheModeIsOffOrThereIsNoKey(): void
     {
         $this->onCheckout();
-        $this->frontend('off')->enqueue();
+        $this->render($this->frontend('off'));
         $this->assertSame(0, count(\WpStub::$scripts));
-        $this->frontend('live', ['browser_key' => ''])->enqueue();
+        $this->render($this->frontend('live', ['browser_key' => '']));
         $this->assertSame(0, count(\WpStub::$scripts));
     }
 
     public function testPreviewIsForAdministratorsOnly(): void
     {
         $this->onCheckout();
-        $this->frontend('preview')->enqueue();
+        $this->render($this->frontend('preview'));
         $this->assertSame(0, count(\WpStub::$scripts), 'a customer gets nothing in preview mode');
         \WpStub::$canManage = true;
-        $this->frontend('preview')->enqueue();
+        $this->render($this->frontend('preview'));
         $this->assertSame(1, count(\WpStub::$scripts));
         $this->assertContains('"preview":true', \WpStub::$inline['kcpw-aa:before']);
         $this->assertContains('"admin":true', \WpStub::$inline['kcpw-aa:before']);
@@ -49,7 +56,7 @@ final class FrontendTest extends TestCase
     public function testLiveGivesCustomersTheScriptWithNoAdminFlags(): void
     {
         $this->onCheckout();
-        $this->frontend('live')->enqueue();
+        $this->render($this->frontend('live'));
         $this->assertSame(1, count(\WpStub::$scripts));
         $this->assertSame(1, count(\WpStub::$styles));
         $this->assertContains('"preview":false', \WpStub::$inline['kcpw-aa:before']);
@@ -62,13 +69,13 @@ final class FrontendTest extends TestCase
             \WpStub::reset();
             \WpStub::$requestUri = $_SERVER['REQUEST_URI'] = $uri;
             \WpStub::$queriedId = $id;
-            $this->frontend('live')->enqueue();
+            $this->render($this->frontend('live'));
             $this->assertSame(0, count(\WpStub::$scripts), $uri);
         }
         \WpStub::reset();
         \WpStub::$isCheckout = true;
         \WpStub::$isOrderReceived = true;
-        $this->frontend('live')->enqueue();
+        $this->render($this->frontend('live'));
         $this->assertSame(0, count(\WpStub::$scripts), 'not on the order-received page');
     }
 
@@ -76,18 +83,18 @@ final class FrontendTest extends TestCase
     {
         $this->onCheckout();
         \WpStub::$isAdmin = true;
-        $this->frontend('live')->enqueue();
+        $this->render($this->frontend('live'));
         $this->assertSame(0, count(\WpStub::$scripts));
         \WpStub::$isAdmin = false;
         \WpStub::$ajax = true;
-        $this->frontend('live')->enqueue();
+        $this->render($this->frontend('live'));
         $this->assertSame(0, count(\WpStub::$scripts));
     }
 
     public function testTheScriptIsDeferredAndAfterTheBlockOwnScripts(): void
     {
         $this->onCheckout();
-        $this->frontend('live')->enqueue();
+        $this->render($this->frontend('live'));
         $script = \WpStub::$scripts[0];
         $this->assertSame('kcpw-aa', $script['handle']);
         $this->assertSame(['in_footer' => true, 'strategy' => 'defer'], $script['args']);
@@ -98,7 +105,7 @@ final class FrontendTest extends TestCase
     public function testTheConfigHoldsThePublicKeyAndNeverTheServerKeyOrAnythingPersonal(): void
     {
         $this->onCheckout();
-        $this->frontend('live')->enqueue();
+        $this->render($this->frontend('live'));
         $js = \WpStub::$inline['kcpw-aa:before'];
         $this->assertContains(self::KEY, $js, 'the browser key is public by design');
         $this->assertNotContains(self::SERVER_KEY, $js);
@@ -115,7 +122,7 @@ final class FrontendTest extends TestCase
         $form = FormConfig::blank('woo_block');
         $form['groups'][0]['label'] = '</script><script>alert(1)</script> & \'quoted\' "double"';
         $form['groups'][0]['fields']['city'] = '#a[title="</script>&"]';
-        $this->frontend('live', [], [$form])->enqueue();
+        $this->render($this->frontend('live', [], [$form]));
         $js = \WpStub::$inline['kcpw-aa:before'];
         $this->assertNotContains('</script>', $js);
         $this->assertNotContains('<', $js);
