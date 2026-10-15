@@ -49,7 +49,7 @@ Nothing else is needed: no other plugin, no JavaScript, no font, no image, no ex
    ```
 
 2. Install and activate the plugin (section 3). While that line is there, **only logged-in administrators** get the new look; every customer sees the checkout exactly as before.
-3. Logged in as an administrator, start a checkout the normal way (storefront cart > Checkout), so the cart is rebuilt by `kcpw-core`, and look at the page on a computer **and on a
+3. **Logged in as an administrator in the same browser**, start a checkout the normal way (storefront cart > Checkout), so the cart is rebuilt by `kcpw-core`, and look at the page on a computer **and on a
    phone**. Check:
    - the compact header is the only header; the old tall header and the blue banner are gone (if the banner is still there: section 4);
    - contact, shipping address, shipping options and payment options all show and are usable; the card field and the PayPal button look normal and are not clipped;
@@ -160,6 +160,21 @@ Verified here:
 - The order-confirmation page after payment (it is the same page, so it gets the header with "Order confirmation" and "Continue shopping", and light styling); its exact markup depends on your WooCommerce version.
 
 ## 9. If something looks wrong
+
+### Is it running? (one minute)
+
+On the checkout page, right-click > **View page source** (Ctrl+U) and search for `kcpw-checkout`.
+
+- **Found** (you will see `kcpw-checkout` in the `<body class="...">`, and `kcpw-checkout-style-css` in a `<link>`): the plugin is running on this page. If it still looks old, another plugin's stylesheet or a cache is in the way: send me a screenshot.
+- **Not found:** the plugin is not running on this page. The usual reasons, most likely first:
+  1. It was uploaded but not **activated** (Plugins > Installed Plugins).
+  2. You used the preview line (`KCPW_CHECKOUT_STYLE` = `'admins'`) and this browser is **not logged in as an administrator**. A logged-out visitor, and any customer, sees the old page on purpose. The checkout shows a "Log in" link and "You are currently checking out as a guest" when nobody is logged in; as a logged-in administrator you would see your own account's email instead. Log in to WordPress in the same browser first, then open the checkout.
+  3. `KCPW_CHECKOUT_STYLE` is `'off'`, or mistyped (a typo counts as `'off'`).
+  4. A cache (a caching plugin, the host, or a CDN such as Cloudflare) is serving an older copy of the page: purge it, and hard-refresh (Ctrl+F5).
+  5. The checkout page's ID is not 9 (see the address of the page in the admin: `post=<number>`): set `KCPW_CHECKOUT_STYLE_PAGE_ID`.
+
+### What you may see, and what to do
+
 
 | What you see                                           | Likely cause and fix                                                                                                                                                       |
 | ------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
