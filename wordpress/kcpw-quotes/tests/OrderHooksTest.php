@@ -88,6 +88,25 @@ final class OrderHooksTest extends TestCase
         $g2->cleanup();
     }
 
+    public function testAnOrderWhoseLinesWereChangedAfterApprovalCannotBePaidAtAll(): void
+    {
+        foreach (['edit the item amount', 'add a product', 'add a second fee', 'edit the shipping'] as $change) {
+            [$g, $quote] = $this->approvedQuote();
+            $order = \WpStub::$orders[$quote->orderId()];
+            $this->assertTrue($order->needs_payment(), "$change: before");
+            match ($change) {
+                'edit the item amount' => $order->items['fee'][0]->total = '1.00',
+                'add a product' => $order->add_item(new \WC_Order_Item_Product()),
+                'add a second fee' => $order->add_item(new \WC_Order_Item_Fee()),
+                'edit the shipping' => $order->items['shipping'][0]->total = '0.50',
+            };
+            $order->calculate_totals(false);
+            $this->assertFalse($order->needs_payment(), "$change: WooCommerce is told there is nothing to pay");
+            $this->assertSame(Status::APPROVED, $g->repo->find($quote->id())?->status());
+            $g->cleanup();
+        }
+    }
+
     public function testOrdinaryOrdersAndTheNormalCheckoutAreNeverTouched(): void
     {
         $g = GlueFixtures::boot();

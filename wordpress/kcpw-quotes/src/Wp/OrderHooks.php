@@ -6,6 +6,7 @@ namespace KcPrintworks\Quotes\Wp;
 use KcPrintworks\Quotes\Domain\Fingerprint;
 use KcPrintworks\Quotes\Domain\Status;
 use KcPrintworks\Quotes\Repo\QuoteRepository;
+use KcPrintworks\Quotes\Service\OrderGateway;
 use KcPrintworks\Quotes\Service\Payments;
 use KcPrintworks\Quotes\Service\Settings;
 
@@ -16,7 +17,7 @@ use KcPrintworks\Quotes\Service\Settings;
  *   - an order that becomes Processing/Completed is checked against its quote and the quote becomes Paid;
  *   - an order that is cancelled or refunded is reported to the quote;
  *   - WooCommerce's "cancel unpaid orders" housekeeping leaves quote orders to the quote's own payment window;
- *   - a quote order can only be PAID while its quote is Approved, in time, and unchanged.
+ *   - a quote order can only be PAID while its quote is Approved, in time, and unchanged, and its lines are still exactly what was approved.
  */
 final class OrderHooks
 {
@@ -24,6 +25,7 @@ final class OrderHooks
         private readonly Payments $payments,
         private readonly QuoteRepository $repo,
         private readonly Settings $settings,
+        private readonly OrderGateway $orders,
         private $clock = null,
     ) {
     }
@@ -80,6 +82,9 @@ final class OrderHooks
             || !hash_equals(Fingerprint::ofQuote($this->settings->secret, $quote), (string) $order->get_meta(WcOrderGateway::META_FINGERPRINT))) {
             return false;
         }
-        return true;
+        // Not even a payment form for an order whose lines were changed after approval: nothing is charged, and the customer's link says
+        // payment is not available until you send a revised quote (which replaces the order).
+        $facts = $this->orders->inspect((int) $order->get_id());
+        return $facts !== null && $this->payments->mismatchOf($quote, $facts) === null;
     }
 }

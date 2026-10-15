@@ -40,7 +40,7 @@ final class Payments
             return Outcome::ok('already_paid');
         }
 
-        $problem = $this->mismatch($quote, $facts);
+        $problem = $this->mismatchOf($quote, $facts);
         if ($problem !== null) {
             $this->c->orders->note($orderId, 'Quote ' . $quote->ref() . ': this order does not match the approved quote (' . $problem . '). It was NOT marked paid on the quote.');
             $this->c->event($quote->id(), 'system', 'payment_mismatch', 'Order #' . $orderId . ' is paid but does not match the approved quote: ' . $problem . '.');
@@ -153,8 +153,8 @@ final class Payments
         return $ended;
     }
 
-    /** Why this paid order is not what the customer approved, or null when it is exactly that. */
-    private function mismatch(Quote $quote, OrderFacts $facts): ?string
+    /** Why this order is not what the customer approved, or null when it is exactly that. Used before payment is accepted and again when it arrives. */
+    public function mismatchOf(Quote $quote, OrderFacts $facts): ?string
     {
         if ($quote->revision() < 1 || $quote->orderFingerprint() === '') {
             return 'the quote has no approved offer';

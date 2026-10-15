@@ -492,3 +492,15 @@ test.describe('with quotes switched on', () => {
     }
   });
 });
+
+test.describe('what search engines are told', () => {
+  test('the request page is in the sitemap only when it takes requests, and a private quote page never is', async ({
+    request,
+  }) => {
+    const on = await (await request.get(`${WOO_TEST.url}/sitemap.xml`)).text();
+    expect(on.includes('/custom-orders/</loc>')).toBe(true);
+    expect(on.includes('/custom-orders/quote')).toBe(false);
+    const off = await (await request.get('/sitemap.xml')).text();
+    expect(off.includes('/custom-orders/')).toBe(false);
+  });
+});

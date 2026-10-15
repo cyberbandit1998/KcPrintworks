@@ -1,6 +1,7 @@
 import type { MetadataRoute } from 'next';
 import { getCatalog } from '@/lib/catalog';
 import { absoluteUrl } from '@/lib/seo';
+import { quotesEnabled } from '@/lib/quotes/config';
 import { getContent, getContentConfig } from '@/lib/wp';
 
 export const dynamic = 'force-dynamic';
@@ -25,6 +26,8 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: absoluteUrl('/') },
     { url: absoluteUrl('/shop/') },
     { url: absoluteUrl('/new-arrivals/') },
+    // The request page is public and worth finding once it takes requests; a customer's private quote page is never listed.
+    ...(quotesEnabled() ? [{ url: absoluteUrl('/custom-orders/') }] : []),
     ...(posts.length > 0 ? [{ url: absoluteUrl('/blog/') }] : []),
     ...posts.map((post) => ({
       url: absoluteUrl(`/blog/${post.slug}/`),

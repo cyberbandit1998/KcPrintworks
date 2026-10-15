@@ -12,7 +12,8 @@ for products, prices, variations, and orders (ADR-014, owner decision 2026-10-14
 third-party sync service (ExportYourStore today, maybe Nembol later): **we build no Etsy integration and depend on neither service**; the storefront
 and our plugin must keep working whichever is used ([docs/SYNC-INDEPENDENCE.md](docs/SYNC-INDEPENDENCE.md)). Priority is the buying path:
 WooCommerce product integration (built), personalization, cart handoff, Stripe checkout (built, verified with stand-ins only, **off by default**).
-The overall architecture was approved on 2026-10-13.
+The overall architecture was approved on 2026-10-13. Also built (2026-10-15, owner request): **product search** in the header and `/search/` (from the catalog already in memory, ADR-022) and **custom quotes**
+(`/custom-orders/`, a private quote page, and the `kcpw-quotes` WordPress plugin: request, price, secure expiring link, one WooCommerce order per approval, payment verified against what was approved; ADR-021).
 
 ## Hard rules (never break these without explicit owner approval in the conversation)
 
@@ -46,6 +47,9 @@ The overall architecture was approved on 2026-10-13.
    (`lib/wp/sanitize.ts`).
 10. **No secrets in the repo.** `.env*` (except `.env.example`) is gitignored; secrets live in host env or
    `wp-config.php`. Never paste tokens into an AI session.
+11. **Custom quotes follow the same safety as checkout.** `QUOTES_ENABLED` defaults to off. Approving and paying a quote IS checkout: it also needs `CHECKOUT_ENABLED` and the per-press shop guard; quotes alone never turn payments on. A request, an approval or a
+   hand-off can never carry a price, a status or an order (strict bodies; amounts are read from the stored quote). A quote order is "paid" only if it still matches the fingerprint written when it was approved. The plugin's three WooCommerce hooks must stay
+   no-ops for any order without `_kcpw_quote_id` (a test enforces the hook list). Never install or activate `kcpw-quotes` on the live shop, or change `KCPW_STOREFRONT_URL`, without the owner's say-so.
 
 ## Repository map
 
@@ -80,6 +84,11 @@ wordpress/kcpw-address-autocomplete/  WordPress plugin (v0.1.0, ADR-020): Google
                             Guide, Google setup, privacy and the owner's staging checklist: docs/ADDRESS-AUTOCOMPLETE.md. Never install or activate it on the live shop without the owner's say-so
 wordpress/kcpw-checkout-style/  WordPress plugin (v0.1.0), styling only: the shop's checkout page (ID 9) dressed like the storefront (compact header, scoped stylesheet). No script, no route, no cart/order/payment code;
                             `tests/` has PHP tests and a hand-written STAND-IN page (`tests/fixture`) rendered by `apps/storefront/tests/e2e/checkout-style.spec.ts`; rules enforced by `scripts/checkout-style/*.test.mjs`. See docs/CHECKOUT-STYLE.md
+wordpress/kcpw-quotes/      WordPress plugin (v0.1.0, ADR-021): custom quote requests, the "Custom Quotes" dashboard, the secret expiring approval link, the pending WooCommerce order and the payment check. Own tables (`kcpw_quotes`, `_files`, `_notes`, `_events`).
+                            Pure PHP rules in `src/Domain`, `src/Service`, `src/Repo`, `src/Upload`, `src/Mail`, `src/Auth` (no WordPress calls; a test enforces it) + thin `src/Wp` glue; `php tests/run.php`. Request/approval validation is checked against `packages/contracts/test/vectors/quotes.json`.
+                            Tests use a SQLite stand-in for `$wpdb` (`tests/FakeWpdb.php`) and WordPress/WooCommerce stand-ins (`tests/wp-stubs.php`). Guide, staging checklist, deploy and rollback: docs/CUSTOM-QUOTES.md
+apps/storefront/src/lib/search/   product search (folding, synonyms, index memoized per catalog snapshot, hit DTOs, URLs); header panel `components/SiteSearch.tsx`, `/search/`, `/api/search/`. docs/PRODUCT-SEARCH.md
+apps/storefront/src/lib/quotes/   request form pipeline (config, form token, uploads, submit handler, image prep), the private quote page (`view.ts`, `pay-url.ts`, `approve-handler.ts`, `countries.ts`); routes `/custom-orders/`, `/custom-orders/quote/`, `/api/quotes/`, `/api/quotes/approve/`, `/api/quotes-status/`
 ```
 
 ## Commands
@@ -98,10 +107,11 @@ Node 22 (`.nvmrc`), npm workspaces. Run from the repo root.
 | `npm test`                              | Vitest in `packages/contracts` and `apps/storefront`                                 |
 | `npm run test:e2e`                      | Playwright + axe (builds, serves on :3100, plus a second storefront on :3101 (checkout switched on) reading a mock WooCommerce store AND a kcpw-core stand-in on :3200 from `tests/support/mock-woo.mjs`; uses `/opt/pw-browsers/chromium` if present; override with `PW_CHROMIUM_PATH`) |
 | `npm run test:scripts`                  | `node --test` for `scripts/**` (export analyzer, deploy.sh, freshness script)        |
-| `npm run test:php`                      | PHP lint + the kcpw-core tests (`wordpress/kcpw-core/tests/run.php`, no dependencies) |
+| `npm run test:php`                      | PHP lint + the tests of every plugin (`wordpress/*/tests/run.php`, no dependencies)   |
 | `npm run build:core-plugin`             | Packages `dist/kcpw-core.zip` (also a CI artifact)                                   |
 | `npm run build:checkout-style`          | Packages `dist/kcpw-checkout-style.zip` (also a CI artifact)                         |
 | `npm run build:address-autocomplete`    | Packages `dist/kcpw-address-autocomplete.zip` (also a CI artifact)                   |
+| `npm run build:quotes-plugin`           | Packages `dist/kcpw-quotes.zip` (also a CI artifact)                                 |
 | `npm run check`                         | guard, format, lint, typecheck, test, test:scripts, build (e2e is separate)          |
 | `node scripts/discovery/analyze-wc-export.mjs <csv>` | Markdown report on a product export (`--json` for machine output). Raw exports live in `docs/discovery/raw/` (gitignored) |
 
@@ -198,6 +208,10 @@ and the Ubuntu archive work. Consequences:
 - WordPress/PHP: the plugin core must not call WordPress functions (a test enforces it); anything needing WP goes in `src/Wp` behind an interface, with a fake in `tests/`.
 - **`kcpw-checkout-style` CSS:** every selector starts with `body.kcpw-checkout`; rules aimed at payment (`payment`, `express`, `gateway`, `stripe`, `paypal`, `accordion`, `radio-control`) may set only color, background, border-color and border-radius; never a size, position, overflow, stacking or frame
   rule; no `url()`/`@import`. `scripts/checkout-style/checkout-style.test.mjs` and the Playwright spec fail otherwise. After changing the header's markup, run `php wordpress/kcpw-checkout-style/tests/fixture/build.php` (a test checks the fixture is current).
+
+- **Quotes e2e:** `tests/e2e/quotes.spec.ts` (request form; default server quotes OFF, woo server ON) uses a stateless stand-in: a description containing `[[mock:down|limited|badfile|error]]` gets that answer, so it can run beside other specs. The private-link/approval tests live in `woo-catalog.spec.ts` because they share the mock shop's Stripe-mode answer with the checkout tests. The form needs 5 seconds after the page is drawn (a bot filter): tests wait for it.
+- **kcpw-quotes tests:** `Fixtures::newQuote()` makes each request distinct on purpose (the same words twice within ten minutes are one request by design). MySQL reports changed rows, so every `swap()` must change at least one value (new status, lease, token). `SHOW TABLES LIKE` and `GET_LOCK` are not available on the SQLite stand-in: keep SQL plain.
+- **Axe in `woo-catalog.spec.ts`:** scan with `withTags([...wcag...])`; an untagged `AxeBuilder.analyze()` also runs best-practice rules such as `region` that the rest of the suite does not enforce.
 
 ## Git workflow
 

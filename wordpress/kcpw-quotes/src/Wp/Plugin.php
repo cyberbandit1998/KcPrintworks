@@ -35,7 +35,7 @@ final class Plugin
         $intake = new Intake($repo, $files, $sanitizer, $mailer, $emails, $settings, $clock, $adminUrl);
 
         (new RestApi($intake, $customer, new RequestVerifier($settings->secret, new WpNonceStore()), $version, static fn (): array => self::health($settings, $sanitizer->redraws())))->register();
-        (new OrderHooks($payments, $repo, $settings))->register();
+        (new OrderHooks($payments, $repo, $settings, $orders))->register();
         (new PrivacyHooks(new Privacy($context)))->register();
         add_action(self::CRON_HOOK, static function () use ($payments): void {
             $payments->expireDue(100);
