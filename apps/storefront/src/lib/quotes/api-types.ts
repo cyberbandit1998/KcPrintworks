@@ -36,6 +36,7 @@ export type QuoteApproveResponse =
         | 'expired'
         | 'not_open'
         | 'busy'
+        | 'already_paid'
         | 'unavailable';
       message: string;
     };

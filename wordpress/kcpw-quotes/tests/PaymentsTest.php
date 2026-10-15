@@ -141,7 +141,7 @@ final class PaymentsTest extends TestCase
         $g->time += 72 * 3600 + 500;
         $g->payments()->expireOne($g->repo->find($q2->id()));
         // The order was cancelled by the plugin, so a late payment cannot happen normally; if the shop paid it anyway, the money counts.
-        $g->orders->orders[$o2]['status'] = 'processing';
+        $g->orders->pay($o2);
         $this->assertSame('paid', $g->payments()->onOrderPaid($o2)->code, 'expired, then paid anyway');
         $this->assertSame(Status::PAID, $g->repo->find($q2->id())?->status());
     }
@@ -265,5 +265,63 @@ final class PaymentsTest extends TestCase
         $f->orders->orders[$orderId]['tax'] = 100;
         $f->orders->pay($orderId);
         $this->assertSame('mismatch', $f->payments()->onOrderPaid($orderId)->code, 'tax appeared on a quote that was approved as tax-free');
+    }
+
+    public function testOfflineMethodsAndPaymentsWithoutATransactionAreNotCountedAsPaid(): void
+    {
+        foreach ([['cod', 'ch_1'], ['bacs', 'ch_1'], ['cheque', ''], ['', 'ch_1'], ['stripe', ''], ['stripe', '   '], ['mystery_gateway', 'x1']] as [$method, $transaction]) {
+            [$f, $quote, , $orderId] = $this->approved();
+            $f->orders->pay($orderId, $method, $transaction);
+            $outcome = $f->payments()->onOrderPaid($orderId);
+            $label = "$method / $transaction";
+            $this->assertSame('unconfirmed', $outcome->code, $label);
+            $after = $f->repo->find($quote->id());
+            $this->assertSame(Status::APPROVED, $after?->status(), "$label: not Paid");
+            $this->assertTrue($after?->needsAttention(), "$label: flagged");
+            $this->assertCount(1, $f->mailer->to('contact@kcprintworks.com'), "$label: the owner is told");
+            $this->assertStringContains('NOT marked paid', $f->orders->orders[$orderId]['notes'][0], $label);
+        }
+    }
+
+    public function testRealGatewaysAreRecognisedByTheStartOfTheirId(): void
+    {
+        foreach (['stripe', 'stripe_cc', 'stripe_sepa', 'ppcp-gateway', 'ppcp-credit-card-gateway', 'paypal', 'woocommerce_payments'] as $method) {
+            [$f, $quote, , $orderId] = $this->approved();
+            $f->orders->pay($orderId, $method, 'txn_123');
+            $this->assertSame('paid', $f->payments()->onOrderPaid($orderId)->code, $method);
+            $this->assertSame(Status::PAID, $f->repo->find($quote->id())?->status(), $method);
+        }
+    }
+
+    public function testTheOwnerCanAddAMethodAndRecheck(): void
+    {
+        $f = new Fixtures(new Settings(Fixtures::SECRET, 'https://kcprintworks.com', paymentMethods: ['stripe', 'bacs']));
+        [$f, $quote, , $orderId] = $this->approved($f);
+        $f->orders->pay($orderId, 'bacs', 'transfer-ref-9');
+        $this->assertSame('paid', $f->payments()->onOrderPaid($orderId)->code, 'a method the owner listed counts');
+        $this->assertSame(Status::PAID, $f->repo->find($quote->id())?->status());
+
+        // A flagged quote is moved on by "Re-check payment" once the method is allowed (here: a different shop setting is simulated by a new Settings).
+        [$g, $q2, , $o2] = $this->approved();
+        $g->orders->pay($o2, 'bacs', 'transfer-ref-9');
+        $g->payments()->onOrderPaid($o2);
+        $this->assertSame(Status::APPROVED, $g->repo->find($q2->id())?->status());
+        $allowed = new Fixtures(new Settings(Fixtures::SECRET, 'https://kcprintworks.com', paymentMethods: ['stripe', 'bacs']));
+        $allowed->repo = $g->repo;
+        $allowed->orders = $g->orders;
+        $outcome = $allowed->admin()->recheckPayment($q2->id(), 'admin:7');
+        $this->assertTrue($outcome->ok, $outcome->message);
+        $this->assertSame(Status::PAID, $allowed->repo->find($q2->id())?->status());
+        $this->assertSame('not_found', $allowed->admin()->recheckPayment(9999, 'a')->code);
+        $fresh = $g->newQuote(['email' => 'new@example.com']);
+        $this->assertSame('no_order', $g->admin()->recheckPayment($fresh->id(), 'a')->code);
+    }
+
+    public function testRecheckingAnUnpaidOrderChangesNothing(): void
+    {
+        [$f, $quote] = $this->approved();
+        $outcome = $f->admin()->recheckPayment($quote->id(), 'admin:7');
+        $this->assertFalse($outcome->ok);
+        $this->assertSame(Status::APPROVED, $f->repo->find($quote->id())?->status());
     }
 }

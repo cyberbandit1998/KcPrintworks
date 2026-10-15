@@ -93,7 +93,14 @@ final class OfferInput
     /** "1,250.5" and "$45" and "45.00" -> cents. Null when it is not a plain amount. */
     public static function price(string $text): ?int
     {
-        $text = preg_replace('/^\$|[\s,]/', '', $text) ?? '';
+        $text = preg_replace('/^\$|\s/', '', $text) ?? '';
+        // A comma is only ever a thousands separator ("1,250.50"); "45,50" is a typo, not $4,550.00.
+        if (str_contains($text, ',')) {
+            if (preg_match('/^\d{1,3}(?:,\d{3})+(?:\.\d{1,2})?$/D', $text) !== 1) {
+                return null;
+            }
+            $text = str_replace(',', '', $text);
+        }
         if (preg_match('/^\d{1,7}(?:\.\d{1,2})?$/D', $text) !== 1) {
             return null;
         }

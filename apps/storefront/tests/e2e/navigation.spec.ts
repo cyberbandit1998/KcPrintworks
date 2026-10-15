@@ -54,9 +54,12 @@ test.describe('header: wide screens', () => {
       const cart = (await page.locator('.cart-link').boundingBox())!;
       expect(boxes[0]!.x).toBeGreaterThan(brand.x + brand.width);
       expect(boxes.at(-1)!.right).toBeLessThan(cart.x);
-      // The links sit against the Cart button: 32px from Blog to Cart. The logo and the cart stay at the container's edges.
-      expect(cart.x - boxes.at(-1)!.right).toBeGreaterThan(31.5);
-      expect(cart.x - boxes.at(-1)!.right).toBeLessThan(32.5);
+      // The links sit against the header's right-hand group (the search icon, then Cart): 32px from Blog to the search icon, and the icon
+      // sits right beside Cart. The logo and the cart stay at the container's edges.
+      const search = (await page.locator('.site-search__button').boundingBox())!;
+      expect(search.x - boxes.at(-1)!.right).toBeGreaterThan(31.5);
+      expect(search.x - boxes.at(-1)!.right).toBeLessThan(32.5);
+      expect(search.x + search.width).toBeLessThanOrEqual(cart.x);
       const inner = await page.locator('.site-header__inner').evaluate((el) => {
         const box = el.getBoundingClientRect();
         const style = getComputedStyle(el);

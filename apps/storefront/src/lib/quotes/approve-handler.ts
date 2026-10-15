@@ -50,6 +50,7 @@ const MESSAGES: Record<FailCode, string> = {
   expired: 'This quote has expired. Please contact us and we will send a new one.',
   not_open: 'This quote can no longer be approved. Please check your email or contact us.',
   busy: 'Your order is being prepared. Please wait a few seconds and press the button again.',
+  already_paid: 'This quote has already been paid, thank you! Reload the page to see it.',
   unavailable:
     'We could not set up your payment right now. Nothing was charged. Please try again in a little while.',
 };
@@ -141,6 +142,9 @@ export async function handleQuoteApproval(
     return fail(503, 'unavailable');
   }
   const json = (answer.json ?? {}) as { ok?: unknown; status?: unknown; payUrl?: unknown };
+  if (answer.status === 200 && json.ok === true && json.status === 'already_paid') {
+    return fail(409, 'already_paid');
+  }
   if (answer.status === 200 && json.ok === true) {
     const payUrl = safePayUrl(json.payUrl, config.apiUrl);
     if (!payUrl) {

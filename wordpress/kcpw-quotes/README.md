@@ -41,6 +41,7 @@ Optional settings in `wp-config.php` (all have safe defaults):
 | `KCPW_QUOTES_VALID_DAYS` | `14` | default length of an offer (1-90) |
 | `KCPW_QUOTES_PAY_HOURS` | `72` | how long after approving the customer has to pay (1-720) |
 | `KCPW_QUOTES_MAX_PER_HOUR` / `_MAX_ALL_PER_HOUR` | `6` / `100` | request limits per visitor and for the whole shop |
+| `KCPW_QUOTES_PAYMENT_METHODS` | `stripe,ppcp,paypal,woocommerce_payments` | payment method ids (or their starts) that count as real money; offline methods (cash on delivery, bank transfer, cheque) never do |
 | `KCPW_QUOTES_DELETE_DATA_ON_UNINSTALL` | not set | `true` makes **deleting** the plugin also drop its tables |
 
 ## Safety, in one list
@@ -50,7 +51,7 @@ Optional settings in `wp-config.php` (all have safe defaults):
 - The customer's link holds a 256-bit random token; only its hash is stored. A wrong token and a wrong reference give the same answer. Sending a
   revised quote makes a new link and the old one stops working. The link can approve **once**.
 - The amounts on the order come from the stored quote, never from the browser. A fingerprint written on the order is checked again when payment arrives; an
-  order that was edited (different total, extra items, another currency) is **not** marked paid: it is flagged for you.
+  order that was edited (different total, extra items, another currency), or one that finished without a real payment (an offline method, no transaction id), is **not** marked paid: it is flagged for you, and **Re-check payment** moves it on once fixed.
 - One quote makes one order: the order is created under a lease, after looking for an existing order for the quote, and a double click or retry returns the
   same payment address.
 - Pictures: only real JPEG, PNG, WebP or GIF (checked by their bytes), re-drawn with GD so hidden content is dropped, stored under random names with no

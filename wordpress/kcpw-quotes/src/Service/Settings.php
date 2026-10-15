@@ -21,6 +21,14 @@ final class Settings
         public readonly int $payWindowSeconds = 72 * 3600,
         public readonly int $maxPerClientPerHour = 6,
         public readonly int $maxAllPerHour = 100,
+        /**
+         * Payment method ids (or their starts) that count as real money for a quote: the order's payment method must be one of these AND carry
+         * the gateway's transaction id. Cash on delivery, bank transfer and cheque finish an order as "Processing" without taking any money, so
+         * they are deliberately not here. Change with KCPW_QUOTES_PAYMENT_METHODS.
+         *
+         * @var list<string>
+         */
+        public readonly array $paymentMethods = ['stripe', 'ppcp', 'paypal', 'woocommerce_payments'],
     ) {
     }
 

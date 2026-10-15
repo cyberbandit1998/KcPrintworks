@@ -17,8 +17,53 @@ use KcPrintworks\Quotes\Support\Money;
  */
 final class Admin
 {
+    private readonly Payments $payments;
+
     public function __construct(private readonly Context $c)
     {
+        $this->payments = new Payments($c);
+    }
+
+    /** Looks at the quote's order again (after a setting was fixed, or a person confirmed the money arrived) and moves the quote on if it now qualifies. */
+    public function recheckPayment(int $id, string $actor): Outcome
+    {
+        $quote = $this->c->repo->find($id);
+        if ($quote === null) {
+            return Outcome::fail('not_found', 'That quote no longer exists.');
+        }
+        if ($quote->orderId() < 1) {
+            return Outcome::fail('no_order', 'This quote has no order yet.');
+        }
+        $this->c->event($id, $actor, 'recheck', 'Payment re-checked.');
+        $result = $this->payments->onOrderPaid($quote->orderId());
+        return $result->ok
+            ? Outcome::ok('rechecked', $result->code === 'paid' ? 'The order is paid: the quote is now Paid.' : 'Checked: nothing needed changing.')
+            : Outcome::fail('recheck_failed', 'Not marked paid: ' . $result->message . '.');
+    }
+
+    /**
+     * An order may exist for this quote that the quote does not know about (a request died between making it and saving it), or one is
+     * being made right now. Returns a sentence when the caller must wait, null when it is safe to go on (any such stray unpaid order is cancelled).
+     */
+    private function settleOrderFor(Quote $quote, string $reason): ?Outcome
+    {
+        $now = $this->c->now();
+        if ($quote->orderId() === 0 && $quote->orderLease() !== '' && $quote->orderLeaseAt() > $now - Customer::LEASE_SECONDS) {
+            return Outcome::fail('busy', 'The customer approved this quote a moment ago and the order is being made. Wait a minute and reload.');
+        }
+        if ($quote->orderId() === 0) {
+            $stray = $this->c->orders->findByQuote($quote->id());
+            if ($stray !== null) {
+                $closed = $this->c->orders->cancelUnpaid($stray->orderId, $reason);
+                if ($closed === 'paid') {
+                    return Outcome::fail('already_paid', 'An order for this quote (#' . $stray->orderId . ') has already been paid. Check it in WooCommerce first.');
+                }
+                if ($closed === 'failed') {
+                    return Outcome::fail('order_cancel_failed', 'An unpaid order (#' . $stray->orderId . ') for this quote could not be cancelled, so the quote was not changed. Cancel it in WooCommerce first.');
+                }
+            }
+        }
+        return null;
     }
 
     /**
@@ -51,8 +96,9 @@ final class Admin
         }
 
         if ($quote->status() === Status::APPROVED) {
-            if ($quote->orderId() === 0 && $quote->orderLeaseAt() > $now - Customer::LEASE_SECONDS && $quote->orderLease() !== '') {
-                return Outcome::fail('busy', 'The customer approved this quote a moment ago and the order is being made. Wait a minute and reload.');
+            $wait = $this->settleOrderFor($quote, 'Cancelled: quote ' . $quote->ref() . ' is being revised.');
+            if ($wait !== null) {
+                return $wait;
             }
             if ($quote->orderId() > 0) {
                 $closed = $this->c->orders->cancelUnpaid($quote->orderId(), 'Cancelled: quote ' . $quote->ref() . ' is being revised.');
@@ -87,7 +133,7 @@ final class Admin
             'order_lease_at' => 0,
             'address' => '',
             'phone' => '',
-        ], ['revision' => $quote->revision()], $now);
+        ], ['revision' => $quote->revision(), 'order_id' => $quote->orderId(), 'order_lease' => $quote->orderLease()], $now);
         if (!$swapped) {
             return Outcome::fail('conflict', 'This quote was changed by someone else (or the customer) at the same moment. Reload it and check before sending.');
         }
@@ -112,13 +158,19 @@ final class Admin
         if (!Status::isKnown($to) || !Status::canChangeByHand($from, $to)) {
             return Outcome::fail('not_allowed', 'A quote that is ' . Status::label($from) . ' cannot be changed to ' . Status::label($to) . ' by hand.');
         }
-        if ($from === Status::APPROVED && $quote->orderId() > 0) {
-            $closed = $this->c->orders->cancelUnpaid($quote->orderId(), 'Cancelled: quote ' . $quote->ref() . ' was cancelled.');
-            if ($closed === 'paid') {
-                return Outcome::fail('already_paid', 'The customer has already paid. Refund or cancel the order in WooCommerce first.');
+        if ($from === Status::APPROVED) {
+            $wait = $this->settleOrderFor($quote, 'Cancelled: quote ' . $quote->ref() . ' was cancelled.');
+            if ($wait !== null) {
+                return $wait;
             }
-            if ($closed === 'failed') {
-                return Outcome::fail('order_cancel_failed', 'The unpaid order #' . $quote->orderId() . ' could not be cancelled, so the quote was not changed.');
+            if ($quote->orderId() > 0) {
+                $closed = $this->c->orders->cancelUnpaid($quote->orderId(), 'Cancelled: quote ' . $quote->ref() . ' was cancelled.');
+                if ($closed === 'paid') {
+                    return Outcome::fail('already_paid', 'The customer has already paid. Refund or cancel the order in WooCommerce first.');
+                }
+                if ($closed === 'failed') {
+                    return Outcome::fail('order_cancel_failed', 'The unpaid order #' . $quote->orderId() . ' could not be cancelled, so the quote was not changed.');
+                }
             }
         }
         $changes = ['status' => $to];
@@ -126,7 +178,7 @@ final class Admin
         if (in_array($from, [Status::QUOTED, Status::APPROVED, Status::EXPIRED], true) || in_array($to, [Status::DECLINED, Status::CANCELLED], true)) {
             $changes['token_hash'] = '';
         }
-        if (!$this->c->repo->swap($id, [$from], $changes, [], $this->c->now())) {
+        if (!$this->c->repo->swap($id, [$from], $changes, ['order_id' => $quote->orderId(), 'order_lease' => $quote->orderLease()], $this->c->now())) {
             return Outcome::fail('conflict', 'This quote just changed (the customer may have acted). Reload it.');
         }
         $this->c->event($id, $actor, 'status', Status::label($from) . ' to ' . Status::label($to) . '.');

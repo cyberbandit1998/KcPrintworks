@@ -48,6 +48,14 @@ final class Payments
             return Outcome::fail('mismatch', $problem);
         }
 
+        $unpaid = $this->notRealPayment($facts);
+        if ($unpaid !== null) {
+            $this->c->orders->note($orderId, 'Quote ' . $quote->ref() . ': this order is in a paid status but ' . $unpaid . '. It was NOT marked paid on the quote.');
+            $this->c->event($quote->id(), 'system', 'payment_unconfirmed', 'Order #' . $orderId . ' is in a paid status but ' . $unpaid . '.');
+            $this->c->flag($quote->id(), 'Order #' . $orderId . ' is in a paid status but ' . $unpaid . '. If you have checked that the money really arrived, use "Re-check payment" after fixing that (or add the method to KCPW_QUOTES_PAYMENT_METHODS).', true);
+            return Outcome::fail('unconfirmed', $unpaid);
+        }
+
         $now = $this->c->now();
         // A payment that arrives just after the payment window ended still counts: money received beats a timer.
         if ($this->c->repo->swap($quote->id(), [Status::APPROVED, Status::EXPIRED], ['status' => Status::PAID, 'paid_at' => $now], ['order_id' => $orderId, 'order_fp' => $quote->orderFingerprint()], $now)) {
@@ -151,6 +159,28 @@ final class Payments
             }
         }
         return $ended;
+    }
+
+    /**
+     * Whether a paid-looking order really took money: its payment method is one that does (not cash on delivery, bank transfer or cheque,
+     * which leave an order Processing without any payment) and the gateway gave a transaction id. Null when it did.
+     */
+    private function notRealPayment(OrderFacts $facts): ?string
+    {
+        $method = strtolower($facts->paymentMethod);
+        $known = false;
+        foreach ($this->c->settings->paymentMethods as $allowed) {
+            if ($method !== '' && str_starts_with($method, $allowed)) {
+                $known = true;
+            }
+        }
+        if (!$known) {
+            return 'its payment method (' . ($facts->paymentMethod !== '' ? $facts->paymentMethod : 'none') . ') is not one that is known to take payment';
+        }
+        if (trim($facts->transactionId) === '') {
+            return 'the payment gateway gave no transaction id';
+        }
+        return null;
     }
 
     /** Why this order is not what the customer approved, or null when it is exactly that. Used before payment is accepted and again when it arrives. */

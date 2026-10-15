@@ -38,6 +38,8 @@ final class OrderHooksTest extends TestCase
         $order = \WpStub::$orders[$quote->orderId()];
         $this->assertSame('pending', $order->status);
         $this->assertTrue($order->needs_payment());
+        $order->paymentMethod = 'stripe';
+        $order->transactionId = 'ch_3Test';
         $order->update_status('processing');
         $after = $g->repo->find($quote->id());
         $this->assertSame(Status::PAID, $after?->status());
@@ -159,6 +161,20 @@ final class OrderHooksTest extends TestCase
         $order->update_status('processing'); // must not throw
         ini_set('error_log', (string) $log);
         $this->assertSame('processing', $order->status, 'WooCommerce carried on');
+        $g->cleanup();
+    }
+
+    public function testARetryAfterARequestDiedBetweenMakingTheOrderAndSavingItWorksTheFirstTime(): void
+    {
+        [$g, $quote, $token] = $this->approvedQuote();
+        $orderId = $quote->orderId();
+        // The request died after WooCommerce saved the order but before the quote was told.
+        $g->repo->swap($quote->id(), [], ['order_id' => 0, 'order_fp' => '', 'order_lease' => '', 'order_lease_at' => 0], [], time());
+        $answer = $g->call('POST', '/kcpw-quotes/v1/quote/approve', json_encode(['ref' => $quote->ref(), 'token' => $token, 'approval' => Fixtures::approval(1)]));
+        $this->assertSame(200, $answer->status, json_encode($answer->data) ?: '');
+        $this->assertStringContains('/order-pay/' . $orderId . '/', $answer->data['payUrl']);
+        $this->assertSame($orderId, $g->repo->find($quote->id())?->orderId(), 'the same order, not a second one');
+        $this->assertCount(1, \WpStub::$orders);
         $g->cleanup();
     }
 }

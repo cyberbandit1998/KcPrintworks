@@ -43,7 +43,7 @@ final class AdminScreens
     public function register(): void
     {
         add_action('admin_menu', [$this, 'menu']);
-        foreach (['send', 'status', 'note', 'email', 'attention', 'file', 'testmail'] as $verb) {
+        foreach (['send', 'status', 'note', 'email', 'attention', 'recheck', 'file', 'testmail'] as $verb) {
             add_action('admin_post_kcpw_quote_' . $verb, [$this, 'handle' . ucfirst($verb)]);
         }
     }
@@ -185,6 +185,13 @@ final class AdminScreens
     {
         $quote = $this->guard('kcpw_quote_attention');
         $outcome = $this->admin->clearAttention($quote->id(), $this->actor());
+        $this->done($quote, $outcome->ok ? 'success' : 'error', [$outcome->message]);
+    }
+
+    public function handleRecheck(): void
+    {
+        $quote = $this->guard('kcpw_quote_recheck');
+        $outcome = $this->admin->recheckPayment($quote->id(), $this->actor());
         $this->done($quote, $outcome->ok ? 'success' : 'error', [$outcome->message]);
     }
 

@@ -433,6 +433,17 @@ describe('approving a quote', () => {
     }
   });
 
+  it('tells a customer whose quote is already paid so, instead of saying the payment could not be set up', async () => {
+    const { deps: d } = deps({
+      fetchImpl: answerWith(200, { ok: true, status: 'already_paid', state: 'paid', ref: REF }),
+    });
+    const reply = await handleQuoteApproval(post(body()), d);
+    expect(reply.status).toBe(409);
+    expect(reply.body).toMatchObject({ ok: false, code: 'already_paid' });
+    expect(JSON.stringify(reply.body)).toContain('already been paid');
+    expect(JSON.stringify(reply.body)).not.toContain('Nothing was charged');
+  });
+
   it('never sends the shopper to a payment address it has not checked', async () => {
     const logged: string[] = [];
     for (const payUrl of [

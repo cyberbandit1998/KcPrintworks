@@ -172,6 +172,10 @@ namespace {
             throw new \BadMethodCallException($name);
         }
 
+        public string $paymentMethod = '';
+        public string $transactionId = '';
+        public function get_payment_method(): string { return $this->paymentMethod; }
+        public function get_transaction_id(): string { return $this->transactionId; }
         public function get_id(): int { return $this->id; }
         public function get_status(): string { return $this->status; }
         public function get_currency(): string { return $this->currency; }

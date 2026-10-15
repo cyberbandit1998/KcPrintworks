@@ -299,8 +299,12 @@ final class AdminViews
     {
         $q = $d->quote;
         $link = $d->orderLink !== '' ? '<a href="' . esc_url($d->orderLink) . '">Order #' . (int) $q->orderId() . '</a>' : 'Order #' . (int) $q->orderId();
+        $recheck = in_array($q->status(), [Status::APPROVED, Status::EXPIRED], true)
+            ? '<form method="post" action="' . esc_url(admin_url('admin-post.php')) . '">' . $this->hidden('kcpw_quote_recheck', $q->id())
+                . '<p><button class="button">Re-check payment</button></p><p class="kcpw-help">If the order shows as paid in WooCommerce but this quote is not Paid, fix what its note says and press this.</p></form>'
+            : '';
         return '<p>' . $link . ($d->orderStatus !== '' ? ' &mdash; ' . self::h($d->orderStatus) : '') . '</p>'
-            . '<p class="kcpw-help">Please do not change the amounts or add items to this order: the quote checks them when the payment arrives.</p>';
+            . '<p class="kcpw-help">Please do not change the amounts or add items to this order: the quote checks them when the payment arrives.</p>' . $recheck;
     }
 
     private function emailForm(Quote $q): string

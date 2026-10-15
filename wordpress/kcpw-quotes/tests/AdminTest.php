@@ -296,4 +296,51 @@ final class AdminTest extends TestCase
         $this->assertTrue($endToday->ok, 'an offer may stand until the end of today');
         $this->assertSame('23:59:59', (new \DateTimeImmutable('@' . $endToday->value['expiresAt']))->setTimezone($zone)->format('H:i:s'));
     }
+
+    public function testNeitherCancellingNorRevisingWhileTheCustomersOrderIsBeingMadeIsPossible(): void
+    {
+        $f = new Fixtures();
+        [$quote, $token] = $f->sentQuote();
+        $f->repo->swap($quote->id(), [Status::QUOTED], ['status' => Status::APPROVED, 'approved_at' => $f->time, 'pay_by' => $f->time + 1000, 'order_lease' => 'request-a', 'order_lease_at' => $f->time], [], $f->time);
+        $this->assertSame('busy', $f->admin()->changeStatus($quote->id(), Status::CANCELLED, 'admin:7')->code);
+        $this->assertSame('busy', $f->admin()->sendQuote($quote->id(), $f->offer(6000, 0), 'admin:7')->code);
+        $this->assertSame(Status::APPROVED, $f->repo->find($quote->id())?->status());
+        // Once that request is gone (the lease ran out) the owner can act.
+        $f->time += \KcPrintworks\Quotes\Service\Customer::LEASE_SECONDS + 1;
+        $this->assertTrue($f->admin()->changeStatus($quote->id(), Status::CANCELLED, 'admin:7')->ok);
+    }
+
+    public function testAnOrderTheQuoteDoesNotKnowAboutIsCancelledWhenTheQuoteIsCancelledOrRevised(): void
+    {
+        foreach (['cancel', 'revise'] as $action) {
+            $f = new Fixtures();
+            [$quote, $token] = $f->sentQuote();
+            $f->customer()->approve($quote->ref(), $token, Fixtures::json(Fixtures::approval(1)));
+            $orderId = (int) $f->repo->find($quote->id())?->orderId();
+            $f->repo->swap($quote->id(), [], ['order_id' => 0, 'order_fp' => '', 'order_lease' => '', 'order_lease_at' => 0], [], $f->time); // saved on the order, not on the quote
+            $outcome = $action === 'cancel' ? $f->admin()->changeStatus($quote->id(), Status::CANCELLED, 'admin:7') : $f->admin()->sendQuote($quote->id(), $f->offer(6000, 0), 'admin:7');
+            $this->assertTrue($outcome->ok, $action . ': ' . $outcome->message);
+            $this->assertSame('cancelled', $f->orders->orders[$orderId]['status'], "$action: the stray order is cancelled");
+        }
+        // ...and a paid stray order stops it.
+        $g = new Fixtures();
+        [$q2, $t2] = $g->sentQuote();
+        $g->customer()->approve($q2->ref(), $t2, Fixtures::json(Fixtures::approval(1)));
+        $o2 = (int) $g->repo->find($q2->id())?->orderId();
+        $g->repo->swap($q2->id(), [], ['order_id' => 0, 'order_fp' => ''], [], $g->time);
+        $g->orders->pay($o2);
+        $this->assertSame('already_paid', $g->admin()->changeStatus($q2->id(), Status::CANCELLED, 'admin:7')->code);
+        $this->assertSame(Status::APPROVED, $g->repo->find($q2->id())?->status());
+    }
+
+    public function testPricesTypedWithCommasMustBeProperThousandsGroups(): void
+    {
+        $this->assertSame(125050, OfferInput::price('1,250.50'));
+        $this->assertSame(100000000, OfferInput::price('1,000,000'));
+        foreach (['45,50', '1,5', '1,25', '12,34.50', ',500', '1,,000', '1,000,', '12345,678'] as $bad) {
+            $this->assertNull(OfferInput::price($bad), $bad);
+        }
+        $this->assertSame(4550, OfferInput::price('$45.50'));
+        $this->assertSame(4500, OfferInput::price(' 45 '));
+    }
 }

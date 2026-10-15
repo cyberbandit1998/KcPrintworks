@@ -92,6 +92,7 @@ define('KCPW_QUOTES_TAXABLE', false);        // true = WooCommerce adds sales ta
 define('KCPW_QUOTES_VALID_DAYS', 14);        // default length of an offer (1 to 90)
 define('KCPW_QUOTES_PAY_HOURS', 72);         // how long after approving the customer has to pay (1 to 720)
 define('KCPW_QUOTES_MAX_PER_HOUR', 6);       // requests per visitor per hour; KCPW_QUOTES_MAX_ALL_PER_HOUR (100) for everyone
+define('KCPW_QUOTES_PAYMENT_METHODS', 'stripe,ppcp,paypal,woocommerce_payments'); // default; ids (or their starts) that count as real payment
 ```
 
 **One shop, two storefronts.** A shop has one `KCPW_STOREFRONT_URL`, and a quote's emailed link starts with it. While you test on staging, set it to the staging address
@@ -112,6 +113,7 @@ the tax WooCommerce added and nothing else. **How WooCommerce calculates tax for
 | A link is reused or guessed | 256-bit random token, only its SHA-256 stored, compared in constant time; wrong reference and wrong token give the same answer; revising/withdrawing/cancelling makes the link dead; approving works once (compare-and-swap on the revision); expiry is checked on every use. | `CustomerTest`, `AdminTest` |
 | A double click, a second tab, a retry or a crash makes two orders | The quote moves Quoted → Approved in one atomic update; the order is made under a short lease after looking for an existing order carrying the quote id; a second request gets the same payment address. | `CustomerTest` (`double click`, `lease`, `crash recovery`) |
 | Someone pays an old, cancelled or expired quote's order | While the quote is not Approved, in time, unchanged and pointing at that order, the order **does not need payment** (WooCommerce refuses to show a pay form), and WooCommerce's own "cancel unpaid orders" job leaves quote orders to the quote's payment window. | `OrderHooksTest` |
+| An order finishes as "Processing" without any money (cash on delivery, bank transfer, cheque if enabled) | A quote becomes Paid only if the order's **payment method is on an allow-list** (default: Stripe, PayPal Payments, WooPayments: ids starting `stripe`, `ppcp`, `paypal`, `woocommerce_payments`; change with `KCPW_QUOTES_PAYMENT_METHODS`) **and** the gateway gave a transaction id. Otherwise it is flagged and you are emailed; fix the cause and press **Re-check payment** on the quote. | `PaymentsTest` |
 | Money arrives for a quote that was cancelled meanwhile | Never hidden: the quote keeps its status, is flagged, you are emailed, and the history says what happened. | `PaymentsTest` |
 | Strangers use the plugin's endpoints | HMAC-signed requests (timestamp window of 5 minutes, one-time nonce, signature bound to method, route and body); unsigned or replayed requests get 401. Same scheme and secret as checkout. | `SigningTest`-style cases in `RestApiTest` |
 | Spam and floods | Hidden field, signed form token (at least 5 seconds old, at most 4 hours), per-visitor and overall limits on the storefront **and** again in the plugin, repeat-request detection (same words in ten minutes = same request), body-size limit. The visitor's address never leaves the storefront (a keyed hash does). | `quote-submit.test.ts`, `IntakeTest` |
@@ -138,8 +140,9 @@ email to you when a quote is paid and one when it is approved.
 3. The customer approves and pays. You are emailed twice (approved, then paid). Open the quote: the history shows each step and the order number.
 4. Make it, then set **In Production** and **Completed**.
 5. To change a sent quote, press **Send revised quote** (a new link is emailed, the old one stops). If the customer had already approved but not paid, the unpaid order is cancelled for you. If they have paid, it cannot be revised (refund or cancel in WooCommerce first).
-6. To walk away: **Declined** or **Cancelled** (an unpaid order is cancelled too; a paid order is never touched: refund it in WooCommerce first).
-7. **Needs attention** (red text, a filter tab, an email) means something wants a person: a payment that did not match, an email that failed, a picture that could not be saved, a refund. Look, act, press "Mark as looked at".
+6. If an order is paid in WooCommerce but its quote is not Paid, the quote says why (**Needs attention**); fix that (for example add the payment method id to `KCPW_QUOTES_PAYMENT_METHODS`) and press **Re-check payment** in the quote's Order box.
+7. To walk away: **Declined** or **Cancelled** (an unpaid order is cancelled too; a paid order is never touched: refund it in WooCommerce first).
+8. **Needs attention** (red text, a filter tab, an email) means something wants a person: a payment that did not match, an email that failed, a picture that could not be saved, a refund. Look, act, press "Mark as looked at".
 
 Refunds are done in WooCommerce/Stripe as for any order. The quote keeps its status and is flagged so you remember to update it.
 
@@ -170,7 +173,7 @@ I have not done any of this. Staging uses the same WooCommerce site as productio
 | 9 | Press **Send revised quote** with a different price; open the OLD link | "This quote link is not valid"; the new link shows the new price |
 | 10 | On the new link: fill the address, tick, press **Approve** | you land on `shop.kcprintworks.com/checkout/order-pay/…` showing exactly the quoted total and your address; the quote is **Approved**, with a pending order #N |
 | 11 | Press the browser Back, then approve again | the same payment page; **no second order** in WooCommerce ▸ Orders |
-| 12 | Pay with a Stripe **test** card (4242 4242 4242 4242) | WooCommerce's order-received page; the order is Processing; the quote is **Paid** within a minute; you got an email |
+| 12 | Pay with a Stripe **test** card (4242 4242 4242 4242) | WooCommerce's order-received page; the order is Processing; the quote is **Paid** within a minute; you got an email. If it says "Needs attention: its payment method (…) is not one that is known to take payment", note the method id and add it to `KCPW_QUOTES_PAYMENT_METHODS`, then press **Re-check payment** |
 | 13 | Open the quote link again | "Paid. Thank you!"; no approve or pay buttons |
 | 14 | Set the quote to In Production, then Completed | both accepted |
 | 15 | Make a second quote; approve it; **do not pay**; in WooCommerce edit the pending order (change the fee amount), then open its payment address | WooCommerce will not take payment (nothing to pay); the quote link says payment is not available; **Send revised quote** makes a fresh order and link |
@@ -260,6 +263,7 @@ old quotes by itself; tell me if you want a retention rule (for example, erase f
 
 - Real WordPress/WooCommerce/Stripe/mail: not run by me. Section 7 is the proof. The PHP behind `WcOrderGateway` and the hooks is tested against stand-ins that follow WooCommerce's documented behavior, not the real thing.
 - Currencies with other than two decimals are refused (a clear message in the dashboard). Shipping is the amount you quote, not WooCommerce's shipping zones.
+- Which payment method ids your Stripe and PayPal plugins really use on the order-pay page (and whether each sets a transaction id) is **unverified**: the default list is a cautious guess, and step 12 of the checklist shows whether it fits.
 - Unpaid orders for quotes are cancelled by the plugin when a quote is revised, cancelled or runs out; if the customer is in the middle of paying at that moment and Stripe still completes the payment, the payment notice reaches a cancelled order: the quote is flagged for you and you refund in Stripe. This race is rare and was reasoned about, not reproduced.
 - The hourly expiry job uses WordPress's scheduler (WP-Cron), which runs when the site gets visits. A customer opening an expired link also expires it on the spot.
 - There is no customer account area, no reminder emails before a quote expires, and no automatic follow-up. Those are easy additions if you want them.

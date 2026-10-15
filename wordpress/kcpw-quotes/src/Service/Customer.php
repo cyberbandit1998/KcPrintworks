@@ -175,9 +175,22 @@ final class Customer
 
         $fingerprint = Fingerprint::ofQuote($this->c->settings->secret, $quote);
         try {
-            $order = $this->c->orders->findByQuote($id) ?? $this->c->orders->createPendingOrder($quote, $this->addressOf($quote), $fingerprint);
+            $order = $this->c->orders->findByQuote($id);
+            if ($order !== null) {
+                // An order for this quote already exists (a request died after making it). It is reused only if it is exactly what this
+                // approval needs; one left over from an earlier revision is cancelled and replaced.
+                $facts = $this->c->orders->inspect($order->orderId);
+                if ($facts === null || !hash_equals($fingerprint, $facts->fingerprint)) {
+                    $closed = $this->c->orders->cancelUnpaid($order->orderId, 'Cancelled: it was left over from an earlier version of quote ' . $quote->ref() . '.');
+                    if ($closed === 'paid' || $closed === 'failed') {
+                        throw new OrderFailed('An older order (#' . $order->orderId . ') for this quote could not be cancelled (' . $closed . ').');
+                    }
+                    $order = null;
+                }
+            }
+            $order ??= $this->c->orders->createPendingOrder($quote, $this->addressOf($quote), $fingerprint);
         } catch (\Throwable $e) {
-            // Nothing was charged and no order exists: put the quote back to "Quoted" so the same link can try again.
+            // Nothing was charged and no usable order exists: put the quote back to "Quoted" so the same link can try again.
             $this->c->repo->swap($id, [Status::APPROVED], [
                 'status' => Status::QUOTED, 'approved_at' => 0, 'pay_by' => 0, 'address' => '', 'phone' => '', 'order_lease' => '', 'order_lease_at' => 0,
             ], ['order_lease' => $lease, 'order_id' => 0], $this->c->now());
@@ -187,15 +200,24 @@ final class Customer
         }
         $saved = $this->c->repo->swap($id, [Status::APPROVED], ['order_id' => $order->orderId, 'order_fp' => $fingerprint, 'order_lease' => '', 'order_lease_at' => 0], ['order_lease' => $lease, 'order_id' => 0], $this->c->now());
         if (!$saved) {
-            $this->c->flag($id, 'Order #' . $order->orderId . ' was made for this quote but could not be saved on it. Check the quote and the order.', true);
-        } else {
-            $this->c->event($id, 'system', 'order_created', 'WooCommerce order #' . $order->orderId . ' was made and is waiting for payment.');
+            // The quote was changed while the order was being made (cancelled or revised by the owner). The order belongs to nothing now.
+            $this->c->orders->cancelUnpaid($order->orderId, 'Cancelled: quote ' . $quote->ref() . ' changed while this order was being made.');
+            $this->c->event($id, 'system', 'order_discarded', 'Order #' . $order->orderId . ' was made but the quote changed at the same moment, so it was cancelled.');
+            return ['ok' => false, 'status' => 'not_open'];
         }
-        if ($order->payUrl === '') {
+        $this->c->event($id, 'system', 'order_created', 'WooCommerce order #' . $order->orderId . ' was made and is waiting for payment.');
+        $latest = $this->c->repo->find($id) ?? $quote;
+        // Worked out only now: until the quote knew this order, WooCommerce rightly refused to offer it for payment.
+        $facts = $this->c->orders->inspect($order->orderId);
+        if ($facts !== null && in_array($facts->status, ['processing', 'completed'], true)) {
+            $this->payments->onOrderPaid($order->orderId);
+            return ['ok' => true, 'status' => 'already_paid'] + $this->summary($this->c->repo->find($id) ?? $latest, 'paid');
+        }
+        $payUrl = $this->c->orders->payUrl($order->orderId);
+        if ($payUrl === null || $payUrl === '') {
             return ['ok' => false, 'status' => 'not_payable'];
         }
-        $latest = $this->c->repo->find($id) ?? $quote;
-        return ['ok' => true, 'status' => 'approved', 'payUrl' => $order->payUrl] + $this->summary($latest, 'approved');
+        return ['ok' => true, 'status' => 'approved', 'payUrl' => $payUrl] + $this->summary($latest, 'approved');
     }
 
     /** The quote for this reference and token, or null for either being wrong. */

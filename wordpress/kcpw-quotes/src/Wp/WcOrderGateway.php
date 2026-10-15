@@ -190,6 +190,8 @@ final class WcOrderGateway implements OrderGateway
             $quoteId,
             (string) $order->get_meta(self::META_FINGERPRINT),
             (string) $order->get_meta(self::META_CLOSED) === 'plugin',
+            (string) $order->get_payment_method(),
+            (string) $order->get_transaction_id(),
         );
     }
 

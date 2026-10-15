@@ -18,6 +18,7 @@ use KcPrintworks\Quotes\Service\Settings;
  *   KCPW_QUOTES_VALID_DAYS     how long a new offer stands by default (1-90, default 14)
  *   KCPW_QUOTES_PAY_HOURS      how long after approving the customer has to pay (1-720, default 72)
  *   KCPW_QUOTES_MAX_PER_HOUR   requests per visitor per hour (default 6); KCPW_QUOTES_MAX_ALL_PER_HOUR for the whole shop (default 100)
+ *   KCPW_QUOTES_PAYMENT_METHODS comma-separated payment method ids (or their starts) that count as real payment (default stripe,ppcp,paypal,woocommerce_payments)
  */
 final class Config
 {
@@ -68,6 +69,23 @@ final class Config
         return is_int($value) && $value >= $min && $value <= $max ? $value : $default;
     }
 
+    /** @return list<string> */
+    public static function paymentMethods(): array
+    {
+        $default = ['stripe', 'ppcp', 'paypal', 'woocommerce_payments'];
+        if (!defined('KCPW_QUOTES_PAYMENT_METHODS') || !is_string(KCPW_QUOTES_PAYMENT_METHODS)) {
+            return $default;
+        }
+        $methods = [];
+        foreach (explode(',', KCPW_QUOTES_PAYMENT_METHODS) as $id) {
+            $id = strtolower(trim($id));
+            if (preg_match('/^[a-z0-9_-]{2,60}$/D', $id) === 1) {
+                $methods[] = $id;
+            }
+        }
+        return $methods !== [] ? array_values(array_unique($methods)) : $default;
+    }
+
     public static function settings(): Settings
     {
         $zone = function_exists('wp_timezone_string') ? (string) wp_timezone_string() : 'UTC';
@@ -82,6 +100,7 @@ final class Config
             self::intConstant('KCPW_QUOTES_PAY_HOURS', 72, 1, 720) * 3600,
             self::intConstant('KCPW_QUOTES_MAX_PER_HOUR', 6, 1, 1000),
             self::intConstant('KCPW_QUOTES_MAX_ALL_PER_HOUR', 100, 1, 100000),
+            self::paymentMethods(),
         );
     }
 }

@@ -16,6 +16,8 @@ final class FakeOrderGateway implements OrderGateway
     public int $decimals = 2;
     public bool $failCreate = false;
     public bool $failCancel = false;
+    /** @var (callable(): void)|null runs inside createPendingOrder, to let a test change things at the worst moment */
+    public $beforeCreate = null;
     public int $created = 0;
     private int $nextId = 1000;
     /** @var array<int,array<string,mixed>> */
@@ -35,6 +37,9 @@ final class FakeOrderGateway implements OrderGateway
     {
         if ($this->failCreate) {
             throw new OrderFailed('WooCommerce said no');
+        }
+        if ($this->beforeCreate !== null) {
+            ($this->beforeCreate)();
         }
         $id = $this->nextId++;
         $this->created++;
@@ -95,7 +100,7 @@ final class FakeOrderGateway implements OrderGateway
         if ($o === null) {
             return null;
         }
-        return new OrderFacts($orderId, $o['status'], $o['currency'], $o['fee'], $o['shipping'], $o['tax'], $o['fee'] + $o['shipping'] + $o['tax'], $o['other'], $o['quoteId'], $o['fp'], $o['closedByPlugin']);
+        return new OrderFacts($orderId, $o['status'], $o['currency'], $o['fee'], $o['shipping'], $o['tax'], $o['fee'] + $o['shipping'] + $o['tax'], $o['other'], $o['quoteId'], $o['fp'], $o['closedByPlugin'], $o['method'] ?? '', $o['transaction'] ?? '');
     }
 
     public function note(int $orderId, string $text): void
@@ -108,9 +113,11 @@ final class FakeOrderGateway implements OrderGateway
         return 'https://shop.example.com/wp-admin/post.php?post=' . $orderId . '&action=edit';
     }
 
-    /** The customer paid (what the Stripe plugin does). */
-    public function pay(int $orderId): void
+    /** The customer paid (what the Stripe plugin does: a paid status, its method and the charge id). */
+    public function pay(int $orderId, string $method = 'stripe', string $transaction = 'ch_test_123'): void
     {
         $this->orders[$orderId]['status'] = 'processing';
+        $this->orders[$orderId]['method'] = $method;
+        $this->orders[$orderId]['transaction'] = $transaction;
     }
 }

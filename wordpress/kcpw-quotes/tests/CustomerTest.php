@@ -286,4 +286,51 @@ final class CustomerTest extends TestCase
         $this->assertSame(Status::QUOTED, $f->repo->find($quote->id())?->status());
         $this->assertSame(0, $f->orders->created);
     }
+
+    public function testAnOrderFromAnEarlierRevisionIsCancelledAndReplacedNotReused(): void
+    {
+        $f = new Fixtures();
+        [$quote, $token] = $f->sentQuote();
+        $f->customer()->approve($quote->ref(), $token, Fixtures::json(Fixtures::approval(1)));
+        $oldOrder = (int) $f->repo->find($quote->id())?->orderId();
+        // A request died while the owner revised: the old order is still pending and the quote has moved to revision 2 with no order.
+        $f->repo->swap($quote->id(), [], ['status' => Status::QUOTED, 'revision' => 2, 'item_cents' => 9900, 'token_hash' => \KcPrintworks\Quotes\Domain\Token::hash($token), 'order_id' => 0, 'order_fp' => '', 'approved_at' => 0, 'pay_by' => 0, 'address' => ''], [], $f->time);
+        $result = $f->customer()->approve($quote->ref(), $token, Fixtures::json(Fixtures::approval(2)));
+        $this->assertTrue($result['ok'], json_encode($result) ?: '');
+        $newOrder = (int) $f->repo->find($quote->id())?->orderId();
+        $this->assertTrue($newOrder !== $oldOrder);
+        $this->assertSame('cancelled', $f->orders->orders[$oldOrder]['status']);
+        $this->assertSame(9900, $f->orders->orders[$newOrder]['fee']);
+        $this->assertSame(2, $f->orders->created);
+    }
+
+    public function testIfTheOwnerCancelsWhileTheOrderIsBeingMadeTheOrderIsDiscardedAndTheCustomerIsToldTruthfully(): void
+    {
+        $f = new Fixtures();
+        [$quote, $token] = $f->sentQuote();
+        $f->orders->beforeCreate = function () use ($f, $quote): void {
+            // The worst moment: the owner's cancel lands after the lease was taken and before the order is saved on the quote.
+            $f->repo->swap($quote->id(), [], ['status' => Status::CANCELLED, 'token_hash' => ''], [], $f->time);
+        };
+        $result = $f->customer()->approve($quote->ref(), $token, Fixtures::json(Fixtures::approval(1)));
+        $this->assertSame(['ok' => false, 'status' => 'not_open'], $result, 'no payment address for a dead quote');
+        $this->assertCount(1, $f->orders->orders);
+        $this->assertSame('cancelled', array_values($f->orders->orders)[0]['status'], 'the stray order is cancelled, not left pending');
+        $kinds = array_map(static fn ($e): string => $e->kind, $f->repo->events($quote->id()));
+        $this->assertContains('order_discarded', $kinds);
+    }
+
+    public function testAnOrderThatWasPaidBeforeTheQuoteKnewItIsRecognisedNotDuplicated(): void
+    {
+        $f = new Fixtures();
+        [$quote, $token] = $f->sentQuote();
+        $f->customer()->approve($quote->ref(), $token, Fixtures::json(Fixtures::approval(1)));
+        $orderId = (int) $f->repo->find($quote->id())?->orderId();
+        $f->repo->swap($quote->id(), [], ['order_id' => 0, 'order_fp' => ''], [], $f->time);
+        $f->orders->pay($orderId);
+        $result = $f->customer()->approve($quote->ref(), $token, Fixtures::json(Fixtures::approval(1)));
+        $this->assertSame('already_paid', $result['status']);
+        $this->assertSame(1, $f->orders->created, 'no second order');
+        $this->assertSame(Status::PAID, $f->repo->find($quote->id())?->status());
+    }
 }

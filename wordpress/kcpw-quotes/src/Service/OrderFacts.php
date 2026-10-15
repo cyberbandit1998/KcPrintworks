@@ -22,6 +22,9 @@ final class OrderFacts
         public readonly string $fingerprint,
         /** The plugin itself cancelled this order (a revised or expired quote): the cancellation is not news and changes nothing. */
         public readonly bool $closedByPlugin = false,
+        /** The gateway the customer used (WooCommerce's payment method id) and the gateway's own reference for the payment. */
+        public readonly string $paymentMethod = '',
+        public readonly string $transactionId = '',
     ) {
     }
 }
