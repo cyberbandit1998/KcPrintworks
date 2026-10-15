@@ -1,4 +1,4 @@
-import { isLocal, shopAddress } from '../checkout';
+import { currentCheckoutStatus, isLocal, shopAddress, type CheckoutConfig } from '../checkout';
 
 /**
  * Whether custom quotes can be requested on the storefront. OFF unless an operator turns it on, deliberately, with all of:
@@ -71,4 +71,19 @@ export function todayInShop(now: Date = new Date(), zone: string = shopTimeZone(
   } catch {
     return now.toISOString().slice(0, 10);
   }
+}
+
+/**
+ * Approving a quote and paying it IS checkout, so it needs everything checkout needs (CHECKOUT_ENABLED and its stricter production
+ * rules, in checkout.ts) as well as QUOTES_ENABLED. Looking at a quote does not: a customer holding an emailed quote can always read it.
+ * This is deliberate (CLAUDE.md rule 2): turning quotes on never turns payments on by itself.
+ */
+export type QuotePaymentStatus =
+  { enabled: true; config: CheckoutConfig } | { enabled: false; reason: string };
+
+export function currentQuotePaymentStatus(): QuotePaymentStatus {
+  if (!currentQuotesStatus().enabled) return { enabled: false, reason: 'quotes are not turned on' };
+  const checkout = currentCheckoutStatus();
+  if (!checkout.enabled) return { enabled: false, reason: 'checkout is not turned on' };
+  return { enabled: true, config: checkout.config };
 }

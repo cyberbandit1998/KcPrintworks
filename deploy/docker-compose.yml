@@ -69,6 +69,17 @@ services:
       REVIEWS_SUBMIT_ENABLED: ${REVIEWS_SUBMIT_ENABLED:-false}
       REVIEWS_RATE_LIMIT: ${REVIEWS_RATE_LIMIT:-}
       REVIEWS_RATE_LIMIT_ALL: ${REVIEWS_RATE_LIMIT_ALL:-}
+      # Custom quotes (/custom-orders/). Taking REQUESTS is OFF unless QUOTES_ENABLED=true (needs the kcpw-quotes plugin on the shop and the
+      # shop address and KCPW_HANDOFF_SECRET above). Approving and paying a quote IS checkout, so it also needs CHECKOUT_ENABLED=true and
+      # passes the same per-press shop checks. Limits are per hour; the time zone decides "today" for deadlines. docs/CUSTOM-QUOTES.md.
+      QUOTES_ENABLED: ${QUOTES_ENABLED:-false}
+      QUOTES_TIMEZONE: ${QUOTES_TIMEZONE:-}
+      QUOTES_RATE_LIMIT: ${QUOTES_RATE_LIMIT:-}
+      QUOTES_RATE_LIMIT_ALL: ${QUOTES_RATE_LIMIT_ALL:-}
+      QUOTES_APPROVE_RATE_LIMIT: ${QUOTES_APPROVE_RATE_LIMIT:-}
+      QUOTES_APPROVE_RATE_LIMIT_ALL: ${QUOTES_APPROVE_RATE_LIMIT_ALL:-}
+      # Extra search words: groups of words that mean the same thing, e.g. "mtg=magic the gathering;ttr=ticket to ride". docs/PRODUCT-SEARCH.md.
+      SEARCH_SYNONYMS: ${SEARCH_SYNONYMS:-}
       # Keep V8's heap below the container's memory limit so it collects garbage instead of being OOM-killed.
       NODE_OPTIONS: --max-old-space-size=320
 

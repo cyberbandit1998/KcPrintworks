@@ -117,6 +117,7 @@ export function createMockWoo({ port = 0, key = MOCK_KEY, secret = MOCK_SECRET }
     store: [],
     reviews: [],
     quotes: [],
+    approvals: [],
   };
   const handoffs = new Map();
   // How the stand-in shop answers a handoff: normal | down (503) | foreign_redirect | wrong_path (a hostile or broken shop).
@@ -131,6 +132,8 @@ export function createMockWoo({ port = 0, key = MOCK_KEY, secret = MOCK_SECRET }
   // /__mock/reset leaves it alone): a request whose description contains [[mock:down]], [[mock:limited]], [[mock:badfile]] or
   // [[mock:error]] gets that answer; anything else is accepted.
   let quoteCounter = 0;
+  // Private quote links the tests plant with /__mock/quote-link (keyed by reference, so tests running side by side never meet).
+  const quoteLinks = new Map();
   const expected = `Basic ${Buffer.from(`${key}:${secret}`).toString('base64')}`;
 
   const json = (res, status, body, headers = {}) => {
@@ -259,6 +262,20 @@ export function createMockWoo({ port = 0, key = MOCK_KEY, secret = MOCK_SECRET }
           shopStatus = { ...DEFAULT_SHOP_STATUS, ...input };
           return json(res, 200, { ok: true });
         }
+        if (url.pathname === '/__mock/quote-link') {
+          quoteLinks.set(String(input.ref), {
+            token: String(input.token),
+            state: 'open',
+            revision: 1,
+            mode: 'normal',
+            title: 'Custom case for Catan, two-tone',
+            details: 'Printed in PETG.\nReady in about two weeks.',
+            itemCents: 4500,
+            shipCents: 850,
+            ...input,
+          });
+          return json(res, 200, { ok: true });
+        }
         if (url.pathname === '/__mock/fail') {
           data.failing = Boolean(input.failing);
           return json(res, 200, { ok: true });
@@ -302,6 +319,14 @@ export function createMockWoo({ port = 0, key = MOCK_KEY, secret = MOCK_SECRET }
       return json(res, answer.status, answer.body, answer.headers);
     }
 
+    // The shop's "Pay for order" page (a stand-in): where an approved quote sends the shopper.
+    if (req.method === 'GET' && url.pathname === '/checkout/order-pay/777/') {
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      return res.end(
+        '<!doctype html><title>Mock pay for order</title><h1>Mock pay for order #777</h1><p>Stripe test mode</p>',
+      );
+    }
+
     // ---- kcpw-quotes stand-in (SYNTHETIC: the real rules live in wordpress/kcpw-quotes and are proven by its own tests). A request is only
     // LOGGED (with the pictures' sizes, never their bytes) for the test to inspect; nothing is stored and no mail is sent.
     if (url.pathname.startsWith('/wp-json/kcpw-quotes/v1/')) {
@@ -312,6 +337,78 @@ export function createMockWoo({ port = 0, key = MOCK_KEY, secret = MOCK_SECRET }
         const route = url.pathname.replace('/wp-json', '');
         if (!verifySignature(req, route, raw, MOCK_HANDOFF_SECRET))
           return json(res, 401, { code: 'kcpw_unauthorized', message: 'Not authorized.' });
+        const link = (body) => {
+          const found = quoteLinks.get(String(body?.ref));
+          return found && found.token === body?.token ? found : undefined;
+        };
+        const viewOf = (ref, l) => ({
+          ok: true,
+          state: l.state,
+          ref,
+          firstName: 'Robin',
+          project: 'Game case or box',
+          quantity: 2,
+          title: l.title,
+          details: l.details,
+          itemCents: l.itemCents,
+          shipCents: l.shipCents,
+          totalCents: l.itemCents + l.shipCents,
+          currency: 'USD',
+          taxable: false,
+          revision: l.revision,
+          expiresAt: Math.floor(Date.now() / 1000) + 5 * 86400,
+          payBy: l.state === 'approved' ? Math.floor(Date.now() / 1000) + 3 * 86400 : 0,
+          ...(l.state === 'approved'
+            ? { payUrl: `${host}/checkout/order-pay/777/?pay_for_order=true&key=wc_order_mock` }
+            : {}),
+        });
+        if (route === '/kcpw-quotes/v1/quote/view' || route === '/kcpw-quotes/v1/quote/approve') {
+          let body;
+          try {
+            body = JSON.parse(raw);
+          } catch {
+            return json(res, 404, { ok: false, status: 'invalid_link' });
+          }
+          const allowedKeys = route.endsWith('/view')
+            ? ['ref', 'token']
+            : ['ref', 'token', 'approval'];
+          if (Object.keys(body).some((k) => !allowedKeys.includes(k)))
+            return json(res, 404, { ok: false, status: 'invalid_link' });
+          const l = link(body);
+          if (!l) return json(res, 404, { ok: false, status: 'invalid_link' });
+          if (route.endsWith('/view')) return json(res, 200, viewOf(body.ref, l));
+          const allowedApproval = [
+            'revision',
+            'line1',
+            'line2',
+            'city',
+            'state',
+            'postcode',
+            'country',
+            'phone',
+            'accepted',
+          ];
+          const approval = body.approval ?? {};
+          if (
+            Object.keys(approval).some((k) => !allowedApproval.includes(k)) ||
+            approval.accepted !== true
+          )
+            return json(res, 400, { ok: false, status: 'invalid_request' });
+          log.approvals.push({ ref: body.ref, approval, raw });
+          if (l.state === 'approved')
+            return json(res, 200, { ok: true, status: 'already_approved', ...viewOf(body.ref, l) });
+          if (l.mode === 'expired') return json(res, 410, { ok: false, status: 'expired' });
+          if (l.mode === 'busy') return json(res, 409, { ok: false, status: 'busy' });
+          if (l.mode === 'unavailable') return json(res, 503, { ok: false, status: 'unavailable' });
+          if (approval.revision !== l.revision)
+            return json(res, 409, { ok: false, status: 'terms_changed' });
+          l.state = 'approved';
+          const payUrl =
+            l.mode === 'hostile'
+              ? 'https://evil.example/checkout/order-pay/1/'
+              : `${host}/checkout/order-pay/777/?pay_for_order=true&key=wc_order_mock`;
+          return json(res, 200, { ok: true, status: 'approved', payUrl });
+        }
         if (route !== '/kcpw-quotes/v1/requests' || req.method !== 'POST')
           return json(res, 404, { code: 'rest_no_route' });
         let input;

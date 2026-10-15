@@ -184,6 +184,21 @@ jobs:
           run_case pco-on on "$EXPECT_SITE_URL" $woo -e CHECKOUT_ENABLED=true -e KCPW_API_URL=https://shop.invalid \
             -e "KCPW_HANDOFF_SECRET=$secret" -e SITE_ENV=staging -e NEXT_PUBLIC_SITE_URL=http://evil.example
 
+      - name: Custom quotes follow the container's environment, with no rebuild
+        run: |
+          # The same image three ways: no settings, switched on without the shared secret, and everything set (the shop address is
+          # deliberately unreachable; the secret is a throwaway made here). Payments stay off in all three: CHECKOUT_ENABLED is never set.
+          q_case() {
+            name="$1"; expect="$2"; shift 2
+            docker run -d --name "$name" -p 127.0.0.1:3004:3000 "$@" kcprintworks-nextjs:smoke
+            ./scripts/docker-smoke-quotes.sh http://127.0.0.1:3004 "$expect" || { docker logs "$name"; exit 1; }
+            docker rm -f "$name"
+          }
+          woo="-e CATALOG_SOURCE=woo -e WC_BASE_URL=https://shop.invalid -e WC_CONSUMER_KEY=ck_throwaway -e WC_CONSUMER_SECRET=cs_throwaway"
+          q_case q-off off
+          q_case q-incomplete incomplete -e QUOTES_ENABLED=true -e KCPW_SHOP_URL=https://shop.invalid
+          q_case q-on on $woo -e QUOTES_ENABLED=true -e KCPW_API_URL=https://shop.invalid -e "KCPW_HANDOFF_SECRET=$(openssl rand -hex 24)"
+
       - name: The free-shipping setting follows the container's environment, with no rebuild
         if: env.SITE_ENV == 'staging'
         run: |

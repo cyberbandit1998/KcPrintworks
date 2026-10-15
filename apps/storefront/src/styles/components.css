@@ -1637,3 +1637,50 @@
     outline: 3px solid Highlight;
   }
 }
+
+/* ---------- Custom quotes: a customer's private quote page ---------- */
+.quote-view {
+  max-width: 48rem;
+}
+.quote-summary {
+  margin-bottom: var(--space-5);
+  padding: var(--space-4);
+  background: var(--color-surface);
+  border: 2px solid var(--color-border-strong);
+  border-radius: var(--radius);
+}
+.quote-summary h2 {
+  margin-top: 0;
+}
+.quote-summary__list {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: var(--space-2) var(--space-4);
+  margin: 0;
+}
+.quote-summary__list dt {
+  font-weight: 700;
+}
+.quote-summary__list dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.quote-summary__details {
+  margin: var(--space-4) 0 0;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+.quote-approve {
+  margin-bottom: var(--space-5);
+}
+.quote-approve__accept .check {
+  display: flex;
+  gap: var(--space-3);
+  align-items: flex-start;
+}
+.quote-approve__accept input[type='checkbox'] {
+  flex: none;
+  width: 1.5rem;
+  height: 1.5rem;
+  margin-top: 0.2rem;
+}

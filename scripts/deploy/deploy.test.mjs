@@ -365,8 +365,80 @@ test(
     assert.equal(service.environment.WC_BASE_URL, 'https://shop.kcprintworks.com');
     assert.equal(service.environment.KCPW_API_URL, 'https://shop.kcprintworks.com');
     assert.equal(service.environment.NEXT_PUBLIC_SITE_URL, 'https://kcprintworks.com');
+    // Custom quotes and search settings are passed through and OFF by default in both instances.
+    assert.equal(service.environment.QUOTES_ENABLED, 'false');
+    assert.equal(base.environment.QUOTES_ENABLED, 'false');
+    for (const name of [
+      'QUOTES_TIMEZONE',
+      'QUOTES_RATE_LIMIT',
+      'QUOTES_RATE_LIMIT_ALL',
+      'QUOTES_APPROVE_RATE_LIMIT',
+      'QUOTES_APPROVE_RATE_LIMIT_ALL',
+      'SEARCH_SYNONYMS',
+    ]) {
+      assert.ok(name in service.environment, `${name} reaches the production container`);
+      assert.ok(name in base.environment, `${name} reaches the staging container`);
+    }
     // No two names are shared.
     assert.notEqual(production.name, staging.name);
     assert.notEqual(service.container_name, base.container_name);
   },
 );
+
+// Updating must never drop a setting the VPS already uses: every name the compose file passed on before custom quotes and search were added is
+// still passed on, in both instances, and every one of them is still described in both example files.
+const PRESERVED_ENVIRONMENT = [
+  'NODE_ENV',
+  'PORT',
+  'HOSTNAME',
+  'NEXT_TELEMETRY_DISABLED',
+  'SITE_ENV',
+  'NEXT_PUBLIC_SITE_URL',
+  'CATALOG_SOURCE',
+  'WC_BASE_URL',
+  'WC_CONSUMER_KEY',
+  'WC_CONSUMER_SECRET',
+  'CATALOG_REVALIDATE_SECONDS',
+  'REVALIDATE_SECRET',
+  'CHECKOUT_ENABLED',
+  'KCPW_API_URL',
+  'KCPW_SHOP_URL',
+  'KCPW_HANDOFF_SECRET',
+  'FREE_SHIPPING_THRESHOLD',
+  'FREE_SHIPPING_BEFORE_DISCOUNTS',
+  'NAV_GAME_CASES',
+  'NAV_PERSONALIZED_GIFTS',
+  'HIDDEN_CATEGORY_SLUGS',
+  'WP_BASE_URL',
+  'OUR_STORY_SLUG',
+  'CONTACT_PAGE_SLUG',
+  'BLOG_PER_PAGE',
+  'HOME_REVIEWS_MIN_RATING',
+  'REVIEWS_SUBMIT_ENABLED',
+  'REVIEWS_RATE_LIMIT',
+  'REVIEWS_RATE_LIMIT_ALL',
+  'NODE_OPTIONS',
+];
+test('every setting that existed before custom quotes is still passed to the container and still documented', () => {
+  const compose = readFileSync(join(DEPLOY, 'docker-compose.yml'), 'utf8');
+  for (const name of PRESERVED_ENVIRONMENT) {
+    assert.match(compose, new RegExp(`^ {6}${name}:`, 'm'), `${name} is passed to the container`);
+  }
+  for (const file of ['.env.example', '.env.production.example']) {
+    const text = readFileSync(join(DEPLOY, file), 'utf8');
+    for (const name of PRESERVED_ENVIRONMENT.filter(
+      (n) =>
+        !['NODE_ENV', 'PORT', 'HOSTNAME', 'NEXT_TELEMETRY_DISABLED', 'NODE_OPTIONS'].includes(n),
+    )) {
+      assert.match(text, new RegExp(`^${name}=`, 'm'), `${file} still describes ${name}`);
+    }
+  }
+});
+
+test('custom quotes ship switched off in both example files', () => {
+  for (const file of ['.env.example', '.env.production.example']) {
+    const text = readFileSync(join(DEPLOY, file), 'utf8');
+    assert.match(text, /^QUOTES_ENABLED=false$/m, file);
+    assert.match(text, /^SEARCH_SYNONYMS=$/m, file);
+  }
+});

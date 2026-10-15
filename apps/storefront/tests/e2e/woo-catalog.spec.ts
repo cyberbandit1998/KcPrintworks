@@ -1776,3 +1776,359 @@ test.describe('search follows the catalog', () => {
     expect(narrowed).toBeLessThan(total);
   });
 });
+
+/**
+ * A customer's private quote link: look at the offer, approve it, be sent to the shop's payment page. The shop side is a stand-in
+ * (tests/support/mock-woo.mjs: it plants links on request and answers like the kcpw-quotes plugin would); the real plugin's rules are proven
+ * by its PHP tests and the real WooCommerce order-pay page by the staging checklist. In this file because the shop's Stripe-mode answer is
+ * shared with the checkout tests above.
+ */
+test.describe('custom quotes: the private link, approval and payment', () => {
+  const scanPage = async (page: Page) =>
+    (
+      await new AxeBuilder({ page })
+        .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'])
+        .analyze()
+    ).violations.map((v) => v.id);
+  const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  const randomFrom = (alphabet: string, length: number) =>
+    Array.from({ length }, () => alphabet[Math.floor(Math.random() * alphabet.length)]).join('');
+  const makeLink = () => ({
+    ref: `KCQ-2610-${randomFrom(ALPHABET, 6)}`,
+    token: randomFrom('ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-', 43),
+  });
+  const plant = async (request: APIRequestContext, extra: Record<string, unknown> = {}) => {
+    const link = makeLink();
+    await mockPost(request, 'quote-link', { ...link, ...extra });
+    return { ...link, url: `/custom-orders/quote/?ref=${link.ref}&token=${link.token}` };
+  };
+  const approvals = async (request: APIRequestContext) =>
+    (await (await request.get(`${WOO_TEST.mockUrl}/__mock/log`)).json()).approvals as {
+      ref: string;
+      approval: Record<string, unknown>;
+      raw: string;
+    }[];
+
+  async function fillAddress(page: Page, over: Record<string, string> = {}) {
+    await page.getByLabel('Street address').fill(over.line1 ?? '12 Main Street');
+    await page.getByLabel('City').fill(over.city ?? 'Flint');
+    await page.getByLabel('State or region').fill(over.state ?? 'MI');
+    await page.getByLabel('ZIP or postal code').fill(over.postcode ?? '48503');
+  }
+
+  test.beforeEach(async ({ request }) => {
+    await mockPost(request, 'reset', {}); // the shop reports Stripe TEST mode again
+  });
+
+  test('the link shows the offer and only the offer, in a private page', async ({
+    page,
+    request,
+  }) => {
+    const link = await plant(request);
+    const response = await page.goto(link.url);
+    expect(response?.headers()['cache-control']).toMatch(/no-store|no-cache|private/);
+    await expect(page.getByRole('heading', { level: 1, name: 'Your quote' })).toBeVisible();
+    await expect(page.locator('.quote-ref')).toHaveText(link.ref);
+    await expect(
+      page.getByRole('heading', { name: 'Custom case for Catan, two-tone' }),
+    ).toBeVisible();
+    const summary = page.locator('.quote-summary');
+    await expect(summary).toContainText('$45.00');
+    await expect(summary).toContainText('$8.50');
+    await expect(summary).toContainText('$53.50');
+    await expect(summary).toContainText('Printed in PETG.');
+    await expect(summary).toContainText('Valid until');
+    await expect(
+      page.getByRole('button', { name: 'Approve and continue to payment' }),
+    ).toBeVisible();
+
+    await expect(page.locator('meta[name="robots"]')).toHaveAttribute('content', /noindex/);
+    await expect(page.locator('meta[name="referrer"]')).toHaveAttribute('content', 'no-referrer');
+    const text = await page.locator('main').innerText();
+    for (const secret of [WOO_TEST.handoffSecret, WOO_TEST.mockUrl, 'robin@example.com']) {
+      expect(text.includes(secret), `the page must not show ${secret}`).toBe(false);
+    }
+    const html = await (await page.request.get(link.url)).text();
+    expect(html.includes(WOO_TEST.handoffSecret), 'no secret in the page source').toBe(false);
+    expect(html.includes(WOO_TEST.mockUrl), 'the shop address is not in the page source').toBe(
+      false,
+    );
+    expect(await scanPage(page)).toEqual([]);
+  });
+
+  test('approving sends the address (never a price) and lands on the shop’s payment page', async ({
+    page,
+    request,
+  }) => {
+    const link = await plant(request);
+    await page.goto(link.url);
+    await fillAddress(page);
+    await page.getByLabel('Phone').fill('+1 810 555 0100');
+    await page.getByLabel(/I approve this quote for/).check();
+    await page.getByRole('button', { name: 'Approve and continue to payment' }).click();
+    await page.waitForURL(`${WOO_TEST.mockUrl}/checkout/order-pay/777/**`);
+    await expect(page.getByRole('heading', { name: 'Mock pay for order #777' })).toBeVisible();
+
+    const mine = (await approvals(request)).filter((a) => a.ref === link.ref);
+    expect(mine).toHaveLength(1);
+    expect(mine[0]!.approval).toEqual({
+      revision: 1,
+      line1: '12 Main Street',
+      line2: '',
+      city: 'Flint',
+      state: 'MI',
+      postcode: '48503',
+      country: 'US',
+      phone: '+1 810 555 0100',
+      accepted: true,
+    });
+    expect(mine[0]!.raw).not.toMatch(/price|total|amount|cents|4500|5350/i);
+
+    // Coming back to the link: it says so, and offers the payment page again instead of making a second approval.
+    await page.goto(link.url);
+    await expect(page.getByRole('heading', { name: 'You approved this quote' })).toBeVisible();
+    const pay = page.getByRole('link', { name: 'Continue to payment' });
+    await expect(pay).toHaveAttribute(
+      'href',
+      new RegExp(`^${WOO_TEST.mockUrl}/checkout/order-pay/777/`),
+    );
+    await expect(page.getByRole('button', { name: /Approve/ })).toHaveCount(0);
+    await pay.click();
+    await expect(page.getByRole('heading', { name: 'Mock pay for order #777' })).toBeVisible();
+    expect((await approvals(request)).filter((a) => a.ref === link.ref)).toHaveLength(1);
+  });
+
+  test('missing details are listed, focus goes to the list, and nothing is sent', async ({
+    page,
+    request,
+  }) => {
+    const link = await plant(request);
+    await page.goto(link.url);
+    await page.getByRole('button', { name: 'Approve and continue to payment' }).click();
+    const summary = page.locator('.error-summary');
+    await expect(summary).toBeFocused();
+    await expect(summary).toContainText('Enter your street address');
+    await expect(summary).toContainText('Enter your city');
+    await expect(summary).toContainText('Enter your ZIP or postal code');
+    await expect(summary).toContainText('Please confirm that you approve this quote');
+    await summary.getByRole('link', { name: /street address/ }).click();
+    await expect(page.getByLabel('Street address')).toBeFocused();
+    await summary.getByRole('link', { name: /confirm that you approve/ }).click();
+    await expect(page.getByLabel(/I approve this quote/)).toBeFocused();
+    expect(await scanPage(page)).toEqual([]);
+    expect((await approvals(request)).filter((a) => a.ref === link.ref)).toHaveLength(0);
+  });
+
+  test('a quote that was revised while the page was open cannot be approved by the old page', async ({
+    page,
+    request,
+  }) => {
+    const link = await plant(request);
+    await page.goto(link.url);
+    await mockPost(request, 'quote-link', { ...link, revision: 2, itemCents: 9900 }); // the owner sends a revised quote
+    await fillAddress(page);
+    await page.getByLabel(/I approve this quote for/).check();
+    await page.getByRole('button', { name: 'Approve and continue to payment' }).click();
+    const summary = page.locator('.error-summary');
+    await expect(summary).toContainText('This quote was updated while you were looking at it');
+    await expect(summary).toBeFocused();
+    await expect(page).toHaveURL(/\/custom-orders\/quote\//);
+    await page.reload();
+    await expect(page.locator('.quote-summary')).toContainText('$99.00');
+    await fillAddress(page);
+    await page.getByLabel(/I approve this quote for/).check();
+    await page.getByRole('button', { name: 'Approve and continue to payment' }).click();
+    await page.waitForURL(`${WOO_TEST.mockUrl}/checkout/order-pay/777/**`);
+  });
+
+  test('a link that is wrong, replaced or half-typed shows one plain message and asks the shop nothing', async ({
+    page,
+    request,
+  }) => {
+    const link = await plant(request);
+    for (const url of [
+      `/custom-orders/quote/?ref=${link.ref}&token=${'B'.repeat(43)}`,
+      `/custom-orders/quote/?ref=KCQ-2610-ZZZZZZ&token=${link.token}`,
+      `/custom-orders/quote/?ref=${link.ref}`,
+      '/custom-orders/quote/',
+      `/custom-orders/quote/?ref=${encodeURIComponent('<script>alert(1)</script>')}&token=x`,
+    ]) {
+      await page.goto(url);
+      await expect(
+        page.getByRole('heading', { level: 1, name: 'This quote link is not valid' }),
+      ).toBeVisible();
+      await expect(page.getByRole('button', { name: /Approve/ })).toHaveCount(0);
+      expect(await page.locator('main').innerText()).not.toContain(link.ref);
+    }
+  });
+
+  test('each state of a quote reads clearly: expired, paid and closed', async ({
+    page,
+    request,
+  }) => {
+    const expired = await plant(request, { state: 'expired' });
+    await page.goto(expired.url);
+    await expect(page.getByRole('heading', { name: 'This quote has expired' })).toBeVisible();
+    await expect(page.getByRole('button', { name: /Approve/ })).toHaveCount(0);
+    const paid = await plant(request, { state: 'paid' });
+    await page.goto(paid.url);
+    await expect(page.getByRole('heading', { name: 'Paid. Thank you!' })).toBeVisible();
+    const closed = await plant(request, { state: 'closed' });
+    await page.goto(closed.url);
+    await expect(page.getByRole('heading', { name: 'This quote is closed' })).toBeVisible();
+    expect(await scanPage(page)).toEqual([]);
+  });
+
+  test('when the shop cannot approve, the customer is told plainly and nothing is lost', async ({
+    page,
+    request,
+  }) => {
+    for (const [mode, message] of [
+      ['expired', /This quote has expired/],
+      ['busy', /Your order is being prepared/],
+      ['unavailable', /We could not set up your payment right now. Nothing was charged/],
+      ['hostile', /We could not set up your payment right now. Nothing was charged/],
+    ] as const) {
+      const link = await plant(request, { mode });
+      await page.goto(link.url);
+      await fillAddress(page);
+      await page.getByLabel(/I approve this quote for/).check();
+      await page.getByRole('button', { name: 'Approve and continue to payment' }).click();
+      await expect(page.locator('.error-summary'), mode).toContainText(message);
+      await expect(page.locator('.error-summary'), mode).toBeFocused();
+      await expect(page, mode).toHaveURL(/\/custom-orders\/quote\//); // never sent to the unchecked address
+      await expect(page.getByLabel('Street address'), mode).toHaveValue('12 Main Street');
+    }
+  });
+
+  test('payment is only offered while the shop is in a state to take it (a non-production build never reaches live Stripe)', async ({
+    page,
+    request,
+  }) => {
+    const link = await plant(request);
+    await mockPost(request, 'shop-status', { stripeTestMode: false });
+    await page.goto(link.url);
+    await expect(
+      page.getByRole('heading', { name: 'Online approval is not open yet' }),
+    ).toBeVisible();
+    await expect(page.getByRole('button', { name: /Approve/ })).toHaveCount(0);
+    await expect(page.locator('.quote-summary')).toContainText('$53.50'); // the offer itself is still readable
+
+    const before = (await approvals(request)).length;
+    const refused = await request.post('/api/quotes/approve/', {
+      headers: { origin: WOO_TEST.url, 'content-type': 'application/json' },
+      data: {
+        ref: link.ref,
+        token: link.token,
+        approval: {
+          revision: 1,
+          line1: '12 Main Street',
+          line2: '',
+          city: 'Flint',
+          state: 'MI',
+          postcode: '48503',
+          country: 'US',
+          phone: '',
+          accepted: true,
+        },
+      },
+    });
+    expect(refused.status()).toBe(403);
+    expect((await refused.json()).code).toBe('disabled');
+    expect((await approvals(request)).length, 'nothing reached the shop').toBe(before);
+
+    await mockPost(request, 'shop-status', { stripeTestMode: true });
+    await page.goto(link.url);
+    await expect(
+      page.getByRole('button', { name: 'Approve and continue to payment' }),
+    ).toBeVisible();
+  });
+
+  test('the approval address refuses other sites, extra fields and a price, without asking the shop', async ({
+    request,
+  }) => {
+    const link = await plant(request);
+    const before = (await approvals(request)).length;
+    const approval = {
+      revision: 1,
+      line1: '12 Main Street',
+      line2: '',
+      city: 'Flint',
+      state: 'MI',
+      postcode: '48503',
+      country: 'US',
+      phone: '',
+      accepted: true,
+    };
+    const post = (data: unknown, origin: string = WOO_TEST.url) =>
+      request.post('/api/quotes/approve/', {
+        headers: { origin, 'content-type': 'application/json' },
+        data,
+      });
+    expect(
+      (await post({ ref: link.ref, token: link.token, approval }, 'https://evil.example')).status(),
+    ).toBe(403);
+    for (const extra of [{ price: 1 }, { total: 100 }, { itemCents: 1 }, { amount: 1 }]) {
+      const reply = await post({
+        ref: link.ref,
+        token: link.token,
+        approval: { ...approval, ...extra },
+      });
+      expect(reply.status(), JSON.stringify(extra)).toBe(400);
+      expect((await reply.json()).code).toBe('form_expired');
+    }
+    expect((await post({ ref: link.ref, token: 'short', approval })).status()).toBe(404);
+    expect((await approvals(request)).length).toBe(before);
+    const good = await post({ ref: link.ref, token: link.token, approval });
+    expect(good.status()).toBe(200);
+    expect((await good.json()).payUrl).toMatch(
+      new RegExp(`^${WOO_TEST.mockUrl}/checkout/order-pay/777/`),
+    );
+  });
+
+  test('on a phone: one column, nothing sideways, fields and button are tappable', async ({
+    page,
+    request,
+  }) => {
+    const link = await plant(request);
+    await page.setViewportSize({ width: 375, height: 800 });
+    await page.goto(link.url);
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      ),
+    ).toBeLessThanOrEqual(0);
+    for (const label of ['Street address', 'City', 'ZIP or postal code', 'Country']) {
+      const box = (await page.getByLabel(label).boundingBox())!;
+      expect(box.height, label).toBeGreaterThanOrEqual(44);
+      expect(box.x + box.width, label).toBeLessThanOrEqual(375);
+    }
+    expect(
+      (await page.getByRole('button', { name: 'Approve and continue to payment' }).boundingBox())!
+        .height,
+    ).toBeGreaterThanOrEqual(44);
+    const check = (await page.getByLabel(/I approve this quote/).boundingBox())!;
+    expect(check.width).toBeGreaterThanOrEqual(24);
+    expect(await scanPage(page)).toEqual([]);
+  });
+
+  test('the keyboard alone can read, fill in and approve', async ({ page, request }) => {
+    const link = await plant(request);
+    await page.goto(link.url);
+    await page.getByLabel('Street address').focus();
+    await page.keyboard.type('12 Main Street');
+    await page.keyboard.press('Tab'); // apartment
+    await page.keyboard.press('Tab');
+    await page.keyboard.type('Flint');
+    await page.keyboard.press('Tab');
+    await page.keyboard.type('MI');
+    await page.keyboard.press('Tab');
+    await page.keyboard.type('48503');
+    await page.getByLabel(/I approve this quote/).focus();
+    await page.keyboard.press('Space');
+    await expect(page.getByLabel(/I approve this quote/)).toBeChecked();
+    await page.getByRole('button', { name: 'Approve and continue to payment' }).focus();
+    await page.keyboard.press('Enter');
+    await page.waitForURL(`${WOO_TEST.mockUrl}/checkout/order-pay/777/**`);
+  });
+});
