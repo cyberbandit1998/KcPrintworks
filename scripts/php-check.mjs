@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Lints every PHP file under wordpress/ with `php -l` and runs the PHP tests of each plugin (kcpw-core, kcpw-checkout-style, kcpw-address-autocomplete).
+// Lints every PHP file under wordpress/ with `php -l` and runs the PHP tests of each plugin (kcpw-core, kcpw-checkout-style, kcpw-address-autocomplete, kcpw-quotes).
 // Skips (with a loud message) when PHP is not installed, so a machine without PHP can still run `npm run check`;
 // CI always has PHP and fails the build if it is missing (CI=true).
 import { spawnSync } from 'node:child_process';
@@ -38,7 +38,12 @@ for (const file of phpFiles(join(root, 'wordpress'))) {
 if (failed) process.exit(1);
 
 let status = 0;
-for (const suite of ['kcpw-core', 'kcpw-checkout-style', 'kcpw-address-autocomplete']) {
+for (const suite of [
+  'kcpw-core',
+  'kcpw-checkout-style',
+  'kcpw-address-autocomplete',
+  'kcpw-quotes',
+]) {
   const tests = spawnSync('php', [join(root, `wordpress/${suite}/tests/run.php`)], {
     stdio: 'inherit',
   });

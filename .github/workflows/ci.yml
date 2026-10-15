@@ -69,6 +69,14 @@ jobs:
           name: kcpw-address-autocomplete-plugin
           path: dist/kcpw-address-autocomplete.zip
           retention-days: 30
+      - name: Build the kcpw-quotes plugin package
+        run: npm run build:quotes-plugin
+      - name: Upload the kcpw-quotes plugin package
+        uses: actions/upload-artifact@v4
+        with:
+          name: kcpw-quotes-plugin
+          path: dist/kcpw-quotes.zip
+          retention-days: 30
       - name: Upload Playwright traces on failure
         if: failure()
         uses: actions/upload-artifact@v4

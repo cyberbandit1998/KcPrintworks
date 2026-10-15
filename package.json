@@ -27,7 +27,8 @@
     "test:php": "node scripts/php-check.mjs",
     "build:core-plugin": "node scripts/build-core-plugin.mjs",
     "build:checkout-style": "node scripts/build-checkout-style-plugin.mjs",
-    "build:address-autocomplete": "node scripts/build-address-autocomplete-plugin.mjs"
+    "build:address-autocomplete": "node scripts/build-address-autocomplete-plugin.mjs",
+    "build:quotes-plugin": "node scripts/build-quotes-plugin.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^9.0.0",
