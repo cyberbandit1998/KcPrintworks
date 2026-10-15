@@ -21,7 +21,7 @@ use KcPrintworks\AddressAutocomplete\Store;
 use KcPrintworks\AddressAutocomplete\Usage;
 
 require_once dirname(__DIR__) . '/wp-stubs.php';
-foreach (['Settings', 'Presets', 'FormConfig', 'PageMatcher', 'Usage', 'RateLimiter', 'Store', 'Html', 'Conflicts', 'Picker', 'Frontend', 'Shortcode', 'Admin', 'AdminForms', 'Wizard'] as $class) {
+foreach (['Settings', 'Presets', 'FormConfig', 'PageMatcher', 'Usage', 'RateLimiter', 'Store', 'Html', 'Conflicts', 'Picker', 'PoBox', 'Validation', 'Http', 'WpHttp', 'GoogleServer', 'Webhook', 'IpHint', 'WooCommerce', 'Frontend', 'Shortcode', 'Rest', 'Admin', 'AdminForms', 'Wizard'] as $class) {
     require_once dirname(__DIR__, 2) . '/src/' . $class . '.php';
 }
 
@@ -81,22 +81,54 @@ function kcpw_aa_fixture_files(): array
     $shortcodeConfig = json_decode($m[1] ?? '{}', true);
     $shortcodePage = '<!doctype html>' . "\n" . '<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Shortcode (stand-in page for the plugin\'s browser tests)</title><link rel="stylesheet" href="baseline.css"><link rel="stylesheet" href="kcpw-aa.css"></head><body><main><h1>Order form</h1><form id="order" action="#" novalidate>' . $first . $second . '<p><button type="submit" id="send">Send</button></p></form><pre id="posted" hidden></pre></main><script>document.getElementById(\'order\').addEventListener(\'submit\', function (e) { e.preventDefault(); var d = new FormData(e.target), o = {}; d.forEach(function (v, k) { o[k] = v; }); var p = document.getElementById(\'posted\'); p.textContent = JSON.stringify(o); p.hidden = false; });</script><script src="kcpw-aa.js" defer></script></body></html>' . "\n";
 
+    // Every optional feature switched on, a server key saved and the two opt-ins that add a page request (location hint, checkout count),
+    // with the plugin's REAL file path so the module script addresses are the ones a site would print.
+    \WpStub::reset();
+    \WpStub::$isCheckout = true;
+    $everything = [
+        'browser_key' => 'test-key-0000000000000000000000',
+        'server_key' => 'test-server-key-000000000000000000',
+        'countries' => ['US', 'CA'],
+        'modules' => ['map_picker' => true, 'gps' => true, 'validation' => true, 'pobox' => true],
+        'optins' => ['ip' => ['enabled' => true, 'source' => 'header'], 'abandonment' => ['enabled' => true]],
+    ];
+    $real = dirname(__DIR__, 2) . '/kcpw-address-autocomplete.php';
+    $withModules = static fn (array $forms, string $mode): array => (new Frontend($real, 'test', Settings::load(['mode' => $mode] + $everything), $forms))->buildConfig($forms, $mode === 'preview');
+    \WpStub::$canManage = true;
+    $modulesBlock = $withModules([$block], 'live');
+    $modulesPlain = $withModules([$plain], 'live');
+    $modulesPreview = $withModules([$block], 'preview');
+    \WpStub::$canManage = false;
+    \WpStub::$isCheckout = false;
+
     // Every administrator screen, as the real PHP prints it, for the accessibility scans and for looking at.
     \WpStub::reset();
-    \WpStub::$options[Usage::OPTION] = Usage::record(null, ['r' => 18, 'd' => 5, 's' => 5, 'm' => 1, 'e' => ['quota' => 1]], gmdate('Y-m-d'));
+    \WpStub::$options[Usage::OPTION] = Usage::bump(Usage::record(null, ['r' => 18, 'd' => 5, 's' => 5, 'm' => 1, 'e' => ['quota' => 1]], gmdate('Y-m-d')), ['v' => 4, 'cs' => 9, 'cc' => 6], gmdate('Y-m-d'));
     \WpStub::$transients['kcpw_aa_conflicts'] = [['handle' => 'some-map-plugin', 'host' => 'maps.googleapis.com']];
     $screens = new Admin('/x/kcpw-address-autocomplete/kcpw-address-autocomplete.php', 'test', new Store(Settings::load(['mode' => 'preview', 'browser_key' => 'test-key-0000000000000000000000', 'countries' => ['US', 'CA']]), [$block]));
+    // The same screens with the optional features and the opt-ins switched on, so their controls and statuses are scanned too.
+    $featuresScreens = new Admin('/x/kcpw-address-autocomplete/kcpw-address-autocomplete.php', 'test', new Store(Settings::load([
+        'mode' => 'preview', 'browser_key' => 'test-key-0000000000000000000000', 'server_key' => 'test-server-key-000000000000000000',
+        'modules' => ['pobox' => true, 'validation' => true, 'gps' => true, 'map_picker' => true],
+        'optins' => ['webhook' => ['enabled' => true, 'consent' => true, 'url' => 'https://hooks.example.test/in', 'events' => ['bad', 'pobox']], 'abandonment' => ['enabled' => true], 'ip' => ['enabled' => true, 'source' => 'service', 'service_url' => 'https://lookup.example.test/json/{ip}']],
+    ]), [$block]));
     $wizard = new \KcPrintworks\AddressAutocomplete\Wizard(new Store(Settings::load([]), []));
     $keyConfig = $adminConfig;
     $keyConfig['key'] = 'test-key-0000000000000000000000';
     $keyScripts = '<script>window.KCPW_AA_MANUAL=true;</script><script src="kcpw-aa.js"></script><script>window.KCPW_AA_ADMIN=' . json_encode($keyConfig, JSON_HEX_TAG | JSON_HEX_AMP | JSON_UNESCAPED_SLASHES) . ';</script><script src="kcpw-aa-admin.js"></script>';
 
     return [
+        'config-modules-block.json' => $encode($modulesBlock),
+        'config-modules-plain.json' => $encode($modulesPlain),
+        'config-modules-preview.json' => $encode($modulesPreview),
         'config-shortcode.json' => $encode($shortcodeConfig ?? []),
         'shortcode.html' => $shortcodePage,
         'admin-dashboard.html' => $page('Address Autocomplete (stand-in for the WordPress admin page)', $screens->dashboardHtml(), $keyScripts),
         'admin-settings-general.html' => $page('Settings (stand-in for the WordPress admin page)', $screens->settingsHtml('general'), $scripts),
         'admin-settings-behavior.html' => $page('Settings: behavior (stand-in for the WordPress admin page)', $screens->settingsHtml('behavior'), $scripts),
+        'admin-settings-modules.html' => $page('Settings: features (stand-in for the WordPress admin page)', $featuresScreens->settingsHtml('modules'), $scripts),
+        'admin-settings-optins.html' => $page('Settings: privacy and opt-ins (stand-in for the WordPress admin page)', $featuresScreens->settingsHtml('optins'), $scripts),
+        'admin-dashboard-features.html' => $page('Address Autocomplete with features on (stand-in for the WordPress admin page)', $featuresScreens->dashboardHtml(), $keyScripts),
         'admin-settings-style.html' => $page('Settings: appearance (stand-in for the WordPress admin page)', $screens->settingsHtml('style'), $scripts),
         'admin-wizard-1.html' => $page('Set up, step 1 (stand-in for the WordPress admin page)', $wizard->html(1), $scripts),
         'admin-wizard-2.html' => $page('Set up, step 2 (stand-in for the WordPress admin page)', $wizard->html(2), $scripts),

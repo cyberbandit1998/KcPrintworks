@@ -3,7 +3,7 @@
 Version 0.1.0. A WordPress plugin that offers Google address suggestions in your address fields and fills street, city, state, postal code and
 country for the customer. Built first for the **WooCommerce Checkout Block** (and the classic checkout), usable on any other form.
 
-It starts in an **administrators-only preview**, loads **nothing** until a visitor clicks into an address field, and every extra feature is optional and off
+It starts in an **administrators-only preview**, loads **nothing** until a visitor clicks into an address field, and every extra feature (PO box notice, address check, "use my location", map, and the opt-in webhook / checkout count / location hint) is optional and off
 by default. Full instructions (Google setup, install, preview first, going live, rollback, what is tested and what is not): [docs/ADDRESS-AUTOCOMPLETE.md](../../docs/ADDRESS-AUTOCOMPLETE.md).
 
 ## Settings in `wp-config.php` (optional)
@@ -11,7 +11,8 @@ by default. Full instructions (Google setup, install, preview first, going live,
 | Constant | Meaning |
 |---|---|
 | `KCPW_AA_BROWSER_KEY` | The Google browser key. When set it is used instead of the one saved on the settings screen (which is then never saved back) |
-| `KCPW_AA_SERVER_KEY` | The Google server key, for the optional address validation (later stage) |
+| `KCPW_AA_SERVER_KEY` | The Google server key, for the optional address check (Address Validation API, called from your server; restrict it by IP address). Used instead of the saved one, never saved back |
+| `KCPW_AA_VALIDATION_CACHE_SECONDS` | How long an address-check verdict is remembered, 0 to 86400 (0 = never) |
 
 ## Development
 

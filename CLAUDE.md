@@ -75,6 +75,9 @@ Dockerfile, deploy/         Docker image (Next.js standalone, multi-stage) and t
 .github/workflows/          ci.yml (checks) and docker-publish.yml (build, smoke-test, publish to GHCR)
 wordpress/kcpw-core/        WordPress plugin (v0.2.1; `/status` also reports `storefrontUrl`): checkout link (quote + single-use handoff), personalization editor/validation/order-item meta, and pending-review intake (`src/Reviews`).
                             Pure PHP core (no WP calls; tested with shared vectors) + thin `src/Wp` layer (tested with stubs); `php tests/run.php`
+wordpress/kcpw-address-autocomplete/  WordPress plugin (v0.1.0, ADR-020): Google Places (New) address suggestions for the WooCommerce Checkout Block (React-safe filling), classic checkout and any form (Visual Selector Tool, presets, shortcode). Preview (administrators only) by default; optional features
+                            (PO box notice, address check, "use my location", map) and opt-ins (webhook, checkout count, location hint) are **off by default**. Pure PHP decision classes (no WordPress calls; a test enforces it) + thin WP layers; `php tests/run.php`. Browser tests: `apps/storefront/tests/e2e/address-autocomplete-*.spec.ts` against stand-in pages and a Google stand-in.
+                            Guide, Google setup, privacy and the owner's staging checklist: docs/ADDRESS-AUTOCOMPLETE.md. Never install or activate it on the live shop without the owner's say-so
 wordpress/kcpw-checkout-style/  WordPress plugin (v0.1.0), styling only: the shop's checkout page (ID 9) dressed like the storefront (compact header, scoped stylesheet). No script, no route, no cart/order/payment code;
                             `tests/` has PHP tests and a hand-written STAND-IN page (`tests/fixture`) rendered by `apps/storefront/tests/e2e/checkout-style.spec.ts`; rules enforced by `scripts/checkout-style/*.test.mjs`. See docs/CHECKOUT-STYLE.md
 ```
@@ -98,6 +101,7 @@ Node 22 (`.nvmrc`), npm workspaces. Run from the repo root.
 | `npm run test:php`                      | PHP lint + the kcpw-core tests (`wordpress/kcpw-core/tests/run.php`, no dependencies) |
 | `npm run build:core-plugin`             | Packages `dist/kcpw-core.zip` (also a CI artifact)                                   |
 | `npm run build:checkout-style`          | Packages `dist/kcpw-checkout-style.zip` (also a CI artifact)                         |
+| `npm run build:address-autocomplete`    | Packages `dist/kcpw-address-autocomplete.zip` (also a CI artifact)                   |
 | `npm run check`                         | guard, format, lint, typecheck, test, test:scripts, build (e2e is separate)          |
 | `node scripts/discovery/analyze-wc-export.mjs <csv>` | Markdown report on a product export (`--json` for machine output). Raw exports live in `docs/discovery/raw/` (gitignored) |
 

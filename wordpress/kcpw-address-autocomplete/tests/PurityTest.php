@@ -45,5 +45,7 @@ final class PurityTest extends TestCase
             $this->assertContains($option, $u);
         }
         $this->assertContains("defined('WP_UNINSTALL_PLUGIN')", $u);
+        $this->assertContains('_transient_kcpw_aa_', $u, 'the short-lived markers are cleared too');
+        $this->assertContains('kcpw_aa_conflicts', $u);
     }
 }

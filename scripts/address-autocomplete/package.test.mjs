@@ -22,6 +22,14 @@ test('the package contains what WordPress needs, under one folder named like the
     'kcpw-address-autocomplete/src/Frontend.php',
     'kcpw-address-autocomplete/assets/js/kcpw-aa.js',
     'kcpw-address-autocomplete/assets/css/kcpw-aa.css',
+    'kcpw-address-autocomplete/assets/css/kcpw-aa-map.css',
+    'kcpw-address-autocomplete/assets/js/kcpw-aa-pobox.js',
+    'kcpw-address-autocomplete/assets/js/kcpw-aa-validate.js',
+    'kcpw-address-autocomplete/assets/js/kcpw-aa-gps.js',
+    'kcpw-address-autocomplete/assets/js/kcpw-aa-map.js',
+    'kcpw-address-autocomplete/src/Rest.php',
+    'kcpw-address-autocomplete/src/GoogleServer.php',
+    'kcpw-address-autocomplete/src/WooCommerce.php',
   ]) {
     assert.ok(entries.includes(need), `missing ${need}`);
   }
@@ -79,4 +87,29 @@ test('the optional features are separate files, so a page that does not use them
     );
   }
   assert.ok(existsSync(zip));
+});
+
+test('each optional feature file is small, so switching one on costs a page little', () => {
+  for (const [file, limit] of [
+    ['kcpw-aa-pobox.js', 2200],
+    ['kcpw-aa-validate.js', 2200],
+    ['kcpw-aa-gps.js', 2000],
+    ['kcpw-aa-map.js', 4000],
+  ]) {
+    const js = readFileSync(`${root}wordpress/kcpw-address-autocomplete/assets/js/${file}`);
+    const gz = gzipSync(js, { level: 9 }).length;
+    console.log(`${file} ${js.length} bytes (${gz} gzipped)`);
+    assert.ok(gz <= limit, `${file} is ${gz} bytes gzipped (limit ${limit})`);
+  }
+  const css = readFileSync(`${root}wordpress/kcpw-address-autocomplete/assets/css/kcpw-aa-map.css`);
+  assert.ok(gzipSync(css, { level: 9 }).length <= 1500);
+});
+
+test('the shipped PHP never contains a Google key, a webhook address or a customer address', () => {
+  const files = entries.filter((e) => e.endsWith('.php') || e.endsWith('.js'));
+  for (const entry of files) {
+    const text = execFileSync('unzip', ['-p', zip, entry], { encoding: 'utf8' });
+    assert.equal(/AIza[0-9A-Za-z_-]{30,}/.test(text), false, entry);
+    assert.equal(/hooks\.slack\.com\/services\/T/.test(text), false, entry);
+  }
 });

@@ -30,7 +30,8 @@ declare global {
   interface Window {
     KCPW_AA: Config;
     __KCPW_G: Scenario & {
-      calls?: { loads: number; suggest: Suggestion[]; details: Details[]; tokens: number };
+      calls?: Calls;
+      dragMarker?: (lat: number, lng: number) => void;
     };
     __filled: number;
     __placed?: number;
@@ -67,6 +68,17 @@ export interface Suggestion {
   regions?: string[];
   types?: string[];
   language?: string;
+  region?: string;
+  locationBias?: { center: { lat: number; lng: number }; radius: number };
+}
+export interface Calls {
+  loads: number;
+  suggest: Suggestion[];
+  details: Details[];
+  tokens: number;
+  geocode: { location?: { lat: number; lng: number } }[];
+  maps: number;
+  markers?: number;
 }
 export interface Details {
   id: string;
@@ -77,7 +89,17 @@ export interface Details {
 /* eslint-disable @typescript-eslint/no-explicit-any -- the plugin's page configuration is a free-form JSON document the specs edit freely */
 export type Config = Record<string, any>;
 
-export function config(name: 'block' | 'classic' | 'plain' | 'preview' | 'shortcode'): Config {
+export type ConfigName =
+  | 'block'
+  | 'classic'
+  | 'plain'
+  | 'preview'
+  | 'shortcode'
+  | 'modules-block'
+  | 'modules-plain'
+  | 'modules-preview';
+
+export function config(name: ConfigName): Config {
   return JSON.parse(readFileSync(path.join(FIXTURE, `config-${name}.json`), 'utf8'));
 }
 
@@ -233,7 +255,10 @@ export interface Scenario {
   noImportLibrary?: boolean;
   geocodeDelay?: number;
   geocodeOk?: boolean;
+  geocodePlace?: string;
+  geocodeTypes?: string[];
   failGeocode?: string;
+  mapFails?: boolean;
 }
 
 export interface OpenOptions {
@@ -246,10 +271,26 @@ export interface OpenOptions {
   rtl?: boolean;
   /** Do not answer the Google script at all (a blocked or failing network) */
   blockGoogle?: boolean;
+  /** Do not serve the optional feature files (a failing download) */
+  blockModules?: boolean;
+  /** How this site's own REST routes answer (any not listed answers 204 with no body) */
+  rest?: Partial<Record<RestName, (call: RestCall) => { status: number; body?: unknown }>>;
+}
+
+export type RestName = 'validate' | 'hint' | 'checkout-start';
+export interface RestCall {
+  name: string;
+  method: string;
+  headers: Record<string, string>;
+  body: string;
 }
 
 export interface Opened {
   googleLoads: () => number;
+  /** Every request the plugin made to its own REST routes (address check, location hint, checkout count) */
+  rest: RestCall[];
+  /** Addresses of the optional feature files the page asked for */
+  moduleFiles: string[];
 }
 
 /** Opens one of the stand-in pages with the plugin configured and the Google stand-in answering. */
@@ -259,6 +300,8 @@ export async function open(
   options: OpenOptions = {},
 ): Promise<Opened> {
   const own = config(name === 'generic' ? 'plain' : name);
+  const restCalls: RestCall[] = [];
+  const moduleFiles: string[] = [];
   const base = options.config ?? own;
   const cfg = typeof base === 'function' ? base(own) : base;
   const scenario = { ...defaultScenario(), ...(options.scenario ?? {}) };
@@ -272,6 +315,50 @@ export async function open(
       return;
     }
     await route.fulfill({ status: 200, contentType: 'text/javascript', body: STANDIN });
+  });
+  // The optional features are separate files at the addresses the plugin's PHP printed; serve the real shipped files.
+  await page.route(
+    'https://shop.example.test/wp-content/plugins/kcpw-address-autocomplete/assets/**',
+    async (route) => {
+      const relative = new URL(route.request().url()).pathname.split('/assets/')[1] ?? '';
+      const file = path.join(PLUGIN, 'assets', relative);
+      moduleFiles.push(relative);
+      if (options.blockModules || !file.startsWith(PLUGIN) || !existsSync(file)) {
+        await route.abort('failed');
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: file.endsWith('.css') ? 'text/css' : 'text/javascript',
+        body: readFileSync(file),
+      });
+    },
+  );
+  await page.route('**/kcpw-aa/v1/{validate,hint,checkout-start}', async (route) => {
+    const req = route.request();
+    const cors = {
+      'access-control-allow-origin': '*',
+      'access-control-allow-headers': 'content-type, x-wp-nonce',
+      'access-control-allow-methods': 'GET, POST, OPTIONS',
+    };
+    if (req.method() === 'OPTIONS') {
+      await route.fulfill({ status: 204, headers: cors });
+      return;
+    }
+    const call: RestCall = {
+      name: new URL(req.url()).pathname.split('/').pop() ?? '',
+      method: req.method(),
+      headers: req.headers(),
+      body: req.postData() ?? '',
+    };
+    restCalls.push(call);
+    const answer = options.rest?.[call.name as RestName]?.(call) ?? { status: 204 };
+    await route.fulfill({
+      status: answer.status,
+      headers: cors,
+      contentType: 'application/json',
+      body: answer.body === undefined ? '' : JSON.stringify(answer.body),
+    });
   });
   await page.addInitScript(
     ({ cfg, scenario, dark, rtl }) => {
@@ -288,7 +375,7 @@ export async function open(
   );
   const file = path.join(fixtureDir(), `${name}.html`);
   await page.goto(pathToFileURL(file).href + (options.query ?? ''));
-  return { googleLoads: () => loads };
+  return { googleLoads: () => loads, rest: restCalls, moduleFiles };
 }
 
 /** Types like a person (a short pause between keys, shorter than the debounce). */
@@ -301,12 +388,18 @@ export const list = (page: Page) => page.locator('#kcpw-aa-listbox');
 export const options = (page: Page) => page.locator('#kcpw-aa-listbox [role="option"]');
 
 /** What the Google stand-in recorded. */
-export async function calls(
-  page: Page,
-): Promise<{ loads: number; suggest: Suggestion[]; details: Details[]; tokens: number }> {
+export async function calls(page: Page): Promise<Calls> {
   // Before the stand-in script has run there is nothing recorded yet.
   return page.evaluate(
-    () => window.__KCPW_G.calls ?? { loads: 0, suggest: [], details: [], tokens: 0 },
+    () =>
+      window.__KCPW_G.calls ?? {
+        loads: 0,
+        suggest: [],
+        details: [],
+        tokens: 0,
+        geocode: [],
+        maps: 0,
+      },
   );
 }
 

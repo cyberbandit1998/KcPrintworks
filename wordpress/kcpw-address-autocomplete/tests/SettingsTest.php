@@ -203,4 +203,21 @@ final class SettingsTest extends TestCase
             $this->assertSame(Settings::defaults()['mode'], $out['mode']);
         }
     }
+
+    public function testTheServerKeyAndTheDailyCapAreSavedWithTheModules(): void
+    {
+        $key = 'ServerKeyServerKeyServerKey0123456789';
+        $s = Settings::applySection(Settings::defaults(), ['server_key' => $key, 'validation_daily_cap' => '50', 'modules' => ['validation' => '1']], 'modules');
+        $this->assertSame($key, $s['server_key']);
+        $this->assertSame(50, $s['validation_daily_cap']);
+        $this->assertSame(true, $s['modules']['validation']);
+        $kept = Settings::applySection($s, ['server_key' => '', 'validation_daily_cap' => 'lots'], 'modules');
+        $this->assertSame($key, $kept['server_key'], 'blank keeps the saved key');
+        $this->assertSame(50, $kept['validation_daily_cap'], 'junk keeps the saved cap');
+        $this->assertSame(5000, Settings::applySection($s, ['validation_daily_cap' => 999999], 'modules')['validation_daily_cap']);
+        $this->assertSame(10, Settings::applySection($s, ['validation_daily_cap' => 0], 'modules')['validation_daily_cap']);
+        $this->assertSame('', Settings::applySection($s, ['clear_server_key' => '1'], 'modules')['server_key']);
+        $this->assertSame($s['browser_key'], Settings::applySection($s, ['server_key' => 'bad key!'], 'modules')['browser_key']);
+        $this->assertSame($key, Settings::applySection($s, ['server_key' => 'bad key!'], 'modules')['server_key'], 'a malformed key is ignored');
+    }
 }

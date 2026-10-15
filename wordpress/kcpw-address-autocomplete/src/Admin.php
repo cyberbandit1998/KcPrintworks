@@ -17,11 +17,15 @@ class Admin
     public const CAPABILITY = 'manage_options';
     public const SLUG = 'kcpw-aa';
 
+    private readonly Http $google;
+
     public function __construct(
         private readonly string $file,
         private readonly string $version,
         private readonly Store $store,
+        ?Http $google = null,
     ) {
+        $this->google = $google ?? new WpHttp(false);
     }
 
     public function register(): void
@@ -30,6 +34,7 @@ class Admin
         add_action('admin_enqueue_scripts', [$this, 'assets']);
         add_action('admin_post_kcpw_aa_save', [$this, 'onSave']);
         add_action('admin_post_kcpw_aa_wizard', [$this, 'onWizard']);
+        add_action('admin_post_kcpw_aa_test_server', [$this, 'onTestServer']);
     }
 
     public function menu(): void
@@ -140,12 +145,45 @@ class Admin
         $out .= '<p><button type="button" class="button" id="kcpw-aa-test"' . ($hasKey ? '' : ' disabled aria-disabled="true"') . '>' . Html::h(__('Test my key', 'kcpw-address-autocomplete')) . '</button></p>';
         $out .= '<ul id="kcpw-aa-test-results" class="kcpw-aa-results" aria-live="polite"></ul></section>';
 
-        // 3. Conflicts, usage, Google requirements.
+        // 3. Optional features, conflicts, usage, Google requirements.
+        $out .= $this->featuresStatusHtml();
         $out .= $this->conflictsHtml();
         $out .= $this->usageHtml();
         $out .= $this->googleSetupHtml();
 
         return $out . '</div>';
+    }
+
+    /** One line per optional feature: on or off, and what it still needs. Shows nothing at all while every feature is off. */
+    public function featuresStatusHtml(): string
+    {
+        $s = $this->store->effective();
+        $modules = is_array($s['modules'] ?? null) ? $s['modules'] : [];
+        $names = [
+            'pobox' => __('PO box notice', 'kcpw-address-autocomplete'),
+            'validation' => __('Address check', 'kcpw-address-autocomplete'),
+            'gps' => __('Use my location', 'kcpw-address-autocomplete'),
+            'map_picker' => __('Choose on a map', 'kcpw-address-autocomplete'),
+        ];
+        $items = '';
+        foreach ($names as $id => $label) {
+            if (($modules[$id] ?? false) !== true) {
+                continue;
+            }
+            $needs = $id === 'validation' && trim((string) $s['server_key']) === '' ? __('needs a server key (Settings > Features)', 'kcpw-address-autocomplete') : '';
+            $items .= '<li class="' . ($needs === '' ? 'is-done' : 'is-todo') . '"><span class="kcpw-aa-state">' . Html::h($needs === '' ? __('On:', 'kcpw-address-autocomplete') : __('To do:', 'kcpw-address-autocomplete')) . '</span> <strong>' . Html::h($label) . '</strong>' . ($needs !== '' ? ' <span class="description">' . Html::h($needs) . '</span>' : '') . '</li>';
+        }
+        $optins = '';
+        foreach (['webhook' => __('Webhook', 'kcpw-address-autocomplete'), 'abandonment' => __('Checkout counting', 'kcpw-address-autocomplete'), 'ip' => __('Location hint', 'kcpw-address-autocomplete')] as $name => $label) {
+            if (Settings::optInEnabled($s, $name)) {
+                $optins .= '<li class="is-done"><span class="kcpw-aa-state">' . Html::h(__('On (opt-in):', 'kcpw-address-autocomplete')) . '</span> <strong>' . Html::h($label) . '</strong></li>';
+            }
+        }
+        if ($items === '' && $optins === '') {
+            return '';
+        }
+        $out = '<section class="kcpw-aa-card" aria-labelledby="kcpw-aa-h-features"><h2 id="kcpw-aa-h-features">' . Html::h(__('Optional features switched on', 'kcpw-address-autocomplete')) . '</h2><ul class="kcpw-aa-steps">' . $items . $optins . '</ul>';
+        return $out . '<p class="description">' . Html::h(__('Each one loads its own small file only on a page whose form uses it. Turn any of them off in Settings > Features and Settings > Privacy.', 'kcpw-address-autocomplete')) . '</p></section>';
     }
 
     public function conflictsHtml(): string
@@ -175,10 +213,17 @@ class Admin
         $out .= '<table class="widefat striped kcpw-aa-usage"><tbody>';
         $rows = [
             __('Suggestion requests (Autocomplete)', 'kcpw-address-autocomplete') => $t['requests'],
-            __('Address lookups after a choice (Place Details)', 'kcpw-address-autocomplete') => $t['details'],
+            __('Address lookups after a choice (Place Details; Geocoding for "use my location" and the map)', 'kcpw-address-autocomplete') => $t['details'],
             __('Suggestions chosen (completed sessions)', 'kcpw-address-autocomplete') => $t['selections'],
             __('Customers who typed the address themselves after a failure', 'kcpw-address-autocomplete') => $t['manual'],
         ];
+        if (($this->store->settings['modules']['validation'] ?? false) === true) {
+            $rows[__('Address checks asked of Google (counted on this server; repeats are answered from memory)', 'kcpw-address-autocomplete')] = $t['validations'];
+        }
+        if (Settings::optInEnabled($this->store->settings, 'abandonment')) {
+            $rows[__('Checkouts started (opt-in; a number only)', 'kcpw-address-autocomplete')] = $t['checkoutsStarted'];
+            $rows[__('Orders completed (opt-in; a number only)', 'kcpw-address-autocomplete')] = $t['checkoutsCompleted'];
+        }
         foreach ($rows as $label => $value) {
             $out .= '<tr><th scope="row">' . Html::h($label) . '</th><td>' . Html::h(number_format_i18n((int) $value)) . '</td></tr>';
         }
@@ -200,7 +245,7 @@ class Admin
         $out = '<section class="kcpw-aa-card" aria-labelledby="kcpw-aa-h-google"><h2 id="kcpw-aa-h-google">' . Html::h(__('Google setup: APIs, key and billing', 'kcpw-address-autocomplete')) . '</h2>';
         $out .= '<ol class="kcpw-aa-setup">';
         $out .= '<li><strong>' . Html::h(__('A Google Cloud project with billing turned on.', 'kcpw-address-autocomplete')) . '</strong> ' . Html::h(__('Google Maps Platform requires a billing account even when your use stays inside its free monthly allowance. The allowance and prices change: read the current ones before you go live.', 'kcpw-address-autocomplete')) . ' ' . $link('https://mapsplatform.google.com/pricing/', __('Google Maps Platform pricing', 'kcpw-address-autocomplete')) . '</li>';
-        $out .= '<li><strong>' . Html::h(__('Turn on these APIs', 'kcpw-address-autocomplete')) . '</strong> (' . $link('https://console.cloud.google.com/apis/library', __('API Library', 'kcpw-address-autocomplete')) . '): <em>Maps JavaScript API</em> and <em>Places API (New)</em> ' . Html::h(__('are required.', 'kcpw-address-autocomplete')) . ' <em>Geocoding API</em> ' . Html::h(__('is only needed for the optional map picker and "use my location". "Address Validation API" is only needed for the optional address check.', 'kcpw-address-autocomplete')) . '</li>';
+        $out .= '<li><strong>' . Html::h(__('Turn on these APIs', 'kcpw-address-autocomplete')) . '</strong> (' . $link('https://console.cloud.google.com/apis/library', __('API Library', 'kcpw-address-autocomplete')) . '): <em>Maps JavaScript API</em> and <em>Places API (New)</em> ' . Html::h(__('are required.', 'kcpw-address-autocomplete')) . ' <em>Geocoding API</em> ' . Html::h(__('is only needed for the optional map picker and "use my location". "Address Validation API" is only needed for the optional address check, and that one is called from your server with a separate server key (Settings > Features).', 'kcpw-address-autocomplete')) . '</li>';
         $out .= '<li><strong>' . Html::h(__('Create a browser key', 'kcpw-address-autocomplete')) . '</strong> (' . $link('https://console.cloud.google.com/apis/credentials', __('Credentials', 'kcpw-address-autocomplete')) . '). ' . Html::h(__('Under "Application restrictions" choose "Websites" and add your shop address, for example https://shop.kcprintworks.com/*. Under "API restrictions" allow only the APIs above. A browser key is visible to visitors by design; the restrictions are what keep others from using it.', 'kcpw-address-autocomplete')) . '</li>';
         $out .= '<li><strong>' . Html::h(__('Set a spending limit', 'kcpw-address-autocomplete')) . '</strong> ' . Html::h(__('In Google Cloud, set a budget alert and a daily quota for the Places API. That is the only limit nobody can bypass; the plugin\'s own pause after a number of requests is a courtesy.', 'kcpw-address-autocomplete')) . '</li>';
         $out .= '</ol>';
@@ -209,13 +254,15 @@ class Admin
         return $out . '</section>';
     }
 
-    /** @param string $tab general|behavior|style */
+    /** @param string $tab general|behavior|style|modules|optins */
     public function settingsHtml(string $tab): string
     {
         $tabs = [
             'general' => __('General', 'kcpw-address-autocomplete'),
             'behavior' => __('Behavior', 'kcpw-address-autocomplete'),
             'style' => __('Appearance', 'kcpw-address-autocomplete'),
+            'modules' => __('Features', 'kcpw-address-autocomplete'),
+            'optins' => __('Privacy and opt-ins', 'kcpw-address-autocomplete'),
         ];
         if (!isset($tabs[$tab])) {
             $tab = 'general';
@@ -233,10 +280,17 @@ class Admin
         $out .= match ($tab) {
             'behavior' => $this->behaviorRows(),
             'style' => $this->styleRows(),
+            'modules' => $this->modulesRows(),
+            'optins' => $this->optinsRows(),
             default => $this->generalRows(),
         };
-        $out .= '</tbody></table><p class="submit"><button type="submit" class="button button-primary">' . Html::h(__('Save changes', 'kcpw-address-autocomplete')) . '</button></p></form></div>';
-        return $out;
+        $out .= '</tbody></table><p class="submit"><button type="submit" class="button button-primary">' . Html::h(__('Save changes', 'kcpw-address-autocomplete')) . '</button></p></form>';
+        if ($tab === 'modules') {
+            // The "Test the server key" button sits inside the settings form's table but submits THIS form (the `form` attribute), so the
+            // two never nest.
+            $out .= '<form id="kcpw-aa-test-server" method="post" action="' . Html::a(admin_url('admin-post.php')) . '"><input type="hidden" name="action" value="kcpw_aa_test_server">' . wp_nonce_field('kcpw_aa_test_server', '_wpnonce', true, false) . '</form>';
+        }
+        return $out . '</div>';
     }
 
     private function generalRows(): string
@@ -286,9 +340,87 @@ class Admin
         return $out;
     }
 
+    /** The optional features. Everything here starts off; each is a separate small file that only a page whose form uses it downloads. */
+    private function modulesRows(): string
+    {
+        $s = $this->store->settings;
+        $m = is_array($s['modules'] ?? null) ? $s['modules'] : [];
+        $on = static fn (string $id): bool => ($m[$id] ?? false) === true;
+        $out = '<tr><td colspan="2"><p>' . Html::h(__('Every feature below is off until you switch it on, and nothing here changes how the address suggestions themselves work. Switch them on one at a time while the plugin is in Preview, and test your checkout between each. Each one loads its own small file only on a page whose form uses it, so a checkout that uses none of them downloads none.', 'kcpw-address-autocomplete')) . '</p></td></tr>';
+        $out .= Html::row(__('PO box notice', 'kcpw-address-autocomplete'), Html::checkbox('s[modules][pobox]', 'kcpw-aa-m-pobox', $on('pobox'), __('Tell customers when the street line looks like a PO box or a military (APO/FPO) address', 'kcpw-address-autocomplete')) . '<br>' . Html::radios('s[pobox_mode]', (string) $s['pobox_mode'], [
+            'warn' => __('Only tell them (the order always goes through)', 'kcpw-address-autocomplete'),
+            'block' => __('Refuse PO boxes at checkout (Live mode only; never military addresses)', 'kcpw-address-autocomplete'),
+        ], __('What to do about a PO box', 'kcpw-address-autocomplete')), __('Needs no Google service. "Refuse" is enforced by your server when the order is placed (classic checkout and the Checkout Block), only while the plugin is Live. It has not been run against a real WooCommerce here: try it on a staging copy first.', 'kcpw-address-autocomplete'));
+        $out .= Html::row(__('Address check', 'kcpw-address-autocomplete'), Html::checkbox('s[modules][validation]', 'kcpw-aa-m-validation', $on('validation'), __('After an address is filled in or edited, check it with Google and show "looks right" or "please double-check"', 'kcpw-address-autocomplete')), __('Advice only: it never stops an order. Needs the Address Validation API and the server key below. Google bills each check; repeated addresses are answered from memory, and a daily limit applies.', 'kcpw-address-autocomplete'));
+        $out .= Html::row(__('Google server key', 'kcpw-address-autocomplete'), $this->keyField('server_key', 'kcpw-aa-server-key') . '<p><button type="submit" class="button" form="kcpw-aa-test-server">' . Html::h(__('Test the server key', 'kcpw-address-autocomplete')) . '</button></p>', __('Used only by your server, never sent to a browser. Create a second key in Google Cloud, restrict it to the Address Validation API and to your server\'s IP address (not to websites). You can also set KCPW_AA_SERVER_KEY in wp-config.php. The test makes one real, billed check of a Google address.', 'kcpw-address-autocomplete'), 'kcpw-aa-server-key');
+        $out .= Html::row(__('Most address checks per day', 'kcpw-address-autocomplete'), Html::number('s[validation_daily_cap]', 'kcpw-aa-cap', (int) $s['validation_daily_cap'], 10, 5000, 10), __('A ceiling on what the address check can cost in a day, whoever asks. At the limit it simply says nothing.', 'kcpw-address-autocomplete'), 'kcpw-aa-cap');
+        $out .= Html::row(__('Use my location', 'kcpw-address-autocomplete'), Html::checkbox('s[modules][gps]', 'kcpw-aa-m-gps', $on('gps'), __('Offer a "Use my location" button', 'kcpw-address-autocomplete')), __('Only when the customer presses it, and the browser asks their permission first. Their position goes from their browser to Google\'s Geocoding service, nowhere else; it is not stored. Needs the Geocoding API.', 'kcpw-address-autocomplete'));
+        $out .= Html::row(__('Choose on a map', 'kcpw-address-autocomplete'), Html::checkbox('s[modules][map_picker]', 'kcpw-aa-m-map', $on('map_picker'), __('Offer a "Choose on a map" button', 'kcpw-address-autocomplete')), __('Opens a window with a Google map only when pressed. Works with a mouse, touch or the keyboard. Needs the Maps JavaScript API (a map load is billed) and the Geocoding API.', 'kcpw-address-autocomplete'));
+        $out .= Html::row(__('Map ID', 'kcpw-address-autocomplete'), Html::text('s[map_id]', 'kcpw-aa-map-id', (string) $s['map_id'], 'regular-text', 'maxlength="64"'), __('Google\'s markers need a Map ID. "DEMO_MAP_ID" works for testing; create your own free one in Google Cloud (Map Management) for production.', 'kcpw-address-autocomplete'), 'kcpw-aa-map-id');
+        return $out;
+    }
+
+    /** The three things that send data somewhere or count visitors, each off until it is switched on here with the facts in front of the owner. */
+    private function optinsRows(): string
+    {
+        $o = is_array($this->store->settings['optins'] ?? null) ? $this->store->settings['optins'] : Settings::defaults()['optins'];
+        $w = is_array($o['webhook'] ?? null) ? $o['webhook'] : Settings::defaults()['optins']['webhook'];
+        $a = is_array($o['abandonment'] ?? null) ? $o['abandonment'] : [];
+        $ip = is_array($o['ip'] ?? null) ? $o['ip'] : Settings::defaults()['optins']['ip'];
+        $state = static fn (bool $on): string => '<p class="description"><strong>' . Html::h($on ? __('Currently on.', 'kcpw-address-autocomplete') : __('Currently off.', 'kcpw-address-autocomplete')) . '</strong></p>';
+
+        $out = '<tr><td colspan="2"><p>' . Html::h(__('Nothing on this page is on unless you switch it on. By default this plugin sends no address, no name and no visitor detail to anyone but Google (for the suggestions the visitor asked for). The usage counters on the Dashboard are whole numbers only.', 'kcpw-address-autocomplete')) . '</p></td></tr>';
+
+        $events = is_array($w['events'] ?? null) ? $w['events'] : [];
+        // An empty entry first, so unticking every box is still sent (and saved) as "none".
+        $eventBoxes = '<input type="hidden" name="s[optins][webhook][events][]" value="">';
+        foreach (Webhook::EVENTS as $key => $text) {
+            $eventBoxes .= '<label class="kcpw-aa-radio"><input type="checkbox" name="s[optins][webhook][events][]" value="' . Html::a($key) . '"' . (in_array($key, $events, true) ? ' checked' : '') . '> ' . Html::h(sprintf(/* translators: %s: what the check found */ __('When an address %s', 'kcpw-address-autocomplete'), $text)) . '</label><br>';
+        }
+        $out .= Html::row(__('Webhook', 'kcpw-address-autocomplete'),
+            Html::checkbox('s[optins][webhook][enabled]', 'kcpw-aa-o-webhook', ($w['enabled'] ?? false) === true, __('Send a short message to a web address I choose when the address check finds a problem', 'kcpw-address-autocomplete'))
+            . '<p>' . Html::checkbox('s[optins][webhook][consent]', 'kcpw-aa-o-consent', ($w['consent'] ?? false) === true, __('I understand this sends information from my shop to the address below, and I have the right to do that', 'kcpw-address-autocomplete')) . '</p>'
+            . '<p><label for="kcpw-aa-o-url">' . Html::h(__('Address to send to (must start with https://)', 'kcpw-address-autocomplete')) . '</label><br>' . Html::text('s[optins][webhook][url]', 'kcpw-aa-o-url', (string) ($w['url'] ?? ''), 'large-text code', 'placeholder="https://hooks.example.com/..."') . '</p>'
+            . '<fieldset><legend>' . Html::h(__('Send a message', 'kcpw-address-autocomplete')) . '</legend>' . $eventBoxes . '</fieldset>'
+            . '<p>' . Html::checkbox('s[optins][webhook][include_address]', 'kcpw-aa-o-include', ($w['include_address'] ?? false) === true, __('Also include the customer\'s address in the message (their street, city, postal code and country leave this site)', 'kcpw-address-autocomplete')) . '</p>'
+            . $state(Settings::optInEnabled($this->store->settings, 'webhook')),
+            __('Needs the address check (above) to be on, because that is what finds problems. By default a message says only that a check found a problem, which kind, your site and the form: no address. It is sent once, without waiting for an answer, and the same address does not ring twice within an hour. It is switched on only with the first box, the consent box and a valid https address.', 'kcpw-address-autocomplete'));
+
+        $out .= Html::row(__('Checkout counting', 'kcpw-address-autocomplete'),
+            Html::checkbox('s[optins][abandonment][enabled]', 'kcpw-aa-o-count', ($a['enabled'] ?? false) === true, __('Count how many checkouts were started and how many orders finished', 'kcpw-address-autocomplete')) . $state(Settings::optInEnabled($this->store->settings, 'abandonment')),
+            __('Two numbers on the Dashboard, added up per day, so you can see roughly how many people start checkout and do not finish. Nothing about any person or order is stored (a short-lived marker keyed by the order number stops a refreshed thank-you page counting twice). Counted only while the plugin is Live. It is a rough guide: visitors who block scripts, or pay with a wallet button, are not all counted.', 'kcpw-address-autocomplete'));
+
+        $source = (string) ($ip['source'] ?? 'header');
+        $out .= Html::row(__('Location hint', 'kcpw-address-autocomplete'),
+            Html::checkbox('s[optins][ip][enabled]', 'kcpw-aa-o-ip', ($ip['enabled'] ?? false) === true, __('Use the visitor\'s approximate country to rank suggestions better', 'kcpw-address-autocomplete'))
+            . Html::radios('s[optins][ip][source]', $source, [
+                'header' => __('Read the country your CDN already adds to each request (Cloudflare: CF-IPCountry). No outside call.', 'kcpw-address-autocomplete'),
+                'service' => __('Ask an IP lookup service I name. The visitor\'s IP address is sent to that service.', 'kcpw-address-autocomplete'),
+            ], __('Where the country comes from', 'kcpw-address-autocomplete'))
+            . '<p><label for="kcpw-aa-o-service">' . Html::h(__('Lookup service address, with {ip} where the visitor\'s IP address goes (https only)', 'kcpw-address-autocomplete')) . '</label><br>' . Html::text('s[optins][ip][service_url]', 'kcpw-aa-o-service', (string) ($ip['service_url'] ?? ''), 'large-text code', 'placeholder="https://lookup.example.com/json/{ip}"') . '</p>'
+            . $state(Settings::optInEnabled($this->store->settings, 'ip')),
+            __('It only softens the order of suggestions (they never get limited or filled by it), and a form that already limits the countries ignores it. A position from a lookup service is rounded to about a city before it is used, and nothing is stored with the visitor\'s address except a one-way hash, for six hours, so a returning visitor is not looked up again. Using a lookup service shares visitors\' IP addresses with a third party: check that your privacy notice says so.', 'kcpw-address-autocomplete'));
+        return $out;
+    }
+
     // ------------------------------------------------------------------------------------------------------------------
     // Handlers (POST to admin-post.php)
     // ------------------------------------------------------------------------------------------------------------------
+
+    /** The "Test the server key" button: one real Address Validation request for a known Google address. */
+    public function onTestServer(): void
+    {
+        $this->guard();
+        check_admin_referer('kcpw_aa_test_server');
+        $key = trim((string) $this->store->effective()['server_key']);
+        if ($key === '') {
+            $this->redirect(admin_url('admin.php?page=' . self::SLUG . '-settings&tab=modules&kcpw_msg=server_nokey'));
+            return;
+        }
+        $result = (new GoogleServer($this->google, $key))->test();
+        $why = $result['ok'] ? 'ok' : (in_array($result['reason'], ['auth', 'api', 'quota', 'network'], true) ? $result['reason'] : 'other');
+        $this->redirect(admin_url('admin.php?page=' . self::SLUG . '-settings&tab=modules&kcpw_msg=server_' . $why));
+    }
 
     public function onSave(): void
     {

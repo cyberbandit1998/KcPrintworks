@@ -18,8 +18,20 @@ namespace {
         }
     }
 
+    class WP_Error
+    {
+        public function __construct(public string $code = '', public string $message = '')
+        {
+        }
+    }
+
     final class WpStub
     {
+        /** @var list<array{string, string, array<string, mixed>}> every outgoing request: method, url, args */
+        public static array $http = [];
+        /** @var list<mixed> canned answers for outgoing requests, used first to last (the last one repeats) */
+        public static array $httpAnswers = [];
+
         /** @var array<string, list<array{callable, int}>> */
         public static array $actions = [];
         /** @var array<string, mixed> */
@@ -68,6 +80,7 @@ namespace {
         public static function reset(): void
         {
             self::$actions = self::$options = self::$autoload = self::$transients = self::$scripts = self::$styles = self::$inline = [];
+            self::$http = self::$httpAnswers = [];
             self::$routes = self::$menus = self::$nonceChecks = self::$redirects = self::$get = self::$pages = self::$wooPages = self::$shortcodes = self::$headers = [];
             \KcPrintworks\AddressAutocomplete\Picker::reset();
             self::$isAdmin = self::$canManage = self::$ajax = self::$isCheckout = self::$isOrderReceived = self::$isAccount = self::$isEditAddress = false;
@@ -95,6 +108,9 @@ namespace {
 
     if (!defined('DAY_IN_SECONDS')) {
         define('DAY_IN_SECONDS', 86400);
+    }
+    if (!defined('HOUR_IN_SECONDS')) {
+        define('HOUR_IN_SECONDS', 3600);
     }
 
     function add_shortcode(string $tag, callable $callback): void
@@ -141,7 +157,7 @@ namespace {
     {
         return $url . '&_wpnonce=nonce-for-' . $action;
     }
-    function add_action(string $hook, callable $callback, int $priority = 10): void
+    function add_action(string $hook, callable $callback, int $priority = 10, int $args = 1): void
     {
         WpStub::$actions[$hook][] = [$callback, $priority];
     }
@@ -313,5 +329,41 @@ namespace {
     {
         WpStub::$redirects[] = $url;
         return true;
+    }
+
+    function is_wp_error(mixed $thing): bool
+    {
+        return $thing instanceof WP_Error;
+    }
+    function wp_remote_retrieve_response_code(mixed $response): int
+    {
+        return (int) ($response['response']['code'] ?? 0);
+    }
+    function wp_remote_retrieve_body(mixed $response): string
+    {
+        return (string) ($response['body'] ?? '');
+    }
+    function kcpw_stub_http(string $method, string $url, array $args, bool $safe): mixed
+    {
+        WpStub::$http[] = [$method, $url, $args + ['safe' => $safe]];
+        $answers = WpStub::$httpAnswers;
+        $answer = count(WpStub::$http) <= count($answers) ? $answers[count(WpStub::$http) - 1] : (end($answers) ?: new WP_Error('http_request_failed', 'no answer set'));
+        return $answer;
+    }
+    function wp_remote_post(string $url, array $args = []): mixed
+    {
+        return kcpw_stub_http('POST', $url, $args, false);
+    }
+    function wp_safe_remote_post(string $url, array $args = []): mixed
+    {
+        return kcpw_stub_http('POST', $url, $args, true);
+    }
+    function wp_remote_get(string $url, array $args = []): mixed
+    {
+        return kcpw_stub_http('GET', $url, $args, false);
+    }
+    function wp_safe_remote_get(string $url, array $args = []): mixed
+    {
+        return kcpw_stub_http('GET', $url, $args, true);
     }
 }

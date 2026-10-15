@@ -56,6 +56,7 @@ final class Settings
                 'pobox' => false,
             ],
             'pobox_mode' => 'warn',
+            'validation_daily_cap' => 200,
             'map_id' => 'DEMO_MAP_ID',
             'optins' => [
                 'webhook' => ['enabled' => false, 'consent' => false, 'url' => '', 'include_address' => false, 'events' => ['bad']],
@@ -148,6 +149,11 @@ final class Settings
                 break;
 
             case 'modules':
+                if (!empty($raw['clear_server_key'])) {
+                    $out['server_key'] = '';
+                } elseif (isset($raw['server_key']) && is_string($raw['server_key']) && trim($raw['server_key']) !== '') {
+                    $out['server_key'] = self::apiKey($raw['server_key'], (string) $current['server_key']);
+                }
                 $modules = is_array($current['modules'] ?? null) ? $current['modules'] : [];
                 if (isset($raw['modules']) && is_array($raw['modules'])) {
                     foreach (array_keys(self::defaults()['modules']) as $name) {
@@ -157,6 +163,9 @@ final class Settings
                     }
                 }
                 $out['modules'] = $modules;
+                if (isset($raw['validation_daily_cap'])) {
+                    $out['validation_daily_cap'] = self::intRange($raw['validation_daily_cap'], 10, 5000, (int) $current['validation_daily_cap']);
+                }
                 if (isset($raw['pobox_mode'])) {
                     $out['pobox_mode'] = in_array($raw['pobox_mode'], ['warn', 'block'], true) ? $raw['pobox_mode'] : $current['pobox_mode'];
                 }

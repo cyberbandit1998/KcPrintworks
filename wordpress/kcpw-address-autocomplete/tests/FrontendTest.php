@@ -178,4 +178,54 @@ final class FrontendTest extends TestCase
         }
         $this->assertContains('%d', $s['count']);
     }
+
+    public function testTheServerKeyIsNeverPrintedAndTheRestNonceIsForAdministratorsOnly(): void
+    {
+        $this->onCheckout();
+        $this->render($this->frontend('live', ['modules' => ['validation' => true]]));
+        $json = \WpStub::$inline['kcpw-aa:before'];
+        $this->assertNotContains(self::SERVER_KEY, $json);
+        $this->assertNotContains('nonce', $json, 'a customer\'s page holds no nonce');
+        $this->assertContains('kcpw-aa/v1/validate', $json);
+
+        \WpStub::reset();
+        $this->onCheckout();
+        \WpStub::$canManage = true;
+        $this->render($this->frontend('preview', ['modules' => ['validation' => true]]));
+        $this->assertContains('"nonce":"nonce-wp_rest"', \WpStub::$inline['kcpw-aa:before']);
+    }
+
+    public function testOnlyTheRoutesThatExistAreListed(): void
+    {
+        $this->onCheckout();
+        $this->render($this->frontend('live', ['server_key' => '', 'modules' => ['validation' => true]]));
+        $json = \WpStub::$inline['kcpw-aa:before'];
+        $this->assertNotContains('kcpw-aa/v1/validate', $json, 'no server key, no address check');
+        $this->assertNotContains('kcpw-aa/v1/hint', $json);
+        $this->assertNotContains('checkout-start', $json);
+        $this->assertContains('"hint":false', $json);
+        $this->assertContains('"countCheckouts":false', $json);
+
+        \WpStub::reset();
+        $this->onCheckout();
+        $this->render($this->frontend('live', ['optins' => ['ip' => ['enabled' => true], 'abandonment' => ['enabled' => true]]]));
+        $json = \WpStub::$inline['kcpw-aa:before'];
+        $this->assertContains('kcpw-aa/v1/hint', $json);
+        $this->assertContains('"hint":true', $json);
+        $this->assertContains('"countCheckouts":true', $json);
+    }
+
+    public function testTheAddressCheckFileIsNotOfferedWithoutAServerKey(): void
+    {
+        $forms = FormConfig::sanitizeList([FormConfig::blank('woo_block')]);
+        $real = dirname(__DIR__) . '/kcpw-address-autocomplete.php';
+        $make = static fn (array $override): Frontend => new Frontend($real, '0.1.0', Settings::load($override + ['mode' => 'live', 'browser_key' => self::KEY, 'modules' => ['validation' => true, 'pobox' => true]]), $forms);
+        $with = $make(['server_key' => self::SERVER_KEY])->moduleUrls($forms);
+        $without = $make(['server_key' => ''])->moduleUrls($forms);
+        $this->assertTrue(isset($with['validation']), 'with a key the file is offered');
+        $this->assertContains('kcpw-aa-validate.js?ver=0.1.0', $with['validation']);
+        $this->assertFalse(isset($without['validation']), 'without a key it is not');
+        $this->assertTrue(isset($without['pobox']), 'the others are unaffected');
+        $this->assertFalse(isset($without['gps']), 'a feature that is off is never offered');
+    }
 }

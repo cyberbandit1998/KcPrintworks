@@ -1,0 +1,108 @@
+{
+    "v": "test",
+    "key": "test-key-0000000000000000000000",
+    "mapsVersion": "weekly",
+    "language": "en-US",
+    "admin": false,
+    "preview": false,
+    "minChars": 3,
+    "debounce": 300,
+    "maxRequests": 12,
+    "disableAutofill": true,
+    "fallbackNotice": true,
+    "usage": true,
+    "style": {
+        "theme": "match",
+        "accent": "#2b59e6",
+        "radius": 8
+    },
+    "modules": {
+        "map_picker": "https://shop.example.test/wp-content/plugins/kcpw-address-autocomplete/assets/js/kcpw-aa-map.js?ver=test",
+        "gps": "https://shop.example.test/wp-content/plugins/kcpw-address-autocomplete/assets/js/kcpw-aa-gps.js?ver=test",
+        "validation": "https://shop.example.test/wp-content/plugins/kcpw-address-autocomplete/assets/js/kcpw-aa-validate.js?ver=test",
+        "pobox": "https://shop.example.test/wp-content/plugins/kcpw-address-autocomplete/assets/js/kcpw-aa-pobox.js?ver=test"
+    },
+    "rest": {
+        "usage": "https://shop.example.test/wp-json/kcpw-aa/v1/usage",
+        "validate": "https://shop.example.test/wp-json/kcpw-aa/v1/validate",
+        "hint": "https://shop.example.test/wp-json/kcpw-aa/v1/hint",
+        "start": "https://shop.example.test/wp-json/kcpw-aa/v1/checkout-start"
+    },
+    "poboxMode": "warn",
+    "mapId": "DEMO_MAP_ID",
+    "hint": true,
+    "countCheckouts": true,
+    "i18n": {
+        "attribution": "Powered by Google",
+        "listLabel": "Address suggestions",
+        "count": "%d address suggestions available. Use the up and down arrow keys, then Enter to choose.",
+        "noResults": "No suggestions. Keep typing, or enter your address yourself.",
+        "unavailable": "Address suggestions are not available right now. Please enter your address yourself.",
+        "limit": "Suggestions paused. Please finish typing your address yourself.",
+        "loading": "Looking up addresses…",
+        "placeFailed": "We could not load that address. Please finish it yourself.",
+        "filled": "Address filled in. Please check each field.",
+        "unit": "Unit",
+        "preview": "Address suggestions: preview for administrators only. Customers do not see them yet.",
+        "previewDismiss": "Dismiss this notice",
+        "problem": "Address suggestions are not working on this page",
+        "tools": "Other ways to enter your address",
+        "gps": "Use my location",
+        "gpsWorking": "Finding your location…",
+        "gpsDenied": "We could not get your location. You can type your address instead.",
+        "gpsFailed": "We could not turn your location into an address. Please type it instead.",
+        "map": "Choose on a map",
+        "mapTitle": "Choose your address on the map",
+        "mapHelp": "Click or tap the map, or drag the pin, to mark where you are. The buttons below move the pin one step. You can also close this window and type your address.",
+        "mapLoading": "Loading the map…",
+        "mapFailed": "The map could not be loaded. Please type your address instead.",
+        "mapNear": "Pin is near: %s",
+        "mapNoAddress": "There is no address at the pin. Move it, or type your address.",
+        "mapMove": "Move the pin",
+        "mapUse": "Use this address",
+        "mapClose": "Close the map",
+        "mapNorth": "Move pin north",
+        "mapSouth": "Move pin south",
+        "mapEast": "Move pin east",
+        "mapWest": "Move pin west",
+        "poBoxWarn": "This looks like a PO box. Please check that we can deliver to it.",
+        "poBoxBlock": "This looks like a PO box. We can only deliver to a street address.",
+        "military": "This looks like a military (APO/FPO) address. Please check that we can deliver to it.",
+        "checking": "Checking your address…",
+        "checkOk": "This address looks right.",
+        "checkMaybe": "Please double-check this address.",
+        "checkBad": "We could not verify this address. Please check it."
+    },
+    "forms": [
+        {
+            "id": "f_plainform",
+            "mode": "smart",
+            "groups": [
+                {
+                    "label": "Form",
+                    "scope": "",
+                    "fields": {
+                        "address": "#addr",
+                        "address2": "#addr2",
+                        "city": "#city",
+                        "state": "#state",
+                        "postcode": "#zip",
+                        "country": "#country"
+                    }
+                }
+            ],
+            "countries": [
+                "US",
+                "CA"
+            ],
+            "language": "",
+            "placeTypes": "address",
+            "features": {
+                "map_picker": true,
+                "gps": true,
+                "validation": true,
+                "pobox": true
+            }
+        }
+    ]
+}

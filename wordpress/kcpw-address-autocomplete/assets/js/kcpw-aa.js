@@ -273,6 +273,34 @@
     preview: 'Address suggestions: preview for administrators only. Customers do not see them yet.',
     previewDismiss: 'Dismiss this notice',
     problem: 'Address suggestions are not working on this page',
+    tools: 'Other ways to enter your address',
+    gps: 'Use my location',
+    gpsWorking: 'Finding your location\u2026',
+    gpsDenied: 'We could not get your location. You can type your address instead.',
+    gpsFailed: 'We could not turn your location into an address. Please type it instead.',
+    map: 'Choose on a map',
+    mapTitle: 'Choose your address on the map',
+    mapHelp:
+      'Click or tap the map, or drag the pin, to mark where you are. The buttons below move the pin one step. You can also close this window and type your address.',
+    mapLoading: 'Loading the map\u2026',
+    mapFailed: 'The map could not be loaded. Please type your address instead.',
+    mapNear: 'Pin is near: %s',
+    mapNoAddress: 'There is no address at the pin. Move it, or type your address.',
+    mapMove: 'Move the pin',
+    mapUse: 'Use this address',
+    mapClose: 'Close the map',
+    mapNorth: 'Move pin north',
+    mapSouth: 'Move pin south',
+    mapEast: 'Move pin east',
+    mapWest: 'Move pin west',
+    poBoxWarn: 'This looks like a PO box. Please check that we can deliver to it.',
+    poBoxBlock: 'This looks like a PO box. We can only deliver to a street address.',
+    military:
+      'This looks like a military (APO/FPO) address. Please check that we can deliver to it.',
+    checking: 'Checking your address\u2026',
+    checkOk: 'This address looks right.',
+    checkMaybe: 'Please double-check this address.',
+    checkBad: 'We could not verify this address. Please check it.',
   };
 
   /** Our own load failures carry a code; Google's errors are sorted by what their text says. */
@@ -577,6 +605,53 @@
   }
 
   // ------------------------------------------------------------------------------------------------------------------
+  // This plugin's own REST routes (only the ones the owner switched on are ever listed in the page configuration)
+  // ------------------------------------------------------------------------------------------------------------------
+
+  /** GET (no body) or POST (a body). Resolves with the decoded answer, or null on ANY problem: nothing here may break a page. */
+  function restCall(cfg, url, body) {
+    if (!root.fetch || !url) return Promise.resolve(null);
+    var headers = {};
+    if (cfg.rest && cfg.rest.nonce) headers['X-WP-Nonce'] = cfg.rest.nonce;
+    var init = {
+      method: body === undefined ? 'GET' : 'POST',
+      headers: headers,
+      credentials: 'same-origin',
+    };
+    if (body !== undefined) {
+      headers['Content-Type'] = 'application/json';
+      init.body = JSON.stringify(body);
+    }
+    return withTimeout(root.fetch(url, init), 7000)
+      .then(function (res) {
+        return res && res.ok && res.status !== 204 ? res.json() : null;
+      })
+      .catch(function () {
+        return null;
+      });
+  }
+
+  /** Opt-in: a country (and, from an IP lookup service, a city-sized position) that only softens how suggestions are ranked. */
+  function loadHint(cfg, shared) {
+    if (shared.hintAsked || !cfg.hint || !cfg.rest || !cfg.rest.hint) return;
+    shared.hintAsked = true;
+    restCall(cfg, cfg.rest.hint).then(function (hint) {
+      if (!hint || typeof hint.country !== 'string' || !/^[A-Z]{2}$/.test(hint.country)) return;
+      shared.region = hint.country;
+      if (typeof hint.lat === 'number' && typeof hint.lng === 'number' && !shared.locationBias) {
+        shared.locationBias = { center: { lat: hint.lat, lng: hint.lng }, radius: 50000 };
+      }
+    });
+  }
+
+  /** Opt-in: tells the server a checkout was started (it adds one to a number; nothing about the visitor is sent). */
+  function countCheckoutStart(cfg, shared) {
+    if (shared.startCounted || !cfg.countCheckouts || !cfg.rest || !cfg.rest.start) return;
+    shared.startCounted = true;
+    restCall(cfg, cfg.rest.start, {});
+  }
+
+  // ------------------------------------------------------------------------------------------------------------------
   // Optional modules (map picker, GPS, validation, PO box): separate files, loaded on first focus, only when switched on
   // ------------------------------------------------------------------------------------------------------------------
 
@@ -589,7 +664,10 @@
 
   function loadModuleScript(cfg, id) {
     var url = cfg.modules && cfg.modules[id];
-    if (!url || modules[id] || moduleLoading[id]) return Promise.resolve(modules[id] || null);
+    if (modules[id]) return Promise.resolve(modules[id]);
+    // A download already under way (started by pointing at the button) is waited for, not answered with "not available".
+    if (moduleLoading[id]) return moduleLoading[id];
+    if (!url) return Promise.resolve(null);
     moduleLoading[id] = new Promise(function (resolve) {
       var script = document.createElement('script');
       script.async = true;
@@ -827,6 +905,7 @@
     regions: ['(regions)'],
   };
   var SESSION_MAX_AGE = 170000;
+  var noteCounter = 0;
 
   function attachField(input, form, group, cfg, shared) {
     var dd = getDropdown(cfg);
@@ -886,6 +965,7 @@
       if (form.language) req.language = form.language;
       var types = TYPE_FILTERS[form.placeTypes];
       if (types) req.includedPrimaryTypes = types;
+      if (shared.region && !(form.countries && form.countries.length)) req.region = shared.region;
       if (shared.locationBias) req.locationBias = shared.locationBias;
       return req;
     }
@@ -1158,21 +1238,138 @@
         return;
       }
       try {
-        usage.s += 1;
-        resetSession();
-        await fill(mapped);
-        failures = 0;
-        input.dispatchEvent(
-          new root.CustomEvent('kcpw-aa:filled', {
-            bubbles: true,
-            detail: { mapped: mapped, formId: form.id },
-          }),
-        );
-        runHook('onFilled', mapped);
-        dd.announce(cfg.i18n.filled);
+        await apply(mapped);
       } finally {
         busy = false;
       }
+    }
+
+    /** Fills the form from an address, then tells the page and the optional features. Used by suggestions, GPS and the map. */
+    async function apply(mapped) {
+      usage.s += 1;
+      resetSession();
+      // Kept in memory for this page only (where the map should open next time); never sent anywhere.
+      if (
+        typeof mapped.lat === 'number' &&
+        typeof mapped.lng === 'number' &&
+        isFinite(mapped.lat + mapped.lng)
+      ) {
+        shared.lastLocation = { lat: mapped.lat, lng: mapped.lng };
+      }
+      await fill(mapped);
+      failures = 0;
+      input.dispatchEvent(
+        new root.CustomEvent('kcpw-aa:filled', {
+          bubbles: true,
+          detail: { mapped: mapped, formId: form.id },
+        }),
+      );
+      runHook('onFilled', mapped);
+      dd.announce(cfg.i18n.filled);
+    }
+
+    // A short message under the field (a PO box warning, an address check result, a GPS problem). One line per feature, polite
+    // live region, a symbol as well as colour, and linked to the field with aria-describedby.
+    var notes = null;
+    var noteItems = {};
+    var NOTE_ICONS = { ok: '\u2713', warn: '!', error: '\u00d7', info: 'i' };
+    function fieldAnchor() {
+      return input.closest('.wc-block-components-text-input') || input;
+    }
+    function describedBy(on) {
+      var ids = (input.getAttribute('aria-describedby') || '').split(/\s+/).filter(function (id) {
+        return id && (!notes || id !== notes.id);
+      });
+      if (on && notes) ids.push(notes.id);
+      if (ids.length) input.setAttribute('aria-describedby', ids.join(' '));
+      else input.removeAttribute('aria-describedby');
+    }
+    function note(id, kind, text) {
+      var item = noteItems[id];
+      if (!text) {
+        if (item) {
+          item.remove();
+          delete noteItems[id];
+        }
+        if (notes && !notes.children.length) {
+          describedBy(false);
+          notes.remove();
+          notes = null;
+        }
+        return;
+      }
+      if (!notes || !notes.isConnected) {
+        notes = create('div', 'kcpw-aa-notes');
+        notes.id = 'kcpw-aa-notes-' + ++noteCounter;
+        notes.setAttribute('aria-live', 'polite');
+        (tools || fieldAnchor()).insertAdjacentElement('afterend', notes);
+        Object.keys(noteItems).forEach(function (key) {
+          notes.appendChild(noteItems[key]);
+        });
+        describedBy(true);
+      }
+      if (!item) {
+        item = create('p', 'kcpw-aa-note');
+        item.appendChild(create('span', 'kcpw-aa-note-icon', ''));
+        item.firstChild.setAttribute('aria-hidden', 'true');
+        item.appendChild(create('span', 'kcpw-aa-note-text', ''));
+        noteItems[id] = item;
+        notes.appendChild(item);
+      }
+      item.setAttribute('data-kind', kind);
+      item.firstChild.textContent = NOTE_ICONS[kind] || '';
+      item.lastChild.textContent = text;
+    }
+
+    // "Use my location" and "Choose on a map": drawn at once (two small buttons) but the code behind them is fetched only when
+    // asked for (or when the visitor points at the button).
+    var tools = null;
+    var TOOL_LABELS = { gps: 'gps', map_picker: 'map' };
+    function buildTools() {
+      var ids = Object.keys(TOOL_LABELS).filter(function (id) {
+        return form.features && form.features[id] && cfg.modules && cfg.modules[id];
+      });
+      if (!ids.length) return;
+      tools = create('div', 'kcpw-aa-tools');
+      tools.setAttribute('role', 'group');
+      tools.setAttribute('aria-label', cfg.i18n.tools);
+      ids.forEach(function (id) {
+        var button = create('button', 'kcpw-aa-tool', cfg.i18n[TOOL_LABELS[id]]);
+        button.type = 'button';
+        button.setAttribute('data-tool', id);
+        var warm = function () {
+          loadModuleScript(cfg, id);
+        };
+        button.addEventListener('pointerenter', warm);
+        button.addEventListener('focus', warm);
+        button.addEventListener('click', function () {
+          openTool(id, button);
+        });
+        tools.appendChild(button);
+      });
+      fieldAnchor().insertAdjacentElement('afterend', tools);
+    }
+    function openTool(id, button) {
+      if (button.getAttribute('aria-busy') === 'true') return;
+      button.setAttribute('aria-busy', 'true');
+      loadModuleScript(cfg, id)
+        .then(function (m) {
+          if (!m || typeof m.onTool !== 'function') {
+            // The code could not be loaded: this way of entering an address is simply not offered; typing still works.
+            button.hidden = true;
+            return null;
+          }
+          return m.onTool(ctx, button);
+        })
+        .catch(function () {
+          warnOnce(
+            'tool:' + id,
+            'KCPW address autocomplete: the "' + id + '" feature failed and was skipped.',
+          );
+        })
+        .then(function () {
+          button.removeAttribute('aria-busy');
+        });
     }
 
     function runHook(name, a, b) {
@@ -1203,12 +1400,23 @@
         return loadGoogle(cfg);
       },
       put: put,
+      apply: apply,
+      note: note,
+      i18n: cfg.i18n,
+      announce: function (text) {
+        dd.announce(text);
+      },
+      post: function (url, body) {
+        return restCall(cfg, url, body === undefined ? {} : body);
+      },
+      errorCode: errorCode,
       usage: function () {
         return usage;
       },
       countError: countError,
       shared: shared,
     };
+    buildTools();
 
     function onFocus() {
       if (!shared.disabled) {
@@ -1216,8 +1424,11 @@
           fail(error, true);
         });
       }
+      loadHint(cfg, shared);
+      countCheckoutStart(cfg, shared);
       Object.keys(cfg.modules || {}).forEach(function (id) {
-        if (form.features && form.features[id]) {
+        // The GPS and map code waits for a click on its button; the others watch what is typed, so they load with the first focus.
+        if (!TOOL_LABELS[id] && form.features && form.features[id]) {
           loadModuleScript(cfg, id).then(function (m) {
             if (m && !ctx['mod_' + id]) {
               ctx['mod_' + id] = true;
@@ -1320,6 +1531,16 @@
         input.removeEventListener('compositionend', onCompositionEnd);
         clearTimeout(timer);
         hideSpinner();
+        runHook('onDetach');
+        if (tools) tools.remove();
+        Object.keys(noteItems).forEach(function (key) {
+          noteItems[key].remove();
+        });
+        noteItems = {};
+        if (notes) {
+          describedBy(false);
+          notes.remove();
+        }
         if (dd.isOpenFor(input)) dd.hide();
         input.removeAttribute('role');
         input.removeAttribute('aria-autocomplete');
@@ -1350,7 +1571,8 @@
     );
   }
 
-  var OURS = '.kcpw-aa-dd, .kcpw-aa-pill, .kcpw-aa-live';
+  // Everything this plugin adds to a page has a class that starts with kcpw-aa-; changes inside or to those are not the page's business.
+  var OURS = '[class*="kcpw-aa-"]';
 
   /** Whether a burst of page changes involved anything other than this script's own list and notice. */
   function involvesPage(mutations) {

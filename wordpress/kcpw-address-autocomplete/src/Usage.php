@@ -19,7 +19,11 @@ final class Usage
     public const KEEP_DAYS = 60;
 
     /** What each kind of counter means. */
-    public const COUNTERS = ['r' => 'requests', 'd' => 'details', 's' => 'selections', 'm' => 'manual'];
+    public const COUNTERS = [
+        'r' => 'requests', 'd' => 'details', 's' => 'selections', 'm' => 'manual',
+        // Counted by this server, never accepted from a browser: address checks made, and (opt-in) checkouts started and completed.
+        'v' => 'validations', 'cs' => 'checkoutsStarted', 'cc' => 'checkoutsCompleted',
+    ];
 
     /** The only failure codes a beacon may carry. */
     public const ERROR_CODES = ['auth', 'api', 'quota', 'billing', 'script', 'conflict', 'timeout', 'network', 'request', 'details', 'unknown'];
@@ -64,7 +68,7 @@ final class Usage
      * Adds one cleaned beacon to the stored days and drops days older than KEEP_DAYS.
      *
      * @param mixed $stored
-     * @param array{r: int, d: int, s: int, m: int, e: array<string, int>} $beacon
+     * @param array<string, mixed> $beacon
      * @return array{days: array<string, array<string, mixed>>}
      */
     public static function record(mixed $stored, array $beacon, string $today): array
@@ -72,10 +76,10 @@ final class Usage
         $days = is_array($stored) && is_array($stored['days'] ?? null) ? $stored['days'] : [];
         $row = is_array($days[$today] ?? null) ? $days[$today] : [];
         foreach (array_keys(self::COUNTERS) as $key) {
-            $row[$key] = (int) ($row[$key] ?? 0) + $beacon[$key];
+            $row[$key] = (int) ($row[$key] ?? 0) + (int) ($beacon[$key] ?? 0);
         }
         $errors = is_array($row['e'] ?? null) ? $row['e'] : [];
-        foreach ($beacon['e'] as $code => $n) {
+        foreach ($beacon['e'] ?? [] as $code => $n) {
             $errors[$code] = (int) ($errors[$code] ?? 0) + $n;
         }
         $row['e'] = $errors;
@@ -89,6 +93,22 @@ final class Usage
             }
         }
         return ['days' => $days];
+    }
+
+    /**
+     * Adds numbers this SERVER counted itself (not a browser's report): `['v' => 1]`, `['cs' => 1]`, `['cc' => 1]`.
+     *
+     * @param mixed $stored
+     * @param array<string, int> $add
+     * @return array{days: array<string, array<string, mixed>>}
+     */
+    public static function bump(mixed $stored, array $add, string $today): array
+    {
+        $beacon = [];
+        foreach (['v', 'cs', 'cc'] as $key) {
+            $beacon[$key] = max(0, min(1000, (int) ($add[$key] ?? 0)));
+        }
+        return self::record($stored, $beacon, $today);
     }
 
     /**
@@ -117,7 +137,7 @@ final class Usage
                 $errors[$code] = ($errors[$code] ?? 0) + (int) $n;
                 $entry['errors'] += (int) $n;
             }
-            if ($entry['requests'] || $entry['details'] || $entry['selections'] || $entry['manual'] || $entry['errors']) {
+            if (array_sum(array_intersect_key($entry, array_flip(array_values(self::COUNTERS)))) > 0 || $entry['errors']) {
                 $rows[] = $entry;
             }
         }

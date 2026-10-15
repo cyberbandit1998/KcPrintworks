@@ -147,11 +147,41 @@ final class Frontend
             'usage' => (bool) $s['usage_counters'],
             'style' => ['theme' => (string) $s['theme'], 'accent' => (string) $s['accent'], 'radius' => (int) $s['radius']],
             'modules' => $this->moduleUrls($forms),
-            'rest' => ['usage' => rest_url('kcpw-aa/v1/usage')],
+            'rest' => $this->restUrls($isAdmin),
+            'poboxMode' => (string) ($s['pobox_mode'] ?? 'warn'),
+            'mapId' => (string) ($s['map_id'] ?? 'DEMO_MAP_ID'),
+            // Each opt-in is a plain yes/no here; the browser asks for nothing the owner has not switched on.
+            'hint' => Settings::optInEnabled($s, 'ip'),
+            'countCheckouts' => Settings::optInEnabled($s, 'abandonment') && function_exists('is_checkout') && is_checkout(),
             'i18n' => self::strings(),
             'forms' => array_map(fn (array $form): array => FormConfig::forBrowser($form, $s), $forms),
         ];
         return $config;
+    }
+
+    /**
+     * Only the routes that exist are listed. The REST nonce is given to a signed-in administrator only: it is what lets the address
+     * check and the other routes recognise them during Preview (a visitor without it is refused until the plugin is Live).
+     *
+     * @return array<string, string>
+     */
+    private function restUrls(bool $isAdmin): array
+    {
+        $urls = ['usage' => rest_url('kcpw-aa/v1/usage')];
+        $modules = is_array($this->settings['modules'] ?? null) ? $this->settings['modules'] : [];
+        if (($modules['validation'] ?? false) === true && trim((string) ($this->settings['server_key'] ?? '')) !== '') {
+            $urls['validate'] = rest_url('kcpw-aa/v1/validate');
+        }
+        if (Settings::optInEnabled($this->settings, 'ip')) {
+            $urls['hint'] = rest_url('kcpw-aa/v1/hint');
+        }
+        if (Settings::optInEnabled($this->settings, 'abandonment')) {
+            $urls['start'] = rest_url('kcpw-aa/v1/checkout-start');
+        }
+        if ($isAdmin) {
+            $urls['nonce'] = wp_create_nonce('wp_rest');
+        }
+        return $urls;
     }
 
     /**
@@ -168,6 +198,10 @@ final class Frontend
         $urls = [];
         foreach (self::MODULE_FILES as $id => $file) {
             if (($modules[$id] ?? false) !== true || !is_file($dir . $file)) {
+                continue;
+            }
+            // The address check cannot work without the server key, so without one its file is never even offered to the page.
+            if ($id === 'validation' && trim((string) ($this->settings['server_key'] ?? '')) === '') {
                 continue;
             }
             foreach ($forms as $form) {
@@ -198,6 +232,33 @@ final class Frontend
             'preview' => __('Address suggestions: preview for administrators only. Customers do not see them yet.', 'kcpw-address-autocomplete'),
             'previewDismiss' => __('Dismiss this notice', 'kcpw-address-autocomplete'),
             'problem' => __('Address suggestions are not working on this page', 'kcpw-address-autocomplete'),
+            'tools' => __('Other ways to enter your address', 'kcpw-address-autocomplete'),
+            'gps' => __('Use my location', 'kcpw-address-autocomplete'),
+            'gpsWorking' => __('Finding your location…', 'kcpw-address-autocomplete'),
+            'gpsDenied' => __('We could not get your location. You can type your address instead.', 'kcpw-address-autocomplete'),
+            'gpsFailed' => __('We could not turn your location into an address. Please type it instead.', 'kcpw-address-autocomplete'),
+            'map' => __('Choose on a map', 'kcpw-address-autocomplete'),
+            'mapTitle' => __('Choose your address on the map', 'kcpw-address-autocomplete'),
+            'mapHelp' => __('Click or tap the map, or drag the pin, to mark where you are. The buttons below move the pin one step. You can also close this window and type your address.', 'kcpw-address-autocomplete'),
+            'mapLoading' => __('Loading the map…', 'kcpw-address-autocomplete'),
+            'mapFailed' => __('The map could not be loaded. Please type your address instead.', 'kcpw-address-autocomplete'),
+            /* translators: %s: an address */
+            'mapNear' => __('Pin is near: %s', 'kcpw-address-autocomplete'),
+            'mapNoAddress' => __('There is no address at the pin. Move it, or type your address.', 'kcpw-address-autocomplete'),
+            'mapMove' => __('Move the pin', 'kcpw-address-autocomplete'),
+            'mapUse' => __('Use this address', 'kcpw-address-autocomplete'),
+            'mapClose' => __('Close the map', 'kcpw-address-autocomplete'),
+            'mapNorth' => __('Move pin north', 'kcpw-address-autocomplete'),
+            'mapSouth' => __('Move pin south', 'kcpw-address-autocomplete'),
+            'mapEast' => __('Move pin east', 'kcpw-address-autocomplete'),
+            'mapWest' => __('Move pin west', 'kcpw-address-autocomplete'),
+            'poBoxWarn' => __('This looks like a PO box. Please check that we can deliver to it.', 'kcpw-address-autocomplete'),
+            'poBoxBlock' => __('This looks like a PO box. We can only deliver to a street address.', 'kcpw-address-autocomplete'),
+            'military' => __('This looks like a military (APO/FPO) address. Please check that we can deliver to it.', 'kcpw-address-autocomplete'),
+            'checking' => __('Checking your address…', 'kcpw-address-autocomplete'),
+            'checkOk' => __('This address looks right.', 'kcpw-address-autocomplete'),
+            'checkMaybe' => __('Please double-check this address.', 'kcpw-address-autocomplete'),
+            'checkBad' => __('We could not verify this address. Please check it.', 'kcpw-address-autocomplete'),
         ];
     }
 }

@@ -15,7 +15,8 @@ final class Plugin
         $frontend->register();
         (new Shortcode($frontend))->register();
         (new Picker($file, $version))->register();
-        (new Rest($effective))->register();
+        (new Rest($effective, null, null, defined('KCPW_AA_VALIDATION_CACHE_SECONDS') ? (int) constant('KCPW_AA_VALIDATION_CACHE_SECONDS') : null))->register();
+        (new WooCommerce($effective))->register();
         if (is_admin()) {
             (new Admin($file, $version, $store))->register();
             (new AdminForms($store))->register();

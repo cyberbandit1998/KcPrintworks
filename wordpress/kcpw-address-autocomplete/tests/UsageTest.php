@@ -31,14 +31,27 @@ final class UsageTest extends TestCase
 
     public function testRecordAddsUpAndPrunesOldDays(): void
     {
-        $stored = ['days' => ['2020-01-01' => ['r' => 9, 'd' => 0, 's' => 0, 'm' => 0, 'e' => []]]];
+        $stored = ['days' => ['2020-01-01' => ['r' => 9, 'd' => 0, 's' => 0, 'm' => 0, 'v' => 0, 'cs' => 0, 'cc' => 0, 'e' => []]]];
         $a = ['r' => 3, 'd' => 1, 's' => 1, 'm' => 0, 'e' => ['api' => 1]];
         $once = Usage::record($stored, $a, '2026-10-15');
         $twice = Usage::record($once, $a, '2026-10-15');
         $this->assertSame(6, $twice['days']['2026-10-15']['r']);
         $this->assertSame(2, $twice['days']['2026-10-15']['e']['api']);
         $this->assertFalse(isset($twice['days']['2020-01-01']), 'a day older than the keep window is dropped');
-        $this->assertSame(['days' => ['2026-10-15' => ['r' => 3, 'd' => 1, 's' => 1, 'm' => 0, 'e' => ['api' => 1]]]], Usage::record('garbage', $a, '2026-10-15'));
+        $this->assertSame(['days' => ['2026-10-15' => ['r' => 3, 'd' => 1, 's' => 1, 'm' => 0, 'v' => 0, 'cs' => 0, 'cc' => 0, 'e' => ['api' => 1]]]], Usage::record('garbage', $a, '2026-10-15'));
+    }
+
+    public function testServerCountersAreAddedByTheServerAndNeverTakenFromABeacon(): void
+    {
+        $b = Usage::cleanBeacon(['r' => 1, 'v' => 50, 'cs' => 50, 'cc' => 50]);
+        $this->assertSame(['r' => 1, 'd' => 0, 's' => 0, 'm' => 0, 'e' => []], $b, 'a browser cannot report checks or checkouts');
+        $s = Usage::bump(null, ['v' => 1], '2026-10-15');
+        $s = Usage::bump($s, ['v' => 1, 'cs' => 1, 'cc' => 99999], '2026-10-15');
+        $sum = Usage::summary($s, 30, '2026-10-15');
+        $this->assertSame(2, $sum['totals']['validations']);
+        $this->assertSame(1, $sum['totals']['checkoutsStarted']);
+        $this->assertSame(1000, $sum['totals']['checkoutsCompleted'], 'one bump is capped');
+        $this->assertSame(1, count($sum['rows']));
     }
 
     public function testSummaryTotalsTheWindow(): void

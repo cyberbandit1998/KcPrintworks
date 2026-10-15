@@ -207,4 +207,138 @@ final class AdminTest extends TestCase
             $this->assertTrue(isset($s['hint_' . $code]) && $s['hint_' . $code] !== '', $code);
         }
     }
+
+    public function testTheFeaturesAndPrivacyTabsRenderWithEverythingOffByDefault(): void
+    {
+        $a = $this->admin(['browser_key' => self::KEY]);
+        $features = $a->settingsHtml('modules');
+        $this->assertContains('name="s[modules][pobox]"', $features);
+        $this->assertContains('name="s[modules][validation]"', $features);
+        $this->assertContains('name="s[modules][gps]"', $features);
+        $this->assertContains('name="s[modules][map_picker]"', $features);
+        $this->assertContains('name="s[server_key]"', $features);
+        $this->assertContains('name="s[validation_daily_cap]"', $features);
+        $this->assertNotContains(' checked', preg_replace('/<input type="radio"[^>]*checked[^>]*>/', '', $features) ?? '', 'no feature starts switched on');
+        $this->assertContains('form="kcpw-aa-test-server"', $features);
+        $this->assertContains('value="kcpw_aa_test_server"', $features);
+        $this->assertContains('nonce-for-kcpw_aa_test_server', $features);
+        $this->assertContains('name="section" value="modules"', $features);
+
+        $privacy = $a->settingsHtml('optins');
+        foreach (['webhook][enabled', 'webhook][consent', 'webhook][url', 'webhook][include_address', 'abandonment][enabled', 'ip][enabled', 'ip][service_url'] as $field) {
+            $this->assertContains('s[optins][' . $field . ']', $privacy, $field);
+        }
+        $this->assertSame(0, preg_match('/<input type="checkbox"[^>]*name="s\[optins\]\[(?:webhook\]\[(?:enabled|consent|include_address)|abandonment\]\[enabled|ip\]\[enabled)\]"[^>]*checked/', $privacy), 'nothing starts switched on');
+        $this->assertContains('Currently off.', $privacy);
+        $this->assertContains('name="section" value="optins"', $privacy);
+    }
+
+    public function testAKeySavedForTheServerIsNeverPrintedBack(): void
+    {
+        $a = $this->admin(['server_key' => 'ServerKeyServerKeyServerKey0123456789']);
+        $html = $a->settingsHtml('modules');
+        $this->assertNotContains('ServerKeyServerKey', $html);
+        $this->assertContains('6789', $html, 'only the last four characters');
+        $this->assertContains('name="s[clear_server_key]"', $html);
+    }
+
+    public function testSavingTheFeaturesTabStoresTheSwitchesAndTheKey(): void
+    {
+        $a = $this->admin();
+        $_POST = ['section' => 'modules', '_wpnonce' => 'x', 's' => ['modules' => ['pobox' => '1', 'validation' => '1', 'gps' => '0'], 'pobox_mode' => 'block', 'server_key' => 'ServerKeyServerKeyServerKey0123456789', 'validation_daily_cap' => '75']];
+        $a->onSave();
+        $saved = \WpStub::$options[Settings::OPTION];
+        $this->assertSame(true, $saved['modules']['pobox']);
+        $this->assertSame(true, $saved['modules']['validation']);
+        $this->assertSame(false, $saved['modules']['gps']);
+        $this->assertSame('block', $saved['pobox_mode']);
+        $this->assertSame(75, $saved['validation_daily_cap']);
+        $this->assertSame('ServerKeyServerKeyServerKey0123456789', $saved['server_key']);
+        $this->assertSame(false, \WpStub::$autoload[Settings::OPTION], 'the key is never autoloaded');
+        $this->assertContains('tab=modules', (string) $a->redirected);
+        $this->assertContains('kcpw_aa_save_modules', implode(',', \WpStub::$nonceChecks));
+    }
+
+    public function testSavingThePrivacyTabNeedsConsentBeforeAWebhookIsOn(): void
+    {
+        $a = $this->admin();
+        $_POST = ['section' => 'optins', '_wpnonce' => 'x', 's' => ['optins' => ['webhook' => ['enabled' => '1', 'consent' => '0', 'url' => 'https://hooks.example.test/in', 'events' => ['', 'bad']], 'abandonment' => ['enabled' => '1'], 'ip' => ['enabled' => '0']]]];
+        $a->onSave();
+        $o = \WpStub::$options[Settings::OPTION]['optins'];
+        $this->assertSame(false, $o['webhook']['enabled'], 'no consent, no webhook');
+        $this->assertSame(['bad'], $o['webhook']['events']);
+        $this->assertSame(true, $o['abandonment']['enabled']);
+        $this->assertSame(false, $o['ip']['enabled']);
+
+        $_POST['s']['optins']['webhook']['consent'] = '1';
+        $a->onSave();
+        $this->assertSame(true, \WpStub::$options[Settings::OPTION]['optins']['webhook']['enabled']);
+        $_POST['s']['optins']['webhook']['url'] = 'http://insecure.example.test/in';
+        $a->onSave();
+        $this->assertSame(false, \WpStub::$options[Settings::OPTION]['optins']['webhook']['enabled'], 'an http address turns it off again');
+        $_POST['s']['optins']['webhook']['events'] = [''];
+        $a->onSave();
+        $this->assertSame([], \WpStub::$options[Settings::OPTION]['optins']['webhook']['events'], 'every box unticked means none');
+    }
+
+    public function testTheServerKeyTestReportsInPlainWordsAndNeedsAnAdministratorAndANonce(): void
+    {
+        $ok = new FakeHttp(['status' => 200, 'body' => '{"result":{"verdict":{"addressComplete":true,"validationGranularity":"PREMISE"}}}']);
+        $make = function (array $settings, FakeHttp $http): TestAdmin {
+            \WpStub::$canManage = true;
+            return new TestAdmin('/x/kcpw-address-autocomplete/kcpw-address-autocomplete.php', '0.1.0', new Store(Settings::load($settings), []), $http);
+        };
+        $a = $make(['server_key' => 'ServerKeyServerKeyServerKey0123456789'], $ok);
+        $a->onTestServer();
+        $this->assertContains('kcpw_msg=server_ok', (string) $a->redirected);
+        $this->assertSame(1, count($ok->calls));
+        $this->assertContains('kcpw_aa_test_server', implode(',', \WpStub::$nonceChecks));
+        $this->assertNotContains('ServerKey', (string) $a->redirected, 'the key never goes in an address');
+
+        $none = new FakeHttp();
+        $b = $make([], $none);
+        $b->onTestServer();
+        $this->assertContains('kcpw_msg=server_nokey', (string) $b->redirected);
+        $this->assertSame(0, count($none->calls), 'no key, no request');
+
+        foreach ([[403, '{"error":{"status":"PERMISSION_DENIED"}}', 'server_api'], [429, '', 'server_quota'], [400, '{"error":{"message":"API key not valid"}}', 'server_auth'], [500, '', 'server_other']] as [$status, $body, $expected]) {
+            $c = $make(['server_key' => 'ServerKeyServerKeyServerKey0123456789'], new FakeHttp(['status' => $status, 'body' => $body]));
+            $c->onTestServer();
+            $this->assertContains('kcpw_msg=' . $expected, (string) $c->redirected, (string) $status);
+        }
+        $d = $make(['server_key' => 'ServerKeyServerKeyServerKey0123456789'], new FakeHttp(null));
+        $d->onTestServer();
+        $this->assertContains('kcpw_msg=server_network', (string) $d->redirected);
+
+        \WpStub::$canManage = false;
+        $e = new TestAdmin('/x/kcpw-address-autocomplete/kcpw-address-autocomplete.php', '0.1.0', new Store(Settings::load(['server_key' => 'ServerKeyServerKeyServerKey0123456789']), []), new FakeHttp());
+        $this->assertThrows(fn () => $e->onTestServer(), 'permission');
+        \WpStub::$canManage = true;
+        \WpStub::$nonceValid = false;
+        $this->assertThrows(fn () => $make(['server_key' => 'ServerKeyServerKeyServerKey0123456789'], new FakeHttp())->onTestServer(), 'nonce');
+    }
+
+    public function testTheDashboardShowsOnlyTheFeaturesThatAreOnAndWhatTheyStillNeed(): void
+    {
+        $this->assertSame('', $this->admin()->featuresStatusHtml(), 'nothing switched on, nothing shown');
+        $html = $this->admin(['modules' => ['validation' => true, 'gps' => true]])->featuresStatusHtml();
+        $this->assertContains('Address check', $html);
+        $this->assertContains('needs a server key', $html);
+        $this->assertContains('Use my location', $html);
+        $this->assertNotContains('Choose on a map', $html);
+        $on = $this->admin(['server_key' => 'ServerKeyServerKeyServerKey0123456789', 'modules' => ['validation' => true]])->featuresStatusHtml();
+        $this->assertNotContains('needs a server key', $on);
+    }
+
+    public function testUsageShowsTheServerCountersOnlyForTheFeaturesThatAreOn(): void
+    {
+        \WpStub::$options[Usage::OPTION] = Usage::bump(Usage::bump(Usage::bump(null, ['v' => 3], gmdate('Y-m-d')), ['cs' => 7], gmdate('Y-m-d')), ['cc' => 4], gmdate('Y-m-d'));
+        $plain = $this->admin()->usageHtml();
+        $this->assertNotContains('Address checks asked', $plain);
+        $this->assertNotContains('Checkouts started', $plain);
+        $on = $this->admin(['modules' => ['validation' => true], 'optins' => ['abandonment' => ['enabled' => true]]])->usageHtml();
+        $this->assertContains('Address checks asked', $on);
+        $this->assertContains('Checkouts started', $on);
+        $this->assertContains('Orders completed', $on);
+    }
 }
