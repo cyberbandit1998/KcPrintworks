@@ -10,6 +10,7 @@ export function Pagination({
   sort,
   pageParam,
   hash,
+  hrefFor,
 }: {
   path: string;
   page: number;
@@ -19,12 +20,16 @@ export function Pagination({
   pageParam?: string;
   /** Where the page should land (for example #reviews). */
   hash?: string;
+  /** Builds the whole address of a page itself (search results carry a query and a filter along). */
+  hrefFor?: (page: number) => string;
 }) {
   if (pages <= 1) return null;
   const href = (n: number) =>
-    pageParam
-      ? `${path}${n > 1 ? `?${pageParam}=${n}` : ''}${hash ?? ''}`
-      : `${listHref(path, { sort, page: n })}${hash ?? ''}`;
+    hrefFor
+      ? hrefFor(n)
+      : pageParam
+        ? `${path}${n > 1 ? `?${pageParam}=${n}` : ''}${hash ?? ''}`
+        : `${listHref(path, { sort, page: n })}${hash ?? ''}`;
   const numbers = new Set<number>([1, pages, page - 1, page, page + 1]);
   const shown = [...numbers].filter((n) => n >= 1 && n <= pages).sort((a, b) => a - b);
   const items: (number | 'gap')[] = [];

@@ -3,10 +3,11 @@ import type { NavItem } from '@/lib/nav';
 import { NavLink } from './NavLink';
 import { NavMenu } from './NavMenu';
 import { CartLink } from './CartLink';
+import { SiteSearch } from './SiteSearch';
 
 /**
  * Wide screens (60em and up) show the links inline; narrower ones show a Menu disclosure. Both lists hold the same links, and only
- * one is ever displayed, so assistive technology reads one set. The cart link and count are always visible.
+ * one is ever displayed, so assistive technology reads one set. The search button and the cart link and count are always visible.
  */
 export function SiteHeader({ nav }: { nav: NavItem[] }) {
   return (
@@ -28,7 +29,10 @@ export function SiteHeader({ nav }: { nav: NavItem[] }) {
           </ul>
           <NavMenu items={nav} />
         </nav>
-        <CartLink />
+        <div className="site-header__actions">
+          <SiteSearch />
+          <CartLink />
+        </div>
       </div>
     </header>
   );

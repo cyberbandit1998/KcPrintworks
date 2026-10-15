@@ -67,6 +67,10 @@
   --hero-fg: var(--kc-bg);
   --hero-accent: var(--kc-accent); /* large headline text on dark only: 5.58:1 on ink */
   --hero-focus: var(--kc-bg);
+  /* "Request a Custom Quote" under the hero buttons: white text and an orange outline on the dark scrim (orange is 5.58:1 against ink as a non-text
+     boundary, white is above 15:1; both are proven for the darkest and the lightest pixel the scrim can sit on in tests/unit/contrast.test.ts). */
+  --hero-quote-fg: #ffffff;
+  --hero-quote-border: var(--kc-accent);
   /* The dark overlay is a gradient, strongest on the left and fading to the right so the printers stay visible:
      start (left edge) >= scrim (the LEAST dark it may be anywhere behind text) >= mid >= end (right edge). */
   --hero-scrim-start: 92%;

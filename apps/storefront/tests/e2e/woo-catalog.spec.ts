@@ -1684,3 +1684,95 @@ test.describe('what pages cost once the shop’s answers are remembered', () => 
     expect(withForm.text.includes('ZodError')).toBe(false);
   });
 });
+
+/**
+ * Product search against the WooCommerce stand-in: only what the catalog lists is searchable (published, not hidden from the
+ * catalog), searching never asks WooCommerce anything (it uses the copy held in memory), and a change made in WooCommerce is
+ * searchable once the catalog refreshes (the signed "refresh now" call, or the refresh interval).
+ */
+test.describe('search follows the catalog', () => {
+  const search = async (request: APIRequestContext, q: string) =>
+    (await (await request.get(`/api/search/?q=${encodeURIComponent(q)}&limit=8`)).json()) as {
+      total: number;
+      hits: { name: string; slug: string }[];
+    };
+
+  test.beforeEach(async ({ request }) => {
+    await mockPost(request, 'reset', {});
+    expect((await revalidate(request)).status()).toBe(202);
+  });
+  test.afterAll(async ({ request }) => {
+    await mockPost(request, 'reset', {});
+    expect((await revalidate(request)).status()).toBe(202);
+  });
+
+  test('finds published products, and never a draft, a hidden or a private one', async ({
+    request,
+  }) => {
+    expect((await search(request, 'keychain')).hits.map((h) => h.name)).toContain(
+      'Synthetic Personalized Keychain',
+    );
+    expect((await search(request, 'draft product')).total).toBe(0);
+    expect((await search(request, 'hidden item')).total).toBe(0);
+    // Words in the name are decoded, not shown as markup: "Card Box &amp; Sleeves" is found by "sleeves".
+    expect((await search(request, 'sleeves')).hits.map((h) => h.name)).toContain(
+      'Synthetic Card Box & Sleeves',
+    );
+  });
+
+  test('a renamed product is searchable by its new name once the catalog refreshes, not before', async ({
+    request,
+  }) => {
+    await mockPost(request, 'product', { id: 101, fields: { name: 'Synthetic Zebra Keychain' } });
+    expect((await search(request, 'zebra')).total).toBe(0); // the storefront still holds the old copy
+    expect((await revalidate(request)).status()).toBe(202);
+    const after = await search(request, 'zebra');
+    expect(after.hits.map((h) => h.name)).toEqual(['Synthetic Zebra Keychain']);
+    expect((await search(request, 'zebra keychains')).total).toBe(1);
+  });
+
+  test('a product that is published, and one that is unpublished, change what search finds after a refresh', async ({
+    request,
+    page,
+  }) => {
+    await mockPost(request, 'product', { id: 104, fields: { status: 'publish' } }); // the draft goes live
+    await mockPost(request, 'product', { id: 101, fields: { status: 'private' } }); // a listed one is withdrawn
+    expect((await revalidate(request)).status()).toBe(202);
+    expect((await search(request, 'draft product')).total).toBe(1);
+    expect((await search(request, 'personalized keychain')).total).toBe(0);
+    await page.goto('/search/?q=draft+product');
+    await expect(page.locator('.product-grid')).toContainText('Synthetic Draft Product');
+    await page.goto('/search/?q=personalized+keychain');
+    await expect(page.getByText('No products match')).toBeVisible();
+  });
+
+  test('searching asks neither WooCommerce nor WordPress anything', async ({ request, page }) => {
+    await search(request, 'keychain'); // make sure the copy is loaded
+    const before = (await (await request.get(`${WOO_TEST.mockUrl}/__mock/log`)).json()).requests
+      .length;
+    for (const q of ['keychain', 'bag tag', 'card', 'plaque', 'mug', 'zzz'])
+      await search(request, q);
+    await page.goto('/search/?q=card');
+    await expect(page.locator('.product-grid > li').first()).toBeVisible();
+    const after = (await (await request.get(`${WOO_TEST.mockUrl}/__mock/log`)).json()).requests
+      .length;
+    expect(after).toBe(before);
+  });
+
+  test('the categories on the results page come from the store, and the filter narrows the results', async ({
+    page,
+  }) => {
+    await page.goto('/search/?q=synthetic');
+    const filters = page.getByRole('navigation', { name: 'Filter results by category' });
+    await expect(filters).toBeVisible();
+    const chips = await filters.getByRole('link').allInnerTexts();
+    expect(chips[0]).toMatch(/^All categories \(\d+\)$/);
+    expect(chips.length).toBeGreaterThan(2);
+    const total = Number(/\((\d+)\)/.exec(chips[0]!)![1]);
+    await filters.getByRole('link').nth(1).click();
+    await expect(page).toHaveURL(/category=/);
+    const narrowed = await page.locator('.product-grid > li').count();
+    expect(narrowed).toBeGreaterThan(0);
+    expect(narrowed).toBeLessThan(total);
+  });
+});

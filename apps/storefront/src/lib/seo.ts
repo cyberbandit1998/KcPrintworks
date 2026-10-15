@@ -110,6 +110,21 @@ export function organizationJsonLd() {
   };
 }
 
+/** The site's own search, so a search engine can offer a search box for it. The address matches the /search/ page. */
+export function websiteJsonLd() {
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'WebSite',
+    name: SITE_NAME,
+    url: siteUrl,
+    potentialAction: {
+      '@type': 'SearchAction',
+      target: { '@type': 'EntryPoint', urlTemplate: `${siteUrl}/search/?q={search_term_string}` },
+      'query-input': 'required name=search_term_string',
+    },
+  };
+}
+
 export interface ArticleLd {
   title: string;
   description: string;

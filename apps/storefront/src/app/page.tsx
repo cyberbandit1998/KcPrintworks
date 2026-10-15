@@ -10,7 +10,7 @@ import { getCatalog } from '@/lib/catalog';
 import { categoryTiles } from '@/lib/catalog/home';
 import { featuredProducts, newArrivals } from '@/lib/catalog/queries';
 import { homeMinRating, latestReviews } from '@/lib/reviews';
-import { organizationJsonLd } from '@/lib/seo';
+import { organizationJsonLd, websiteJsonLd } from '@/lib/seo';
 import { withTimeout } from '@/lib/with-timeout';
 
 /** Reviews are a nicety: if WooCommerce is slow or down they are left out, and the page does not wait for them. */
@@ -72,6 +72,7 @@ export default async function HomePage() {
   return (
     <>
       <JsonLd data={organizationJsonLd()} />
+      <JsonLd data={websiteJsonLd()} />
       <section className="hero" aria-labelledby="hero-heading">
         <HeroPhoto />
         <div className="container hero__content">
@@ -94,6 +95,45 @@ export default async function HomePage() {
                 Our Story
               </Link>
             </div>
+            {/* A second row under the two buttons, left-aligned with Shop Now. */}
+            <p className="hero__quote">
+              <Link href="/custom-orders/" className="button button--quote">
+                <svg
+                  className="button__icon"
+                  viewBox="0 0 24 24"
+                  width="20"
+                  height="20"
+                  aria-hidden="true"
+                  focusable="false"
+                >
+                  <path
+                    d="M4 5.5A2.5 2.5 0 0 1 6.5 3h11A2.5 2.5 0 0 1 20 5.5v8a2.5 2.5 0 0 1-2.5 2.5H10l-4.2 3.6a.6.6 0 0 1-1-.46V16A2.5 2.5 0 0 1 4 13.5z"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+                <span>Request a Custom Quote</span>
+                <svg
+                  className="button__icon"
+                  viewBox="0 0 24 24"
+                  width="20"
+                  height="20"
+                  aria-hidden="true"
+                  focusable="false"
+                >
+                  <path
+                    d="M5 12h14m-6-6 6 6-6 6"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </Link>
+            </p>
           </div>
         </div>
       </section>

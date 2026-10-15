@@ -55,6 +55,7 @@ describe('text pairings meet WCAG AA (4.5:1)', () => {
     ['color-text', 'accent-decor'], // brand mark and step numbers sit on orange
     ['hero-fg', 'hero-bg'],
     ['hero-accent', 'hero-bg'],
+    ['hero-quote-fg', 'hero-bg'], // "Request a Custom Quote": white text on the dark side of the banner
     ['footer-fg', 'footer-bg'],
     ['footer-link', 'footer-bg'],
     ['footer-muted', 'footer-bg'],
@@ -80,6 +81,7 @@ describe('non-text pairings meet 3:1', () => {
     ['footer-focus', 'footer-bg'],
     ['hero-focus', 'hero-bg'],
     ['hero-fg', 'hero-bg'], // the secondary button's border
+    ['hero-quote-border', 'hero-bg'], // the orange outline of "Request a Custom Quote"
     ['color-error', 'color-bg'],
     ['progress-edge', 'progress-bg'], // the card's border and the bar's outline
     ['progress-edge', 'progress-track'], // the ink edge on the end of the fill, seen against the empty track
@@ -120,6 +122,27 @@ describe('photo banner text stays readable over any photograph', () => {
   });
   it('the orange headline word is 3:1 or better (large text) even over a white pixel', () => {
     expect(contrastRatio(hex('hero-accent'), worstCase)).toBeGreaterThanOrEqual(3);
+  });
+  it('the custom quote button: white text 4.5:1 and its orange outline 3:1 even over a white pixel, and the white text on the hover tint', () => {
+    expect(contrastRatio(hex('hero-quote-fg'), worstCase)).toBeGreaterThanOrEqual(4.5);
+    expect(contrastRatio(hex('hero-quote-border'), worstCase)).toBeGreaterThanOrEqual(3);
+    // Hover: the inside takes 30% orange over the scrim. Worst case: 30% orange over the worst-case pixel.
+    const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex('hero-quote-border').slice(i, i + 2), 16));
+    const [wr, wg, wb] = [1, 3, 5].map((i) => parseInt(worstCase.slice(i, i + 2), 16));
+    const tint =
+      '#' +
+      [
+        [r, wr],
+        [g, wg],
+        [b, wb],
+      ]
+        .map(([o, w]) =>
+          Math.round(o! * 0.3 + w! * 0.7)
+            .toString(16)
+            .padStart(2, '0'),
+        )
+        .join('');
+    expect(contrastRatio(hex('hero-quote-fg'), tint)).toBeGreaterThanOrEqual(4.5);
   });
 });
 
