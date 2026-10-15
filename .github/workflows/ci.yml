@@ -61,6 +61,14 @@ jobs:
           name: kcpw-checkout-style-plugin
           path: dist/kcpw-checkout-style.zip
           retention-days: 30
+      - name: Build the kcpw-address-autocomplete plugin package
+        run: npm run build:address-autocomplete
+      - name: Upload the kcpw-address-autocomplete plugin package
+        uses: actions/upload-artifact@v4
+        with:
+          name: kcpw-address-autocomplete-plugin
+          path: dist/kcpw-address-autocomplete.zip
+          retention-days: 30
       - name: Upload Playwright traces on failure
         if: failure()
         uses: actions/upload-artifact@v4

@@ -1,0 +1,347 @@
+{
+  "note": "Each case is a Google address (parts as the Places API (New) returns them: types, longText, shortText) and what the form fields should receive. The parts are written the way Google structures them; they are not recorded live responses.",
+  "cases": [
+    {
+      "name": "US street address, state list, ZIP without the +4",
+      "parts": [
+        ["street_number", "123"],
+        ["route", "Main Street"],
+        ["locality", "Flint"],
+        ["administrative_area_level_2", "Genesee County"],
+        ["administrative_area_level_1", "Michigan", "MI"],
+        ["country", "United States", "US"],
+        ["postal_code", "48502"],
+        ["postal_code_suffix", "1234"]
+      ],
+      "expect": {
+        "country": "US",
+        "state": ["MI", "Michigan"],
+        "city": "Flint",
+        "postcode": "48502",
+        "line1": "123 Main Street",
+        "line2": ""
+      }
+    },
+    {
+      "name": "US ZIP+4 when asked for",
+      "options": { "zipPlus4": true },
+      "parts": [
+        ["street_number", "123"],
+        ["route", "Main Street"],
+        ["locality", "Flint"],
+        ["administrative_area_level_1", "Michigan", "MI"],
+        ["country", "United States", "US"],
+        ["postal_code", "48502"],
+        ["postal_code_suffix", "1234"]
+      ],
+      "expect": { "postcode": "48502-1234" }
+    },
+    {
+      "name": "US apartment goes to line 2",
+      "parts": [
+        ["street_number", "456"],
+        ["route", "Oak Avenue"],
+        ["subpremise", "4"],
+        ["locality", "Austin"],
+        ["administrative_area_level_1", "Texas", "TX"],
+        ["country", "United States", "US"],
+        ["postal_code", "78701"]
+      ],
+      "expect": { "line1": "456 Oak Avenue", "line2": "Unit 4", "city": "Austin" }
+    },
+    {
+      "name": "US apartment with another word for unit",
+      "options": { "unitLabel": "Apt" },
+      "parts": [
+        ["street_number", "9"],
+        ["route", "Elm St"],
+        ["subpremise", "12B"],
+        ["locality", "Dayton"],
+        ["country", "United States", "US"]
+      ],
+      "expect": { "line2": "Apt 12B" }
+    },
+    {
+      "name": "New York City borough is the city for the post office",
+      "parts": [
+        ["street_number", "200"],
+        ["route", "Bedford Avenue"],
+        ["sublocality_level_1", "Brooklyn"],
+        ["sublocality", "Brooklyn"],
+        ["locality", "New York"],
+        ["administrative_area_level_1", "New York", "NY"],
+        ["country", "United States", "US"],
+        ["postal_code", "11211"]
+      ],
+      "expect": { "city": "Brooklyn", "state": ["NY", "New York"] }
+    },
+    {
+      "name": "A city that is not New York keeps its locality even with a sublocality",
+      "parts": [
+        ["street_number", "1"],
+        ["route", "Market Street"],
+        ["sublocality_level_1", "SoMa"],
+        ["locality", "San Francisco"],
+        ["administrative_area_level_1", "California", "CA"],
+        ["country", "United States", "US"],
+        ["postal_code", "94105"]
+      ],
+      "expect": { "city": "San Francisco" }
+    },
+    {
+      "name": "UK: postal town, county as the state, number before street",
+      "parts": [
+        ["street_number", "10"],
+        ["route", "Downing Street"],
+        ["postal_town", "London"],
+        ["administrative_area_level_2", "Greater London"],
+        ["administrative_area_level_1", "England", "ENG"],
+        ["country", "United Kingdom", "GB"],
+        ["postal_code", "SW1A 2AA"]
+      ],
+      "expect": {
+        "country": "GB",
+        "state": ["", "Greater London"],
+        "city": "London",
+        "postcode": "SW1A 2AA",
+        "line1": "10 Downing Street"
+      }
+    },
+    {
+      "name": "Germany: street then number",
+      "parts": [
+        ["route", "Hauptstraße"],
+        ["street_number", "12"],
+        ["locality", "Berlin"],
+        ["administrative_area_level_1", "Berlin", "BE"],
+        ["country", "Germany", "DE"],
+        ["postal_code", "10115"]
+      ],
+      "expect": {
+        "line1": "Hauptstraße 12",
+        "city": "Berlin",
+        "state": ["BE", "Berlin"],
+        "postcode": "10115"
+      }
+    },
+    {
+      "name": "Spain: street, comma, number",
+      "parts": [
+        ["route", "Calle Mayor"],
+        ["street_number", "5"],
+        ["locality", "Madrid"],
+        ["administrative_area_level_2", "Madrid"],
+        ["administrative_area_level_1", "Comunidad de Madrid", "MD"],
+        ["country", "Spain", "ES"],
+        ["postal_code", "28013"]
+      ],
+      "expect": { "line1": "Calle Mayor, 5", "city": "Madrid" }
+    },
+    {
+      "name": "France: number before street",
+      "parts": [
+        ["street_number", "12"],
+        ["route", "Rue de Rivoli"],
+        ["locality", "Paris"],
+        ["administrative_area_level_1", "Île-de-France", "IDF"],
+        ["country", "France", "FR"],
+        ["postal_code", "75001"]
+      ],
+      "expect": { "line1": "12 Rue de Rivoli", "city": "Paris", "postcode": "75001" }
+    },
+    {
+      "name": "Brazil: street, comma, number; state code",
+      "parts": [
+        ["route", "Rua Augusta"],
+        ["street_number", "100"],
+        ["sublocality_level_1", "Consolação"],
+        ["administrative_area_level_2", "São Paulo"],
+        ["administrative_area_level_1", "São Paulo", "SP"],
+        ["country", "Brazil", "BR"],
+        ["postal_code", "01304-000"]
+      ],
+      "expect": {
+        "line1": "Rua Augusta, 100",
+        "state": ["SP", "São Paulo"],
+        "postcode": "01304-000",
+        "city": "Consolação"
+      }
+    },
+    {
+      "name": "Canada: province code and spaced postal code",
+      "parts": [
+        ["street_number", "123"],
+        ["route", "King Street West"],
+        ["locality", "Toronto"],
+        ["administrative_area_level_1", "Ontario", "ON"],
+        ["country", "Canada", "CA"],
+        ["postal_code", "M5H 1A1"]
+      ],
+      "expect": {
+        "line1": "123 King Street West",
+        "state": ["ON", "Ontario"],
+        "postcode": "M5H 1A1"
+      }
+    },
+    {
+      "name": "Australia: state abbreviation",
+      "parts": [
+        ["street_number", "1"],
+        ["route", "Martin Place"],
+        ["locality", "Sydney"],
+        ["administrative_area_level_1", "New South Wales", "NSW"],
+        ["country", "Australia", "AU"],
+        ["postal_code", "2000"]
+      ],
+      "expect": { "state": ["NSW", "New South Wales"], "city": "Sydney", "line1": "1 Martin Place" }
+    },
+    {
+      "name": "Ireland: county without its prefix matters only when matching options",
+      "parts": [
+        ["street_number", "1"],
+        ["route", "O'Connell Street Lower"],
+        ["postal_town", "Dublin"],
+        ["administrative_area_level_1", "County Dublin", "D"],
+        ["country", "Ireland", "IE"],
+        ["postal_code", "D01 F5P2"]
+      ],
+      "expect": { "state": ["D", "County Dublin"], "city": "Dublin", "postcode": "D01 F5P2" }
+    },
+    {
+      "name": "Japan: no street and number, so the finest parts in order",
+      "parts": [
+        ["country", "Japan", "JP"],
+        ["administrative_area_level_1", "Tokyo", "Tokyo"],
+        ["locality", "Chiyoda City"],
+        ["sublocality_level_2", "Marunouchi"],
+        ["sublocality_level_3", "1-chome"],
+        ["premise", "9-1"],
+        ["postal_code", "100-0005"]
+      ],
+      "expect": {
+        "line1": "Marunouchi 1-chome 9-1",
+        "city": "Chiyoda City",
+        "postcode": "100-0005"
+      }
+    },
+    {
+      "name": "A place with no postal code leaves it empty",
+      "parts": [
+        ["route", "Queen's Road Central"],
+        ["administrative_area_level_1", "Hong Kong Island"],
+        ["country", "Hong Kong", "HK"]
+      ],
+      "expect": { "postcode": "", "line1": "Queen's Road Central", "country": "HK" }
+    },
+    {
+      "name": "A street with no number is the street alone",
+      "parts": [
+        ["route", "Country Road 12"],
+        ["locality", "Vassar"],
+        ["administrative_area_level_1", "Michigan", "MI"],
+        ["country", "United States", "US"]
+      ],
+      "expect": { "line1": "Country Road 12", "city": "Vassar" }
+    },
+    {
+      "name": "Nothing structured: the first part of the formatted address",
+      "formatted": "Vassar, MI 48768, USA",
+      "parts": [["country", "United States", "US"]],
+      "expect": { "line1": "Vassar", "country": "US" }
+    },
+    {
+      "name": "Geocoder spelling (long_name / short_name) is understood too",
+      "geocoder": true,
+      "parts": [
+        ["street_number", "77"],
+        ["route", "Sunset Boulevard"],
+        ["locality", "Los Angeles"],
+        ["administrative_area_level_1", "California", "CA"],
+        ["country", "United States", "US"],
+        ["postal_code", "90028"]
+      ],
+      "expect": {
+        "line1": "77 Sunset Boulevard",
+        "state": ["CA", "California"],
+        "postcode": "90028"
+      }
+    }
+  ],
+  "options": [
+    {
+      "name": "US state list by code",
+      "list": [
+        ["", "Select a state"],
+        ["MI", "Michigan"],
+        ["MN", "Minnesota"],
+        ["MO", "Missouri"],
+        ["NY", "New York"]
+      ],
+      "want": { "code": "MI", "name": "Michigan" },
+      "expect": "MI"
+    },
+    {
+      "name": "Mexico: Google's abbreviation is not WooCommerce's code, so the name decides",
+      "list": [
+        ["", "Select"],
+        ["JAL", "Jalisco"],
+        ["JAL-X", "Jalapa"],
+        ["CDMX", "Ciudad de México"]
+      ],
+      "want": { "code": "Jal.", "name": "Jalisco" },
+      "expect": "JAL"
+    },
+    {
+      "name": "Accents and case are ignored",
+      "list": [
+        ["", "Select"],
+        ["SP", "Sao Paulo"],
+        ["RJ", "Rio de Janeiro"]
+      ],
+      "want": { "code": "", "name": "São Paulo" },
+      "expect": "SP"
+    },
+    {
+      "name": "Irish county written 'County Dublin'",
+      "list": [
+        ["", "Select"],
+        ["CO", "Cork"],
+        ["D", "Dublin"],
+        ["G", "Galway"]
+      ],
+      "want": { "code": "", "name": "County Dublin" },
+      "expect": "D"
+    },
+    {
+      "name": "Country by ISO code",
+      "list": [
+        ["", "Select"],
+        ["CA", "Canada"],
+        ["US", "United States (US)"],
+        ["GB", "United Kingdom (UK)"]
+      ],
+      "want": { "code": "GB", "name": "United Kingdom" },
+      "expect": "GB"
+    },
+    {
+      "name": "No such region: no match",
+      "list": [
+        ["", "Select"],
+        ["AB", "Alberta"],
+        ["BC", "British Columbia"]
+      ],
+      "want": { "code": "XX", "name": "Atlantis" },
+      "expect": null
+    },
+    {
+      "name": "A short name must not match inside a longer one",
+      "list": [
+        ["", "Select"],
+        ["NSW", "New South Wales"],
+        ["WA", "Western Australia"]
+      ],
+      "want": { "code": "", "name": "Wales" },
+      "expect": null
+    }
+  ]
+}

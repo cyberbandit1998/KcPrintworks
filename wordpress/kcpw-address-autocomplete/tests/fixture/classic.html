@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Classic checkout (stand-in page for the plugin's browser tests)</title>
+<link rel="stylesheet" href="baseline.css">
+<link rel="stylesheet" href="kcpw-aa.css">
+</head>
+<body class="woocommerce-checkout">
+<main>
+<h1>Checkout</h1>
+<form name="checkout" class="checkout woocommerce-checkout" action="#" novalidate>
+  <p class="form-row"><label for="billing_country">Country / Region</label>
+    <select id="billing_country" name="billing_country" class="country_to_state select2-hidden-accessible"><option value="US">United States (US)</option><option value="CA">Canada</option><option value="GB">United Kingdom (UK)</option></select></p>
+  <p class="form-row"><label for="billing_address_1">Street address</label><input type="text" id="billing_address_1" name="billing_address_1" autocomplete="address-line1"></p>
+  <p class="form-row"><label for="billing_address_2">Apartment, suite, unit, etc.</label><input type="text" id="billing_address_2" name="billing_address_2"></p>
+  <p class="form-row"><label for="billing_city">Town / City</label><input type="text" id="billing_city" name="billing_city"></p>
+  <p class="form-row"><label for="billing_state">State</label>
+    <select id="billing_state" name="billing_state" class="state_select select2-hidden-accessible"><option value="">Select an option</option><option value="MI">Michigan</option><option value="TX">Texas</option><option value="ON">Ontario</option></select></p>
+  <p class="form-row"><label for="billing_postcode">ZIP Code</label><input type="text" id="billing_postcode" name="billing_postcode"></p>
+</form>
+</main>
+<script>
+  // A tiny stand-in for jQuery: records the events WooCommerce's classic checkout listens to, and what a select2 change does.
+  window.__jq = { triggers: [] };
+  window.jQuery = function (target) {
+    return { trigger: function (name) { window.__jq.triggers.push({ name: name, on: target && target.id ? '#' + target.id : target === document.body ? 'body' : String(target) }); return this; } };
+  };
+</script>
+<script src="kcpw-aa.js" defer></script>
+</body>
+</html>

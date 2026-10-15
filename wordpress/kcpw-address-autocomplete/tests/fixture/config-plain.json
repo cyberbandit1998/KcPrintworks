@@ -1,0 +1,70 @@
+{
+    "v": "test",
+    "key": "test-key-0000000000000000000000",
+    "mapsVersion": "weekly",
+    "language": "en-US",
+    "admin": false,
+    "preview": false,
+    "minChars": 3,
+    "debounce": 300,
+    "maxRequests": 12,
+    "disableAutofill": true,
+    "fallbackNotice": true,
+    "usage": true,
+    "style": {
+        "theme": "match",
+        "accent": "#2b59e6",
+        "radius": 8
+    },
+    "modules": [],
+    "rest": {
+        "usage": "https://shop.example.test/wp-json/kcpw-aa/v1/usage"
+    },
+    "i18n": {
+        "attribution": "Powered by Google",
+        "listLabel": "Address suggestions",
+        "count": "%d address suggestions available. Use the up and down arrow keys, then Enter to choose.",
+        "noResults": "No suggestions. Keep typing, or enter your address yourself.",
+        "unavailable": "Address suggestions are not available right now. Please enter your address yourself.",
+        "limit": "Suggestions paused. Please finish typing your address yourself.",
+        "loading": "Looking up addresses…",
+        "placeFailed": "We could not load that address. Please finish it yourself.",
+        "filled": "Address filled in. Please check each field.",
+        "unit": "Unit",
+        "preview": "Address suggestions: preview for administrators only. Customers do not see them yet.",
+        "previewDismiss": "Dismiss this notice",
+        "problem": "Address suggestions are not working on this page"
+    },
+    "forms": [
+        {
+            "id": "f_plainform",
+            "mode": "smart",
+            "groups": [
+                {
+                    "label": "Form",
+                    "scope": "",
+                    "fields": {
+                        "address": "#addr",
+                        "address2": "#addr2",
+                        "city": "#city",
+                        "state": "#state",
+                        "postcode": "#zip",
+                        "country": "#country"
+                    }
+                }
+            ],
+            "countries": [
+                "US",
+                "CA"
+            ],
+            "language": "",
+            "placeTypes": "address",
+            "features": {
+                "map_picker": false,
+                "gps": false,
+                "validation": false,
+                "pobox": false
+            }
+        }
+    ]
+}

@@ -11,3 +11,4 @@ PROJECT_STATUS.md
 apps/storefront/public/fixtures
 next-env.d.ts
 wordpress/kcpw-checkout-style/tests/fixture
+wordpress/kcpw-address-autocomplete/tests/fixture

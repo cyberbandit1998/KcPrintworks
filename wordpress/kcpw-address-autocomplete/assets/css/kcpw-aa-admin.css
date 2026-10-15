@@ -1,0 +1,69 @@
+/* KCPrintWorks Address Autocomplete: administrator screens. Every rule is under .kcpw-aa-admin so nothing leaks into other admin pages. */
+
+.kcpw-aa-admin .kcpw-aa-card {
+  max-width: 880px;
+  margin: 16px 0;
+  padding: 4px 20px 16px;
+  background: #fff;
+  border: 1px solid #c3c4c7;
+  border-radius: 4px;
+}
+.kcpw-aa-admin .kcpw-aa-mode {
+  font-size: 14px;
+}
+.kcpw-aa-admin .kcpw-aa-steps,
+.kcpw-aa-admin .kcpw-aa-setup {
+  margin-inline-start: 20px;
+}
+.kcpw-aa-admin .kcpw-aa-steps li {
+  margin: 6px 0;
+}
+.kcpw-aa-admin .kcpw-aa-steps .is-done .kcpw-aa-state {
+  color: #0a5c2f;
+  font-weight: 600;
+}
+.kcpw-aa-admin .kcpw-aa-steps .is-todo .kcpw-aa-state {
+  color: #8a2424;
+  font-weight: 600;
+}
+.kcpw-aa-admin .kcpw-aa-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+.kcpw-aa-admin .kcpw-aa-inline {
+  display: inline-block;
+  margin: 0;
+}
+.kcpw-aa-admin .kcpw-aa-results {
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.kcpw-aa-admin .kcpw-aa-results li {
+  margin: 0 0 8px;
+  padding: 8px 12px;
+  border-inline-start: 4px solid #8c8f94;
+  background: #f6f7f7;
+}
+.kcpw-aa-admin .kcpw-aa-results .is-ok {
+  border-color: #0a5c2f;
+}
+.kcpw-aa-admin .kcpw-aa-results .is-fail {
+  border-color: #8a2424;
+}
+.kcpw-aa-admin .kcpw-aa-results .description {
+  margin: 4px 0 0;
+}
+.kcpw-aa-admin .kcpw-aa-usage th {
+  width: 70%;
+  font-weight: 400;
+}
+.kcpw-aa-admin .kcpw-aa-presets li {
+  margin: 0 0 14px;
+}
+.kcpw-aa-admin .kcpw-aa-radio {
+  display: inline-block;
+  margin: 2px 0;
+}

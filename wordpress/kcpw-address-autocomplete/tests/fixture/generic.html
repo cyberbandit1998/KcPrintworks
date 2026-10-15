@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Plain form (stand-in page for the plugin's browser tests)</title>
+<link rel="stylesheet" href="baseline.css">
+<link rel="stylesheet" href="kcpw-aa.css">
+</head>
+<body>
+<main>
+<h1>Contact us</h1>
+<form id="plain-form" action="#" novalidate>
+  <label for="name">Name</label><input id="name" name="name" autocomplete="name">
+  <label for="addr">Address</label><input id="addr" name="address" autocomplete="street-address">
+  <label for="addr2">Apartment, suite, etc.</label><input id="addr2" name="address2">
+  <label for="city">City</label><input id="city" name="city">
+  <label for="state">State</label>
+  <select id="state" name="state"><option value="">Select a state</option><option value="MI">Michigan</option><option value="TX">Texas</option><option value="NY">New York</option><option value="CA">California</option></select>
+  <label for="zip">ZIP code</label><input id="zip" name="zip">
+  <label for="country">Country</label>
+  <select id="country" name="country"><option value="US">United States</option><option value="CA">Canada</option><option value="GB">United Kingdom</option><option value="DE">Germany</option></select>
+  <label for="ro">Read-only field</label><input id="ro" name="ro" value="fixed" readonly>
+  <label for="off">Disabled field</label><input id="off" name="off" disabled>
+  <label for="hid">Hidden field</label><input id="hid" name="hid" type="hidden" value="x">
+  <p><button type="submit" id="send">Send</button></p>
+</form>
+<p id="submitted" hidden>submitted</p>
+</main>
+<script>
+  document.getElementById('plain-form').addEventListener('submit', function (e) { e.preventDefault(); document.getElementById('submitted').hidden = false; });
+</script>
+<script src="kcpw-aa.js" defer></script>
+</body>
+</html>
