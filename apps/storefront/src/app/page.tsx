@@ -4,9 +4,7 @@ import { JsonLd } from '@/components/JsonLd';
 import { toSummary } from '@kcpw/contracts';
 import { CategoryTiles } from '@/components/home/CategoryTiles';
 import { FeaturedSection } from '@/components/home/FeaturedSection';
-import { LatestPostsSection } from '@/components/home/LatestPostsSection';
 import { NewArrivalsSection } from '@/components/home/NewArrivalsSection';
-import { OurStorySection } from '@/components/home/OurStorySection';
 import { ReviewsSection } from '@/components/home/ReviewsSection';
 import { getCatalog } from '@/lib/catalog';
 import { categoryTiles } from '@/lib/catalog/home';
@@ -14,9 +12,8 @@ import { featuredProducts, newArrivals } from '@/lib/catalog/queries';
 import { homeMinRating, latestReviews } from '@/lib/reviews';
 import { organizationJsonLd } from '@/lib/seo';
 import { withTimeout } from '@/lib/with-timeout';
-import { getContent, getContentConfig } from '@/lib/wp';
 
-/** Story and blog sections are a nicety: if WordPress is slow or down they are left out, and the page does not wait for them. */
+/** Reviews are a nicety: if WooCommerce is slow or down they are left out, and the page does not wait for them. */
 const CONTENT_WAIT_MS = 2500;
 
 /**
@@ -45,7 +42,7 @@ function HeroPhoto() {
   );
 }
 
-// Placeholder marketing copy for design review. Real copy comes from the owner.
+// The three plain steps shown under "How personalization works".
 const steps = [
   { title: 'Choose', text: 'Pick a product and any options like size or finish.' },
   { title: 'Personalize', text: 'Add your text or choices. We save them with your order.' },
@@ -58,12 +55,11 @@ export default async function HomePage() {
     catalog.listProducts(),
     catalog.listAllCategories(),
   ]);
-  const content = getContent();
-  const [ourStory, latest, recentReviews] = await Promise.all([
-    withTimeout(content.getPage(getContentConfig().ourStorySlug), CONTENT_WAIT_MS, null),
-    withTimeout(content.listPosts({ page: 1, perPage: 3 }), CONTENT_WAIT_MS, null),
-    withTimeout(latestReviews(12, homeMinRating()), CONTENT_WAIT_MS, null),
-  ]);
+  const recentReviews = await withTimeout(
+    latestReviews(12, homeMinRating()),
+    CONTENT_WAIT_MS,
+    null,
+  );
   // Only reviews of products the shop lists are shown (and each links to its product), newest first.
   const bySlug = new Map(products.map((p) => [p.id, p.slug]));
   const homeReviews = (recentReviews ?? [])
@@ -121,8 +117,6 @@ export default async function HomePage() {
       </section>
 
       <ReviewsSection reviews={homeReviews} />
-      <OurStorySection page={ourStory} />
-      <LatestPostsSection posts={latest?.posts ?? []} />
     </>
   );
 }

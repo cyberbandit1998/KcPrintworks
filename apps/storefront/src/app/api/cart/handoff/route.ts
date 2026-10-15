@@ -6,6 +6,7 @@ import { currentCheckoutStatus } from '@/lib/checkout';
 import { NO_STORE, readBodyLimited } from '@/lib/http';
 import { requestHandoff } from '@/lib/handoff/upstream';
 import { checkShop } from '@/lib/handoff/shop-guard';
+import { shopperIssues } from '@/lib/handoff/messages';
 import { isProduction, siteUrl } from '@/lib/env';
 
 /**
@@ -68,7 +69,7 @@ export async function POST(request: Request) {
           error: 'invalid_lines',
           lines: result.lines.map((line) => ({
             index: line.index,
-            issues: line.issues.map((issue) => ({
+            issues: shopperIssues(line.issues).map((issue) => ({
               code: knownCode(issue.code),
               message: issue.message,
               ...(issue.field ? { field: issue.field } : {}),

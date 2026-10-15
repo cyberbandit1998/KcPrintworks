@@ -88,13 +88,12 @@ test('the home page shows the newest reviews, each linked to its product, and no
   expect(/out of 5|average|rated \d/i.test(text.replace(/Rated \d out of 5 stars/g, ''))).toBe(
     false,
   );
-  // Order on the page: products, reviews, Our Story, blog.
+  // Order on the page: products, then reviews, which is now the last section (Our Story and the blog are not on the home page).
   const order = await page
     .locator('main section[data-section]')
     .evaluateAll((els) => els.map((el) => el.getAttribute('data-section')));
   expect(order.indexOf('reviews')).toBeGreaterThan(order.indexOf('new-arrivals'));
-  expect(order.indexOf('our-story')).toBeGreaterThan(order.indexOf('reviews'));
-  expect(order.indexOf('latest-posts')).toBeGreaterThan(order.indexOf('our-story'));
+  expect(order.at(-1)).toBe('reviews');
 });
 
 test('review pages have no WCAG 2.2 AA violations, on a wide screen and a phone', async ({

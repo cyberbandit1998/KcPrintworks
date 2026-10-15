@@ -21,7 +21,16 @@ export const MARKETPLACE_ATTRIBUTES: ReadonlySet<string> = new Set([
   'holiday',
 ]);
 
-/** Personalization the export cannot describe. Proposed fields for the products that say they are personalized. */
+/**
+ * The fields a shopper sees for a personalized product whose setup is NOT stored in WooCommerce (no `_kcpw_option_schema`): a name for
+ * any personalized product, plus an icon and a cable color for a bag tag. The wording is what the shopper reads, so it is plain
+ * instructions. WooCommerce's stored setup always wins; and the shop only accepts these choices for a product that stores the same
+ * setup (docs/BAG-TAG-PERSONALIZATION.md), which `/api/catalog-status/` lists under `defaultPersonalization`.
+ */
+export const NAME_HELP = "Enter the name exactly as you'd like it printed.";
+export const ICON_HELP = 'Enter an available icon name, such as Dog, Cat, or Flower.';
+export const CABLE_COLOR_HELP = 'Enter your preferred cable color.';
+
 export function proposedOptions(title: string): { schema: OptionSchema; proposed: boolean } {
   const personalized = /personali[sz]ed|custom name/i.test(title);
   if (!personalized) return { schema: { version: 1, fields: [] }, proposed: false };
@@ -30,7 +39,7 @@ export function proposedOptions(title: string): { schema: OptionSchema; proposed
       id: 'name',
       type: 'text',
       label: 'Name or short text',
-      helpText: 'Proposed field for review. Printed exactly as typed, so check the spelling.',
+      helpText: NAME_HELP,
       required: true,
       minLength: 1,
       maxLength: 24,
@@ -42,18 +51,18 @@ export function proposedOptions(title: string): { schema: OptionSchema; proposed
       {
         id: 'icon',
         type: 'text',
-        label: 'Icon (emoji)',
-        helpText:
-          'Proposed field. A fixed list of icons you can print is safer than free emoji; see the personalization notes.',
+        label: 'Icon',
+        helpText: ICON_HELP,
         required: false,
         minLength: 0,
-        maxLength: 4,
+        maxLength: 24,
+        placeholder: 'e.g. Dog',
       },
       {
         id: 'cable_color',
         type: 'text',
         label: 'Cable color',
-        helpText: 'Proposed field. Your real cable colors will become a choice list.',
+        helpText: CABLE_COLOR_HELP,
         required: false,
         minLength: 0,
         maxLength: 30,

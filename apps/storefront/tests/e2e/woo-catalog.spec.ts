@@ -98,6 +98,9 @@ test('a product with a stored option schema shows it; a personalized title gets 
   await expect(page.getByLabel(/Inscription/)).toBeVisible();
   await page.goto('/product/synthetic-personalized-keychain/');
   await expect(page.getByLabel(/Name or short text/)).toBeVisible();
+  // The default fields carry plain instructions for the shopper, never a development note.
+  await expect(page.getByText("Enter the name exactly as you'd like it printed.")).toBeVisible();
+  await expect(page.getByText(/Proposed|for review|personalization notes/i)).toHaveCount(0);
 });
 
 test('product photos come from WooCommerce, and a photo from an unknown host does not break its page', async ({
@@ -348,7 +351,8 @@ test.describe('checkout handoff', () => {
     const notice = page.getByRole('alert').filter({ hasText: 'cannot be ordered right now' });
     await expect(notice).toBeVisible();
     await expect(notice).toContainText('Synthetic Personalized Keychain');
-    await expect(notice).toContainText('Unknown option');
+    await expect(notice).toContainText('not available to order online right now');
+    await expect(notice).not.toContainText('Unknown option');
     await expect(page).toHaveURL(/\/cart\/$/);
     await expect(page.getByText('Robin')).toBeVisible(); // the cart is untouched
 
@@ -1107,11 +1111,10 @@ test.describe('WordPress content: blog, Our Story, Contact', () => {
     await page.goto('/our-story/');
     await expect(page.locator('.content')).toContainText('synthetic page stands in');
     await expect(page.locator('article.post-card')).toHaveCount(3);
+    // The home page does not repeat the story or the posts (they have their own pages).
     await page.goto('/');
-    await expect(page.locator('[data-section="our-story"]')).toContainText(
-      'The owner wrote this synthetic story',
-    );
-    await expect(page.locator('[data-section="latest-posts"] article')).toHaveCount(3);
+    await expect(page.locator('[data-section="our-story"]')).toHaveCount(0);
+    await expect(page.locator('[data-section="latest-posts"]')).toHaveCount(0);
 
     await page.goto('/contact/');
     // No WordPress page yet: a plain line, and the email button and address are still there.

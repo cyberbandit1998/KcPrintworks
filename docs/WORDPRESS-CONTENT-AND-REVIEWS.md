@@ -21,7 +21,7 @@ thing comes from, what to do in the WordPress admin, and which server settings e
 | `/blog/`, `/blog/<post>/`, categories, tags | WordPress **posts** | Posts |
 | `/our-story/` | The WordPress **page** whose address ends in `our-story` | Pages |
 | `/contact/` | The WordPress **page** whose address ends in `contact` | Pages |
-| Home: Our Story, Latest from the blog | The same page and the 3 newest posts | Pages, Posts |
+| (not on the home page) | The home page no longer repeats Our Story or the latest posts (removed 2026-10-15); they stay on `/our-story/` and `/blog/`, reachable from the menu, the footer and the hero's Our Story button | n/a |
 
 If something is missing, the storefront leaves that part out (or says "coming soon" on the page); it never fills the space with made-up text,
 made-up reviews, or a made-up rating.
@@ -42,7 +42,7 @@ Contact: the page's own words come from WordPress as above. The storefront adds,
 shortcode (or its form) left in the page is removed, so you can leave it or delete it in WordPress. Contact is linked from the footer only.
 
 Our Story: no text is written by the storefront. If the page is not published, the page says "Our story is coming soon" and asks search
-engines not to list it, and the home page leaves the section out. The Our Story page also shows the three newest posts and a **Shop Now** button.
+engines not to list it. The Our Story page also shows the three newest posts and a **Shop Now** button.
 
 ## 3. Posts: the blog
 
@@ -134,7 +134,7 @@ and counts are enough) and the label can be added from that real data. Nothing i
 
 Every answer is cached in the container's memory. A visitor is answered from memory; a stale answer is refreshed once in the background; if
 WordPress is down the last good copy keeps being shown; an address that WordPress never listed is not asked about at all (so a bot guessing
-addresses cannot make the shop call WordPress). The home page waits at most 2.5 seconds for blog and review sections, then draws without them.
+addresses cannot make the shop call WordPress). The home page waits at most 2.5 seconds for the reviews section, then draws without it (it makes no WordPress calls: the story and blog sections were removed).
 
 ## 7. How fresh is it?
 

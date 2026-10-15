@@ -51,6 +51,9 @@ export async function GET() {
               proposedPersonalization: snapshot.proposedPersonalization,
             }
           : null,
+        // Products that show the default personalization fields because WooCommerce stores no setup for them. The shop refuses those
+        // choices at checkout until the product's Personalization tab holds the same fields (docs/BAG-TAG-PERSONALIZATION.md).
+        defaultPersonalization: snapshot?.defaultPersonalization ?? [],
         skipped: snapshot?.skipped ?? [],
         products: (snapshot?.products ?? []).map((p) => ({
           id: p.id,

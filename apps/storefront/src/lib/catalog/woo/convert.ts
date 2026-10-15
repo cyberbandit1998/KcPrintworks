@@ -41,6 +41,8 @@ export interface WooCatalogResult {
   categories: Category[];
   skipped: { id: number; title: string; reason: string }[];
   proposedPersonalization: number;
+  /** The products that show the default personalization fields because WooCommerce stores no setup for them (the shop will not accept those choices until it does). */
+  defaultPersonalization: { id: number; name: string }[];
 }
 
 const toStock = (value: string): StockStatus =>
@@ -115,6 +117,7 @@ export function convertWooCatalog(
   const skipped: WooCatalogResult['skipped'] = [];
   const products: Product[] = [];
   let proposedPersonalization = 0;
+  const defaultPersonalization: { id: number; name: string }[] = [];
   const takenSlugs = new Set<string>();
 
   for (const row of input.products) {
@@ -221,7 +224,10 @@ export function convertWooCatalog(
     // ---- personalization, availability, text
     const fromMeta = schemaFromMeta(row);
     const proposed = proposedOptions(title);
-    if (!fromMeta && proposed.proposed) proposedPersonalization += 1;
+    if (!fromMeta && proposed.proposed) {
+      proposedPersonalization += 1;
+      defaultPersonalization.push({ id: row.id, name: title });
+    }
     const madeToOrder = isMadeToOrder({
       attributes: row.attributes,
       tags: row.tags,
@@ -318,5 +324,5 @@ export function convertWooCatalog(
       imageUrl: c.image?.src || undefined,
     };
   });
-  return { products, categories, skipped, proposedPersonalization };
+  return { products, categories, skipped, proposedPersonalization, defaultPersonalization };
 }

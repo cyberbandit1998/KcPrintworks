@@ -1209,9 +1209,6 @@
   display: flex;
   justify-content: center;
 }
-.home-story {
-  max-width: 48rem;
-}
 /* Words and pictures written in WordPress. The sanitizer has already removed anything unsafe. */
 .content {
   max-width: none;

@@ -125,7 +125,10 @@ describe('POST /api/cart/handoff/', () => {
     expect(response.status).toBe(422);
     const json = await response.json();
     expect(json.error).toBe('invalid_lines');
-    expect(JSON.stringify(json)).toContain('Unknown option');
+    // The shop's developer wording ("Unknown option") is replaced by plain words for the shopper, once.
+    expect(JSON.stringify(json)).not.toContain('Unknown option');
+    expect(json.lines[0].issues).toHaveLength(1);
+    expect(json.lines[0].issues[0].message).toContain('not available to order online right now');
   });
 
   it('says "changed" and reloads its catalog when WooCommerce disagrees with what it was showing', async () => {

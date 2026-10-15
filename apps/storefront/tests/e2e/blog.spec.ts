@@ -154,19 +154,24 @@ test('Contact has an orange Email Us button and the address as a link beneath it
   ).toHaveAttribute('href', '/contact/');
 });
 
-test('the home page shows the Our Story and Latest blog posts sections, after the products', async ({
+test('the home page has no Our Story or Latest-from-the-blog section; both pages stay reachable from the menu and footer', async ({
   page,
 }) => {
   await page.goto('/');
   const order = await page
     .locator('main section[data-section]')
     .evaluateAll((els) => els.map((el) => el.getAttribute('data-section')));
-  const story = order.indexOf('our-story');
-  const posts = order.indexOf('latest-posts');
-  expect(story).toBeGreaterThan(order.indexOf('new-arrivals'));
-  expect(posts).toBeGreaterThan(story);
-  await expect(page.locator('[data-section="latest-posts"] article')).toHaveCount(3);
-  await expect(page.locator('[data-section="our-story"] a')).toHaveAttribute('href', '/our-story/');
+  expect(order).not.toContain('our-story');
+  expect(order).not.toContain('latest-posts');
+  await expect(page.getByRole('heading', { name: 'Latest from the blog' })).toHaveCount(0);
+  await expect(page.getByRole('heading', { level: 2, name: 'Our Story' })).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'Read our story' })).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'Read the blog' })).toHaveCount(0);
+  await expect(page.locator('article.post-card')).toHaveCount(0);
+  // The pages themselves are untouched: the header's Blog link and the footer's Our Story, Blog and Contact links remain.
+  await expect(page.locator('.site-nav a[href="/blog/"]').first()).toBeAttached();
+  await expect(page.locator('.site-footer a[href="/our-story/"]')).toBeVisible();
+  await expect(page.locator('.site-footer a[href="/blog/"]')).toBeVisible();
 });
 
 test('the header Blog link and the footer Our Story, Blog and Contact links go to real pages', async ({

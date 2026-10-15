@@ -20,10 +20,11 @@ export const dynamic = 'force-dynamic';
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
   title: {
-    default: `${SITE_NAME}: personalized, made-to-order prints`,
+    default: `${SITE_NAME}: Michigan-made 3D printed game cases and personalized gifts`,
     template: `%s | ${SITE_NAME}`,
   },
-  description: 'Personalized, made-to-order prints and goods from KCPrintWorks.',
+  description:
+    'Michigan-made 3D printed game cases, personalized gifts, and practical storage solutions. Made to order with care.',
   robots: isProduction ? { index: true, follow: true } : { index: false, follow: false },
 };
 

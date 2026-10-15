@@ -17,7 +17,8 @@ export function SiteFooter({ nav, categories }: { nav: NavItem[]; categories: Ca
           <div>
             <p className="footer__brand">KCPrintWorks</p>
             <p>
-              Personalized, made-to-order prints and goods. (Placeholder tagline for design review.)
+              Michigan-made 3D printed game cases, personalized gifts, and practical storage
+              solutions. Made to order with care.
             </p>
           </div>
           <nav aria-labelledby="footer-shop">
