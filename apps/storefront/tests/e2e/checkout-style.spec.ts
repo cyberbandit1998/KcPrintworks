@@ -62,6 +62,25 @@ for (const [name, width] of [
       expect(back.height, 'a 44px target').toBeGreaterThanOrEqual(44);
     });
 
+    test('the header stays on one line even when the phone’s system font is much wider (GitHub’s runner falls back to DejaVu Sans)', async ({
+      page,
+    }) => {
+      await open(page, width);
+      await page.addStyleTag({
+        content: '.kcpw-co-header, .kcpw-co-header * { letter-spacing: 0.05em !important; }',
+      });
+      const box = (await page.locator('.kcpw-co-header').boundingBox())!;
+      expect(box.height, 'one line, not two').toBeLessThanOrEqual(72);
+      const overflow = await page.evaluate(
+        () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      );
+      expect(overflow).toBeLessThanOrEqual(0);
+      const back = (await page.locator('.kcpw-co-header__back').boundingBox())!;
+      expect(back.x + back.width, 'the way back stays inside the screen').toBeLessThanOrEqual(
+        width,
+      );
+    });
+
     test('the place-order button is dark ink on orange with a real boundary, and WooCommerce’s own return link is replaced by the header’s', async ({
       page,
     }) => {

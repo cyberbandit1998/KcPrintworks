@@ -113,7 +113,12 @@ body.kcpw-checkout .kcpw-co-header__back:hover {
   color: var(--kcpw-bg);
 }
 @media (max-width: 39.99em) {
-  /* Small screens keep the header to one line; the words stay available to screen readers. */
+  /* Small screens keep the header to ONE line whatever the phone's system font is (a wide font such as DejaVu Sans is what a Linux
+     browser falls back to): no wrapping, the "Back to cart" link keeps its size, and the name is the part that gives way. */
+  body.kcpw-checkout .kcpw-co-header__inner {
+    flex-wrap: nowrap;
+    gap: 0.5rem 0.75rem;
+  }
   body.kcpw-checkout .kcpw-co-header__label {
     position: absolute;
     width: 1px;
@@ -126,19 +131,36 @@ body.kcpw-checkout .kcpw-co-header__back:hover {
   body.kcpw-checkout .kcpw-co-header__label + .kcpw-co-header__back {
     margin-left: auto;
   }
+  body.kcpw-checkout .kcpw-co-brand {
+    flex: 0 1 auto;
+    font-size: 1rem;
+  }
+  body.kcpw-checkout .kcpw-co-brand__name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
   body.kcpw-checkout .kcpw-co-brand__mark {
     width: 2rem;
     height: 2rem;
     font-size: 0.85rem;
+  }
+  body.kcpw-checkout .kcpw-co-header__back {
+    flex: none;
+    font-size: 0.9375rem;
+    white-space: nowrap;
   }
 }
 @media (max-width: 22em) {
   /* The narrowest phones (320px): the arrow and some padding go so the logo and the way back still share one line. */
   body.kcpw-checkout .kcpw-co-header__inner {
     gap: 0.5rem;
+    padding-inline: 0.75rem;
   }
   body.kcpw-checkout .kcpw-co-brand {
     gap: 0.5rem;
+    font-size: 0.95rem;
   }
   body.kcpw-checkout .kcpw-co-header__back {
     padding-inline: 0.5rem;
