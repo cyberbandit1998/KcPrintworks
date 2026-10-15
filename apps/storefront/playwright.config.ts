@@ -63,6 +63,11 @@ export default defineConfig({
         // The tests all submit from one address; the real limits (3 per visitor, 60 overall per ten minutes) are proven by unit tests.
         REVIEWS_RATE_LIMIT: '100',
         REVIEWS_RATE_LIMIT_ALL: '1000',
+        // Custom quotes switched ON for this server only (it talks to the kcpw-quotes stand-in in the same mock store); the default server has them off.
+        QUOTES_ENABLED: 'true',
+        // The tests all submit from one address; the real limits are proven by unit tests.
+        QUOTES_RATE_LIMIT: '1000',
+        QUOTES_RATE_LIMIT_ALL: '1000',
         KCPW_API_URL: WOO_TEST.mockUrl,
         KCPW_HANDOFF_SECRET: WOO_TEST.handoffSecret,
         // The shop's own free-shipping numbers for this server ($25.00, minimum counted before discounts); the default server uses $40.00.

@@ -116,6 +116,7 @@ export function createMockWoo({ port = 0, key = MOCK_KEY, secret = MOCK_SECRET }
     wp: [],
     store: [],
     reviews: [],
+    quotes: [],
   };
   const handoffs = new Map();
   // How the stand-in shop answers a handoff: normal | down (503) | foreign_redirect | wrong_path (a hostile or broken shop).
@@ -126,6 +127,10 @@ export function createMockWoo({ port = 0, key = MOCK_KEY, secret = MOCK_SECRET }
   let shopStatus = { ...DEFAULT_SHOP_STATUS };
   // How the stand-in plugin answers a review submission: normal | closed | verification | notfound | limited | error | down.
   let reviewMode = 'normal';
+  // The stand-in kcpw-quotes plugin keeps no state a test can change (so specs running in parallel cannot disturb each other, and
+  // /__mock/reset leaves it alone): a request whose description contains [[mock:down]], [[mock:limited]], [[mock:badfile]] or
+  // [[mock:error]] gets that answer; anything else is accepted.
+  let quoteCounter = 0;
   const expected = `Basic ${Buffer.from(`${key}:${secret}`).toString('base64')}`;
 
   const json = (res, status, body, headers = {}) => {
@@ -295,6 +300,54 @@ export function createMockWoo({ port = 0, key = MOCK_KEY, secret = MOCK_SECRET }
       if (req.method !== 'GET') return json(res, 405, { code: 'mock_read_only' });
       const answer = answerStoreReviews(url, reviews);
       return json(res, answer.status, answer.body, answer.headers);
+    }
+
+    // ---- kcpw-quotes stand-in (SYNTHETIC: the real rules live in wordpress/kcpw-quotes and are proven by its own tests). A request is only
+    // LOGGED (with the pictures' sizes, never their bytes) for the test to inspect; nothing is stored and no mail is sent.
+    if (url.pathname.startsWith('/wp-json/kcpw-quotes/v1/')) {
+      let raw = '';
+      req.setEncoding('utf8');
+      req.on('data', (c) => (raw += c));
+      req.on('end', () => {
+        const route = url.pathname.replace('/wp-json', '');
+        if (!verifySignature(req, route, raw, MOCK_HANDOFF_SECRET))
+          return json(res, 401, { code: 'kcpw_unauthorized', message: 'Not authorized.' });
+        if (route !== '/kcpw-quotes/v1/requests' || req.method !== 'POST')
+          return json(res, 404, { code: 'rest_no_route' });
+        let input;
+        try {
+          input = JSON.parse(raw);
+        } catch {
+          return json(res, 400, { ok: false, status: 'invalid_request' });
+        }
+        const allowed = ['request', 'files', 'clientKey'];
+        if (Object.keys(input).some((k) => !allowed.includes(k)))
+          return json(res, 400, { ok: false, status: 'invalid_request' });
+        log.quotes.push({
+          request: input.request,
+          clientKey: input.clientKey,
+          files: (input.files ?? []).map((f) => ({
+            name: f.name,
+            type: f.type,
+            bytes: Buffer.from(String(f.data), 'base64').length,
+            magic: Buffer.from(String(f.data), 'base64').subarray(0, 4).toString('hex'),
+          })),
+        });
+        const marker = /\[\[mock:(down|limited|badfile|error)\]\]/.exec(
+          String(input.request?.description ?? ''),
+        )?.[1];
+        if (marker === 'down')
+          return json(res, 503, { code: 'kcpw_not_ready', message: 'Not set up.' });
+        if (marker === 'limited') return json(res, 429, { ok: false, status: 'rate_limited' });
+        if (marker === 'badfile') return json(res, 400, { ok: false, status: 'invalid_file' });
+        if (marker === 'error') return json(res, 500, { ok: false, status: 'server_error' });
+        quoteCounter += 1;
+        return json(res, 200, {
+          ok: true,
+          ref: `KCQ-2610-ABCDE${(quoteCounter % 8) + 2}`,
+        });
+      });
+      return;
     }
 
     // ---- kcpw-core stand-in

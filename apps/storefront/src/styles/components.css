@@ -448,6 +448,7 @@
   border-radius: 50%;
   font-weight: 800;
 }
+.steps h2,
 .steps h3 {
   margin-bottom: var(--space-2);
 }
@@ -908,7 +909,8 @@
   border: 3px solid var(--color-error);
   border-radius: var(--radius);
 }
-.error-summary h2 {
+.error-summary h2,
+.error-summary h3 {
   font-size: 1.125rem;
   margin-bottom: var(--space-2);
   color: var(--color-error);
@@ -1557,6 +1559,67 @@
   .site-search {
     display: none;
   }
+}
+
+/* ---------- Custom quotes: the request form and the quote page ---------- */
+.quote-steps {
+  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+  margin-bottom: var(--space-6);
+}
+.steps .quote-steps__title,
+.quote-steps h2 {
+  font-size: 1.25rem;
+}
+.quote-form {
+  max-width: 44rem;
+  margin-bottom: var(--space-7);
+}
+.quote-form__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0 var(--space-4);
+}
+@media (min-width: 36em) {
+  .quote-form__row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+.quote-form__file {
+  padding: var(--space-2);
+}
+.quote-files {
+  display: grid;
+  gap: var(--space-2);
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  list-style: none;
+}
+.quote-files li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-surface);
+  border: 2px solid var(--color-border-strong);
+  border-radius: var(--radius);
+}
+.quote-files__name {
+  flex: 1 1 10rem;
+  min-width: 0;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+.quote-ref {
+  font-size: 1.25rem;
+  letter-spacing: 0.04em;
+  overflow-wrap: anywhere;
+}
+.quote-done h2 {
+  margin-top: 0;
+}
+.quote-done p {
+  margin: 0 0 var(--space-3);
 }
 
 @media (forced-colors: active) {

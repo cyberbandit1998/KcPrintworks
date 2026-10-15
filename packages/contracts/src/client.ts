@@ -15,6 +15,7 @@ export * from './cart-logic';
 export * from './pricing';
 export * from './purchase-model';
 export * from './review-logic';
+export * from './quote-logic';
 
 export type * from './options';
 export type * from './cart';

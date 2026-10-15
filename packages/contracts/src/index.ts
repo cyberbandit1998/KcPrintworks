@@ -9,3 +9,4 @@ export * from './handoff';
 export * from './pricing';
 export * from './purchase-model';
 export * from './review-logic';
+export * from './quote-logic';
