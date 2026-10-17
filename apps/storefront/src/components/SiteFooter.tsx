@@ -59,6 +59,9 @@ export function SiteFooter({ nav, categories }: { nav: NavItem[]; categories: Ca
               <li>
                 <Link href="/cart/">Cart</Link>
               </li>
+              <li>
+                <Link href="/return-policy/">Returns &amp; Exchanges</Link>
+              </li>
             </ul>
           </nav>
         </div>

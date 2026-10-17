@@ -26,6 +26,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: absoluteUrl('/') },
     { url: absoluteUrl('/shop/') },
     { url: absoluteUrl('/new-arrivals/') },
+    { url: absoluteUrl('/return-policy/') },
     // The request page is public and worth finding once it takes requests; a customer's private quote page is never listed.
     ...(quotesEnabled() ? [{ url: absoluteUrl('/custom-orders/') }] : []),
     ...(posts.length > 0 ? [{ url: absoluteUrl('/blog/') }] : []),

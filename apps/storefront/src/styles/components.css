@@ -1222,6 +1222,13 @@
   margin-inline: auto;
   padding-block: var(--space-5) var(--space-7);
 }
+/* A summary box between a managed page's title and its first section (Returns & Exchanges). */
+.managed-page > .notice {
+  margin-block: var(--space-5) var(--space-6);
+}
+.managed-page > .notice h2 {
+  margin-top: 0;
+}
 .post__header h1 {
   margin: var(--space-2) 0 var(--space-3);
 }

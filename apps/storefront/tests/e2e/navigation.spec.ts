@@ -352,6 +352,10 @@ test.describe('shop, New Arrivals and the home page sections', () => {
       '/contact/',
     );
     await expect(footer.getByRole('link', { name: 'Blog' })).toHaveAttribute('href', '/blog/');
+    await expect(footer.getByRole('link', { name: 'Returns & Exchanges' })).toHaveAttribute(
+      'href',
+      '/return-policy/',
+    );
   });
 
   test('product pages show the category path from the tree', async ({ page }) => {
