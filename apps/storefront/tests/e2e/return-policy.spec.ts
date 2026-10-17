@@ -36,12 +36,17 @@ test('the page states each point of the policy', async ({ page }) => {
     'within 30 days of delivery',
     'you pay the shipping costs in both directions',
     'cannot be exchanged if you change your mind',
-    'free replacement',
+    'report it within 30 days of delivery through the Contact page',
+    'Include your order number and, if you can, clear photos of the product and its packaging',
+    'you qualify for a free replacement at no additional charge',
+    'KCPrintWorks covers all necessary shipping costs',
+    'you may not need to return the original item',
     'If we cannot provide a replacement, we will offer an appropriate resolution.',
     'a refund when it is necessary or required by law',
+    'The 30-day reporting window does not limit any legal rights that apply to you.',
     'before you ship anything',
     'We never charge a restocking fee.',
-    'This policy does not limit any consumer rights that apply to you.',
+    'This policy does not limit any consumer rights or other legal rights that apply to you.',
   ]) {
     expect(text.includes(sentence), sentence).toBe(true);
   }
@@ -52,6 +57,27 @@ test('the page states each point of the policy', async ({ page }) => {
     expect(href).toBe('/contact/');
   }
   expect(await main.locator('form, input, textarea').count()).toBe(0);
+});
+
+test('who pays for shipping is stated in the right section: the customer for a voluntary exchange, the shop for a verified problem', async ({
+  page,
+}) => {
+  await page.goto('/return-policy/');
+  const sections = await page.locator('main .content').evaluate((root) => {
+    const out: Record<string, string> = {};
+    let current = '';
+    for (const el of Array.from(root.children)) {
+      if (el.tagName === 'H2') current = el.id;
+      else out[current] = `${out[current] ?? ''} ${el.textContent ?? ''}`.replace(/\s+/g, ' ');
+    }
+    return out;
+  });
+  expect(sections['exchanges']).toContain('you pay the shipping costs in both directions');
+  expect(sections['exchanges']).toContain('We never charge a restocking fee.');
+  expect(sections['problems']).toContain('KCPrintWorks covers all necessary shipping costs');
+  expect(sections['problems']).not.toContain('you pay');
+  expect(sections['personalized']).toContain('cannot be exchanged if you change your mind');
+  expect(sections['final-sale']).toContain('We do not accept returns for a refund');
 });
 
 test('the footer link on every kind of page opens the policy', async ({ page }) => {

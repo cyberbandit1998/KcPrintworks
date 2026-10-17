@@ -34,8 +34,9 @@ export default function ReturnPolicyPage() {
                 mind.
               </li>
               <li>
-                Damaged, defective or incorrect products are replaced free of charge once we verify
-                the issue.
+                Damaged, defective or incorrect products: tell us within 30 days of delivery. Once
+                we verify the issue, we replace the product at no additional charge and cover all
+                necessary shipping costs.
               </li>
             </ul>
           </section>
@@ -45,7 +46,7 @@ export default function ReturnPolicyPage() {
             <p>
               All sales are final. We do not accept returns for a refund when you change your mind.
               This does not affect the rights described in{' '}
-              <a href="#your-rights">Your consumer rights</a> below.
+              <a href="#your-rights">Your legal and consumer rights</a> below.
             </p>
 
             <h2 id="exchanges">Exchanges for standard products</h2>
@@ -83,21 +84,27 @@ export default function ReturnPolicyPage() {
 
             <h2 id="problems">Damaged, defective or incorrect products</h2>
             <p>
-              If your order arrives damaged, defective or incorrect, contact us through the{' '}
-              <Link href={CONTACT}>Contact page</Link>. When we verify the issue, you qualify for a
-              free replacement.
+              If your order arrives damaged, defective or incorrect, please report it within 30 days
+              of delivery through the <Link href={CONTACT}>Contact page</Link>. Include your order
+              number and, if you can, clear photos of the product and its packaging, so we can
+              verify the issue.
             </p>
             <p>
-              To help us verify it, include your order number and, if you can, clear photos of the
-              product and its packaging.
+              When we verify the issue, you qualify for a free replacement at no additional charge.
+              KCPrintWorks covers all necessary shipping costs, and you may not need to return the
+              original item.
             </p>
             <p>
               If we cannot provide a replacement, we will offer an appropriate resolution. That
               includes a refund when it is necessary or required by law.
             </p>
+            <p>The 30-day reporting window does not limit any legal rights that apply to you.</p>
 
-            <h2 id="your-rights">Your consumer rights</h2>
-            <p>This policy does not limit any consumer rights that apply to you.</p>
+            <h2 id="your-rights">Your legal and consumer rights</h2>
+            <p>
+              This policy does not limit any consumer rights or other legal rights that apply to
+              you.
+            </p>
 
             <h2 id="contact">Questions?</h2>
             <p>Please ask before you buy or before you ship anything. We are happy to help.</p>
